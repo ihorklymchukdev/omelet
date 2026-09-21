@@ -3,6 +3,7 @@ import hashlib
 from fastapi.testclient import TestClient
 
 from agent.api.app import create_app
+from agent.core.config import AgentConfig
 from agent.core.sessions import COOKIE, SESSION_TTL, Sessions
 from agent.core.state import State
 from tests.agent.conftest import AUTH, BROWSER
@@ -118,6 +119,48 @@ def test_an_expired_session_answers_session_expired_through_the_middleware(env):
     resp = browser.get("/api/session")
     assert resp.status_code == 401
     assert resp.json()["error"]["code"] == "session_expired"
+
+
+def test_the_cookie_is_not_reissued_right_after_sign_in(tmp_path):
+    clock = Clock()
+    token_path = tmp_path / "agent.token"
+    token_path.write_text("test-token")
+    config = AgentConfig(projects_root=tmp_path / "projects",
+                         state_db=tmp_path / "state.db", token_path=token_path,
+                         edge_port=41080)
+    state = State(config.state_db)
+    sessions = Sessions(state, clock=clock)
+    app = create_app(config=config, state=state, sessions=sessions)
+    browser = TestClient(app, headers={**BROWSER, **ORIGIN})
+    code = sessions.issue_handoff()
+    browser.post("/api/session", json={"code": code})
+
+    resp = browser.get("/api/session")
+    assert resp.status_code == 200
+    assert "set-cookie" not in resp.headers
+
+
+def test_the_cookie_is_reissued_once_the_slide_window_is_crossed(tmp_path):
+    clock = Clock()
+    token_path = tmp_path / "agent.token"
+    token_path.write_text("test-token")
+    config = AgentConfig(projects_root=tmp_path / "projects",
+                         state_db=tmp_path / "state.db", token_path=token_path,
+                         edge_port=41080)
+    state = State(config.state_db)
+    sessions = Sessions(state, clock=clock)
+    app = create_app(config=config, state=state, sessions=sessions)
+    browser = TestClient(app, headers={**BROWSER, **ORIGIN})
+    code = sessions.issue_handoff()
+    browser.post("/api/session", json={"code": code})
+
+    clock.now += 3601
+    resp = browser.get("/api/session")
+    assert resp.status_code == 200
+    header = resp.headers["set-cookie"].lower()
+    assert f"max-age={SESSION_TTL}" in header
+    assert "httponly" in header and "samesite=strict" in header
+    assert "path=/api" in header
 
 
 def test_signing_out_ends_the_session(env):

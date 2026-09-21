@@ -142,14 +142,15 @@ def _read_token(path: Path) -> str:
 
 
 def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
-               jobs: JobRegistry | None = None, http_probe=None) -> FastAPI:
+               jobs: JobRegistry | None = None, http_probe=None,
+               sessions: Sessions | None = None) -> FastAPI:
     config = config or AgentConfig.from_env()
     runner = runner or LocalRunner()
     http_probe = http_probe or default_probe
     state = state if state is not None else State(config.state_db)
     jobs = jobs or JobRegistry()
     locks = ProjectLocks()
-    sessions = Sessions(state)
+    sessions = sessions if sessions is not None else Sessions(state)
     uploads = UploadStore(config.uploads_root,
                           free_bytes=lambda: disk.usage(
                               Path(config.projects_root))["free_bytes"])
@@ -242,9 +243,15 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
                 return refusal
             if (request.method, path) in open_browser_routes:
                 return await call_next(request)
-            verdict = sessions.check(request.cookies.get(COOKIE))
+            session_id = request.cookies.get(COOKIE)
+            verdict = sessions.check(session_id)
             if verdict == "ok":
-                return await call_next(request)
+                response = await call_next(request)
+                if verdict.extended:
+                    response.set_cookie(COOKIE, session_id, max_age=SESSION_TTL,
+                                        httponly=True, samesite="strict",
+                                        path="/api")
+                return response
             if verdict == "expired":
                 return _body("session_expired", "your sign-in ran out; open "
                              "Omelet from the desktop app again", 401)
