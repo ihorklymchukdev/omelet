@@ -1,5 +1,6 @@
 import threading
 
+from agent.core.exec import Completed
 from tests.agent.conftest import (_create, _run_to_completion, _write_compose)
 
 COMPOSE_TWO_WEBS = """
@@ -75,3 +76,15 @@ def test_restart_stops_before_it_starts(env):
                if "compose" in a and ("down" in a or a[-2:] == ["up", "-d"])]
     assert "down" in compose[0]
     assert compose[-1][-2:] == ["up", "-d"]
+
+
+def test_a_failed_teardown_fails_restart_without_starting(env):
+    # A down that fails must not be masked by an up that then succeeds --
+    # the caller needs to know the teardown itself was the problem.
+    _create(env, "blog")
+    _write_compose(env, "blog")
+    env.runner.down = Completed(1, "", "container busy")
+    result = _run_to_completion(env, env.client.post("/projects/blog/restart"))
+    assert result["state"] == "failed"
+    assert "container busy" in result["detail"]
+    assert not any(a[-2:] == ["up", "-d"] for a in env.runner.calls)

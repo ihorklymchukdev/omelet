@@ -540,7 +540,11 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
             try:
                 if stop_first:
                     write(f"compose down {project_id}\n")
-                    lifecycle.compose_down(runner, directory)
+                    down_result = lifecycle.compose_down(runner, directory)
+                    if not down_result.ok:
+                        raise JobFailed(
+                            (down_result.stderr or down_result.stdout).strip()
+                            or "compose down failed")
                 write.phase("starting")
                 write(f"compose up {project_id}\n")
                 status, detail = lifecycle.compose_up(
