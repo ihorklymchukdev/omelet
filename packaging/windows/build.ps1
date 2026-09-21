@@ -50,6 +50,17 @@ try {
         throw "PyInstaller missing. Run: .\.venv\Scripts\python.exe -m pip install -e `".[dev]`""
     }
 
+    # omelet.spec names this as a hidden import by string. If the name is
+    # wrong, PyInstaller silently omits it -- the build still succeeds, and
+    # the only symptom is a user's double-click reporting "install the Edge
+    # WebView2 runtime", which is the wrong diagnosis for a packaging bug.
+    # Failing here, on the machine that actually has pywebview installed,
+    # turns that into a build-time error instead.
+    & $venvPython -c "import webview.platforms.edgechromium"
+    if ($LASTEXITCODE -ne 0) {
+        throw "pywebview's EdgeChromium backend did not import; the hidden import in omelet.spec is wrong."
+    }
+
     $version = (Select-String -Path (Join-Path $repo 'pyproject.toml') `
         -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
     Write-Host "==> Building Omelet $version"

@@ -21,6 +21,16 @@ pkg="$repo/dist/OmeletSetup-$version.pkg"
     echo "No virtualenv at $venv_python. Run: python3.12 -m venv .venv" >&2; exit 1; }
 "$venv_python" -c "import PyInstaller" 2>/dev/null || {
     echo "PyInstaller missing. Run: $venv_python -m pip install -e \".[dev]\"" >&2; exit 1; }
+# omelet.spec names this as a hidden import by string. If the name is wrong,
+# PyInstaller silently omits it -- the build still succeeds, and the only
+# symptom is a user's double-click reporting "install the Edge WebView2
+# runtime" (the Windows message; on the Mac it's a generic pywebview
+# failure), which is the wrong diagnosis for a packaging bug. Failing here,
+# on the machine that actually has pywebview installed, turns that into a
+# build-time error instead.
+"$venv_python" -c "import webview.platforms.cocoa" 2>/dev/null || {
+    echo "pywebview's Cocoa backend did not import; the hidden import in omelet.spec is wrong." >&2
+    exit 1; }
 
 echo "==> Building Omelet $version for $(uname -m)"
 cd "$repo"
