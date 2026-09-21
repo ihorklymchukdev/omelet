@@ -1,3 +1,5 @@
+import hashlib
+
 from fastapi.testclient import TestClient
 
 from agent.api.app import create_app
@@ -103,6 +105,19 @@ def test_the_raw_session_id_is_never_stored(tmp_path):
     sessions = Sessions(state)
     sid = sessions.redeem(sessions.issue_handoff())
     assert state.get_session(sid) is None
+
+
+def test_an_expired_session_answers_session_expired_through_the_middleware(env):
+    browser = _signed_in(env)
+    cookie = browser.cookies[COOKIE]
+    # Backdating the stored row is the only way to force expiry here without
+    # waiting out the real SESSION_TTL -- the app builds its own Sessions
+    # with the real clock.
+    id_hash = hashlib.sha256(cookie.encode()).hexdigest()
+    env.state.set_session_expiry(id_hash, 0)
+    resp = browser.get("/api/session")
+    assert resp.status_code == 401
+    assert resp.json()["error"]["code"] == "session_expired"
 
 
 def test_signing_out_ends_the_session(env):

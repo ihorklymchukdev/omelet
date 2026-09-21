@@ -24,7 +24,7 @@ from ..core.exec import LocalRunner
 from ..core.health import answers, default_probe, diagnose
 from ..core.overlay import host_for
 from ..core.project import STARTED_OK, Project, _slug, load_project
-from ..core.sessions import COOKIE, SESSION_TTL, Sessions
+from ..core.sessions import COOKIE, HANDOFF_TTL, SESSION_TTL, Sessions
 from ..core.state import State
 from .jobs import JobFailed, JobRegistry
 
@@ -178,9 +178,11 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
     allowed_hosts = {f"localhost:{config.edge_port}",
                      f"127.0.0.1:{config.edge_port}"}
     allowed_origins = {f"http://{host}" for host in allowed_hosts}
-    # Reachable before sign-in: the page checks the API version, and trades
-    # a handoff code for a cookie.
-    open_browser_paths = {"/api/health", "/api/session"}
+    # Reachable before sign-in: checking the API version, and trading a
+    # handoff code for a cookie. GET/DELETE /api/session must still go
+    # through the session check below -- only the exchange itself is open.
+    open_browser_routes = {("GET", "/api/health"), ("HEAD", "/api/health"),
+                           ("POST", "/api/session")}
 
     def _bearer_ok(request: Request) -> bool:
         scheme, _, supplied = request.headers.get("authorization", "").partition(" ")
@@ -211,7 +213,7 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
             refusal = _browser_refusal(request)
             if refusal is not None:
                 return refusal
-            if path in open_browser_paths:
+            if (request.method, path) in open_browser_routes:
                 return await call_next(request)
             verdict = sessions.check(request.cookies.get(COOKIE))
             if verdict == "ok":
@@ -578,7 +580,7 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
 
     @app.post("/sessions/handoff")
     def issue_handoff() -> dict:
-        return {"code": sessions.issue_handoff(), "expires_in": 60}
+        return {"code": sessions.issue_handoff(), "expires_in": HANDOFF_TTL}
 
     @app.post("/api/session")
     def start_session(body: Handoff, response: Response) -> dict:
@@ -592,12 +594,9 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
         return {"signed_in": True}
 
     @app.get("/api/session")
-    def read_session(request: Request) -> dict:
-        verdict = sessions.check(request.cookies.get(COOKIE))
-        if verdict == "expired":
-            raise ApiError("session_expired", "your sign-in ran out", 401)
-        if verdict != "ok":
-            raise ApiError("not_signed_in", "not signed in", 401)
+    def read_session() -> dict:
+        # Reaching here means the middleware's own session check already
+        # returned "ok" -- GET is gated like any other /api/* route.
         return {"signed_in": True}
 
     @app.delete("/api/session")
