@@ -189,7 +189,11 @@ def test_replace_is_not_the_preselected_import_mode():
 
 
 def test_the_ports_table_has_no_project_column():
-    # Providers store (guest, host) pairs only; nothing records an owner, and
-    # a column of empty cells is worse than three true ones.
+    """Providers store (guest, host) pairs and nothing records which project
+    owns a forward, so the board's fourth column could only ever be blank.
+    Scoped to the ports template: "Project name" is legitimate copy on the
+    import screen."""
     markup = (UI / "index.html").read_text()
-    assert "Project" not in markup
+    start = markup.index('data-screen="ports"')
+    end = markup.index("</template>", start)
+    assert "Project" not in markup[start:end]
