@@ -65,3 +65,42 @@ def test_the_update_tile_promises_nothing_it_cannot_do():
     # but it must not claim to have checked anything.
     markup = (UI / "index.html").read_text()
     assert "nothing to check for yet" in markup.lower()
+
+
+def test_no_template_renders_a_separator_with_nothing_after_it():
+    """engine_version is "" on every machine where the engine never installed,
+    so a hard-coded separator between two fields renders as "0.1.0 · "."""
+    markup = (UI / "index.html").read_text()
+    # Every engine_version field must sit inside a section gated on it.
+    for chunk in markup.split('data-field="engine_version"')[1:]:
+        pass
+    assert 'data-when="engine_version"' in markup
+    assert '</span> &middot; <span data-field="engine_version">' not in markup
+    assert '</span> · <span data-field="engine_version">' not in markup
+
+
+def test_nothing_installed_offers_no_uninstall():
+    """There is no VM to remove; the button could only error or no-op."""
+    markup = (UI / "index.html").read_text()
+    start = markup.index('data-screen="home:not_installed"')
+    end = markup.index("</template>", start)
+    assert 'data-action="uninstall"' not in markup[start:end]
+
+
+def test_nothing_installed_disables_the_tiles_that_need_a_vm():
+    markup = (UI / "index.html").read_text()
+    start = markup.index('data-screen="home:not_installed"')
+    end = markup.index("</template>", start)
+    screen = markup[start:end]
+    for action in ("import", "ports"):
+        tile = screen.index(f'data-action="{action}"')
+        assert "disabled" in screen[tile:tile + 80], f"{action} tile must be disabled"
+
+
+def test_no_user_facing_copy_names_one_platform():
+    """The app ships on Windows and macOS and may not branch on platform, so a
+    sentence naming either one is false on the other."""
+    import re
+    markup = (UI / "index.html").read_text()
+    assert not re.search(r"\b(Mac|macOS|Windows|PC)\b", markup), \
+        "platform-specific copy in a cross-platform UI"
