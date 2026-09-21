@@ -60,15 +60,85 @@ def test_stopping_the_kitchen_is_a_job_not_a_blocking_call(tmp_path):
     assert provider.stopped is True
 
 
-def test_uninstall_does_not_purge_unless_asked(tmp_path):
-    seen = {}
+def test_uninstall_removes_the_vm_directory_but_keeps_downloads(tmp_path):
+    """Purge is the app's second level: without it the cached image and the
+    managed runtime survive, because they are disk space rather than state
+    and re-downloading them costs hundreds of megabytes."""
+    root = tmp_path / "omelet"
+    install_dir = root / "vm"
+    install_dir.mkdir(parents=True)
+    (install_dir / "disk.vhdx").write_text("x")
+    (root / "cache").mkdir()
+    (root / "cache" / "ubuntu.wsl").write_text("x")
+    (root / "lima").mkdir()
+    (root / "install-state.json").write_text('{"completed": ["preflight"]}')
 
-    class Uninstallable(FakeProvider):
+    destroyed = []
+
+    class Provider:
         def destroy(self):
-            seen["destroyed"] = True
+            destroyed.append(True)
 
-    api = _api(tmp_path, Uninstallable())
+    events = []
+    api = DesktopApi(Provider(), InstallState(tmp_path / "s.json"),
+                     push=events.append, probe_fn=lambda p: Readiness(),
+                     install_dir_factory=lambda: install_dir)
     api.start_uninstall(False)
     api.jobs.join(timeout=5)
-    assert seen.get("destroyed") is True
-    assert seen.get("purged") is not True
+
+    # The job must have finished, not crashed: JobRegistry swallows worker
+    # exceptions into a `crashed` event, so asserting only on side effects
+    # would pass against a job that died halfway.
+    assert events[-1]["type"] == "done", events
+    assert destroyed == [True]
+    assert not install_dir.exists()
+    assert not (root / "install-state.json").exists()
+    assert (root / "cache" / "ubuntu.wsl").exists()
+    assert (root / "lima").exists()
+
+
+def test_purge_also_removes_the_downloads(tmp_path):
+    root = tmp_path / "omelet"
+    install_dir = root / "vm"
+    install_dir.mkdir(parents=True)
+    (root / "cache").mkdir()
+    (root / "cache" / "ubuntu.wsl").write_text("x")
+    (root / "lima").mkdir()
+
+    class Provider:
+        def destroy(self):
+            pass
+
+    events = []
+    api = DesktopApi(Provider(), InstallState(tmp_path / "s.json"),
+                     push=events.append, probe_fn=lambda p: Readiness(),
+                     install_dir_factory=lambda: install_dir)
+    api.start_uninstall(True)
+    api.jobs.join(timeout=5)
+
+    assert events[-1]["type"] == "done", events
+    assert not (root / "cache").exists()
+    assert not (root / "lima").exists()
+
+
+def test_uninstall_touches_nothing_outside_the_injected_directory(tmp_path, monkeypatch):
+    """A regression here deletes a real user's VM when the suite runs."""
+    def explode():
+        raise AssertionError("uninstall resolved the real install directory")
+
+    monkeypatch.setattr("host.providers.default_install_dir", explode)
+
+    root = tmp_path / "omelet"
+    (root / "vm").mkdir(parents=True)
+
+    class Provider:
+        def destroy(self):
+            pass
+
+    events = []
+    api = DesktopApi(Provider(), InstallState(tmp_path / "s.json"),
+                     push=events.append, probe_fn=lambda p: Readiness(),
+                     install_dir_factory=lambda: root / "vm")
+    api.start_uninstall(True)
+    api.jobs.join(timeout=5)
+    assert events[-1]["type"] == "done", events

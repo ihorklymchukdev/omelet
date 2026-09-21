@@ -24,13 +24,14 @@ class DesktopApi:
 
     def __init__(self, provider, state, *, push,
                  probe_fn=probe, browser_open=webbrowser.open, steps_factory=None,
-                 client_factory=None):
+                 client_factory=None, install_dir_factory=None):
         self._provider = provider
         self._state = state
         self._probe = probe_fn
         self._open = browser_open
         self._steps_factory = steps_factory
         self._client_factory = client_factory or self._default_client_factory
+        self._install_dir_factory = install_dir_factory or self._default_install_dir
         self.jobs = JobRegistry(push)
 
     @staticmethod
@@ -38,6 +39,12 @@ class DesktopApi:
         from host.client import AgentClient
 
         return AgentClient.for_provider(provider)
+
+    @staticmethod
+    def _default_install_dir():
+        from host.providers import default_install_dir
+
+        return default_install_dir()
 
     # --- what to draw -------------------------------------------------
 
@@ -232,11 +239,10 @@ class DesktopApi:
 
     def start_uninstall(self, purge: bool) -> dict:
         from host.core.install import remove_downloads, remove_vm_data
-        from host.providers import default_install_dir
 
         def work(emit):
             self._provider.destroy()
-            install_dir = default_install_dir()
+            install_dir = self._install_dir_factory()
             remove_vm_data(install_dir.parent, install_dir)
             # Purge is the app's second confirmation level (the design board's
             # "Also delete downloads and settings" checkbox), not a gate like
