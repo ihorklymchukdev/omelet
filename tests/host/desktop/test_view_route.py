@@ -34,6 +34,17 @@ def test_reachable_without_engine_is_wrong():
     assert route_for(Readiness(vm_exists=True, vm_reachable=True)) == ("home", "wrong")
 
 
+def test_a_marker_read_that_threw_is_wrong_not_unreachable():
+    # probe()'s third stage: the VM answers, but reading engine.version threw.
+    # The unreachable screen claims we can see the machine humming, which
+    # needs a confirmed engine -- so this belongs on "something's wrong",
+    # and it is what pins the `and readiness.engine_version` half of the
+    # unreachable guard.
+    readiness = Readiness(vm_exists=True, vm_reachable=True,
+                          problem="cat: /opt/omelet/engine.version: No such file")
+    assert route_for(readiness) == ("home", "wrong")
+
+
 def test_agent_refused_is_the_only_unreachable():
     # The one state where the board's copy is literally true: the VM answers
     # `true`, the engine marker is there, and only /health is silent.
