@@ -102,19 +102,28 @@ def project_resources(runner, name: str) -> dict:
 
 def remove_by_label(runner, name: str, *, volumes: bool) -> Completed:
     """Compose-free teardown: the labels compose stamped on everything it
-    created outlive a compose file that no longer parses."""
-    steps = [(["ps", "-a"], "{{.ID}}", ["rm", "-f"]),
-             (["network", "ls"], "{{.ID}}", ["network", "rm"])]
-    if volumes:
-        steps.append((["volume", "ls"], "{{.Name}}", ["volume", "rm", "-f"]))
-    for listing, fmt, remove in steps:
-        ids = _labelled(runner, listing, name, fmt)
+    created outlive a compose file that no longer parses. Every step runs
+    regardless of an earlier one failing, so a stuck network never stops the
+    volumes from being freed too; the first failure is what's returned."""
+    failure = None
+
+    def run(remove: list[str], ids: list[str]):
+        nonlocal failure
         if not ids:
-            continue
+            return
         result = runner.exec([DOCKER, *remove, *ids], root=True)
-        if not result.ok:
-            return result
-    return Completed(0, "", "")
+        if not result.ok and failure is None:
+            failure = result
+
+    container_ids = _labelled(runner, ["ps", "-a"], name, "{{.ID}}")
+    # Plain DELETE must not SIGKILL a container mid-write; `rm -f` alone does.
+    run(["stop"], container_ids)
+    run(["rm", "-f"], container_ids)
+    run(["network", "rm"], _labelled(runner, ["network", "ls"], name, "{{.ID}}"))
+    if volumes:
+        run(["volume", "rm", "-f"],
+            _labelled(runner, ["volume", "ls"], name, "{{.Name}}"))
+    return failure or Completed(0, "", "")
 
 
 def remove_tree_as_root(runner, path) -> Completed:
