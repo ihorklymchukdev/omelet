@@ -12,7 +12,7 @@ import yaml
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import (FileResponse, JSONResponse, PlainTextResponse,
-                               StreamingResponse)
+                               Response, StreamingResponse)
 from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -24,6 +24,7 @@ from ..core.exec import LocalRunner
 from ..core.health import answers, default_probe, diagnose
 from ..core.overlay import host_for
 from ..core.project import STARTED_OK, Project, _slug, load_project
+from ..core.sessions import COOKIE, SESSION_TTL, Sessions
 from ..core.state import State
 from .jobs import JobFailed, JobRegistry
 
@@ -89,6 +90,10 @@ class CreateProject(BaseModel):
     domain: str | None = None
 
 
+class Handoff(BaseModel):
+    code: str
+
+
 def _body(code: str, message: str, status: int) -> JSONResponse:
     return JSONResponse({"error": {"code": code, "message": message}},
                         status_code=status)
@@ -126,12 +131,14 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
     state = state if state is not None else State(config.state_db)
     jobs = jobs or JobRegistry()
     locks = ProjectLocks()
+    sessions = Sessions(state)
 
     app = FastAPI(title="omelet-agent", version=config.version)
     app.state.config = config
     app.state.runner = runner
     app.state.state = state
     app.state.jobs = jobs
+    app.state.sessions = sessions
     router = APIRouter()
 
     @app.exception_handler(ApiError)
@@ -206,6 +213,12 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
                 return refusal
             if path in open_browser_paths:
                 return await call_next(request)
+            verdict = sessions.check(request.cookies.get(COOKIE))
+            if verdict == "ok":
+                return await call_next(request)
+            if verdict == "expired":
+                return _body("session_expired", "your sign-in ran out; open "
+                             "Omelet from the desktop app again", 401)
             return _body("not_signed_in", "open Omelet from the desktop app "
                          "to sign in", 401)
         if path == "/health":
@@ -562,6 +575,36 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
         if not follow:
             return PlainTextResponse(job.text(), media_type=TEXT)
         return StreamingResponse(jobs.follow(job_id), media_type=TEXT)
+
+    @app.post("/sessions/handoff")
+    def issue_handoff() -> dict:
+        return {"code": sessions.issue_handoff(), "expires_in": 60}
+
+    @app.post("/api/session")
+    def start_session(body: Handoff, response: Response) -> dict:
+        session_id = sessions.redeem(body.code)
+        if session_id is None:
+            raise ApiError("handoff_invalid", "that sign-in link has already "
+                           "been used or has run out; open Omelet from the "
+                           "desktop app again", 401)
+        response.set_cookie(COOKIE, session_id, max_age=SESSION_TTL,
+                            httponly=True, samesite="strict", path="/api")
+        return {"signed_in": True}
+
+    @app.get("/api/session")
+    def read_session(request: Request) -> dict:
+        verdict = sessions.check(request.cookies.get(COOKIE))
+        if verdict == "expired":
+            raise ApiError("session_expired", "your sign-in ran out", 401)
+        if verdict != "ok":
+            raise ApiError("not_signed_in", "not signed in", 401)
+        return {"signed_in": True}
+
+    @app.delete("/api/session")
+    def end_session(request: Request, response: Response) -> dict:
+        sessions.end(request.cookies.get(COOKIE))
+        response.delete_cookie(COOKIE, path="/api")
+        return {"signed_in": False}
 
     app.include_router(router)
     app.include_router(router, prefix="/api")
