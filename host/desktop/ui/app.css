@@ -1,0 +1,184 @@
+/* Tokens are the design board's, unchanged. The board scoped them to
+   [data-theme] because it showed both themes side by side; the app has one
+   theme at a time and follows the OS, so they live on :root. */
+:root {
+  --desk:#EFE3D2; --cream:#FFF8EE; --surface:#FFFFFF; --surface-2:#FBF1E4;
+  --line:rgba(58,38,22,.10); --line-2:rgba(58,38,22,.20);
+  --ink:#2B1E14; --ink-2:#5C4A3C; --ink-3:#8B7868;
+  --yolk:#FFB020; --yolk-deep:#B96C00; --yolk-soft:#FFE9BF;
+  --basil:#1F7F52; --basil-soft:#DCF2E6;
+  --paprika:#C63A20; --paprika-soft:#FBE3DC;
+  --cold:#8B959B; --cold-soft:#EAEDEF;
+  --shadow:rgba(80,45,12,.40);
+  --r-sm:10px; --r-md:14px; --r-lg:18px; --r-xl:22px;
+  --ease:cubic-bezier(.2,.8,.2,1);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --desk:#14110E; --cream:#1C1714; --surface:#221C17; --surface-2:#2A231D;
+    --line:rgba(255,238,214,.10); --line-2:rgba(255,238,214,.20);
+    --ink:#F8EFE3; --ink-2:#CFBDAA; --ink-3:#9D8B7B;
+    --yolk:#FFB93D; --yolk-deep:#FFCE70; --yolk-soft:#4A3517;
+    --basil:#63CC93; --basil-soft:#1E3A2C;
+    --paprika:#FF8768; --paprika-soft:#3E211A;
+    --cold:#8E9AA1; --cold-soft:#2B3134;
+    --shadow:rgba(0,0,0,.65);
+  }
+}
+
+@font-face { font-family:'Bricolage Grotesque'; font-weight:800; font-display:swap;
+  src:url('fonts/bricolage-grotesque-800.woff2') format('woff2'); }
+@font-face { font-family:'Hanken Grotesk'; font-weight:400; font-display:swap;
+  src:url('fonts/hanken-grotesk-400.woff2') format('woff2'); }
+@font-face { font-family:'Hanken Grotesk'; font-weight:600; font-display:swap;
+  src:url('fonts/hanken-grotesk-600.woff2') format('woff2'); }
+@font-face { font-family:'Hanken Grotesk'; font-weight:700; font-display:swap;
+  src:url('fonts/hanken-grotesk-700.woff2') format('woff2'); }
+@font-face { font-family:'IBM Plex Mono'; font-weight:400; font-display:swap;
+  src:url('fonts/ibm-plex-mono-400.woff2') format('woff2'); }
+
+* { box-sizing:border-box; }
+html, body { height:100%; }
+body {
+  margin:0; background:var(--cream); color:var(--ink);
+  font-family:'Hanken Grotesk', system-ui, sans-serif;
+  -webkit-font-smoothing:antialiased;
+  /* The OS draws the title bar; the board's mock chrome is not reproduced. */
+  overflow:hidden;
+  min-width:800px; min-height:560px;
+}
+#screen { height:100%; display:flex; flex-direction:column; overflow:auto; }
+
+/* The board has no focus states -- it was never keyboard-driven. Derived
+   from --yolk so it reads as the same system in both themes. */
+:focus-visible {
+  outline:3px solid var(--yolk-deep); outline-offset:2px; border-radius:4px;
+}
+
+@keyframes om-spin { to { transform:rotate(360deg); } }
+@keyframes om-sizzle { 0%{transform:translateY(0) scale(.5);opacity:0}
+  25%{opacity:.95} 100%{transform:translateY(-30px) scale(1.2);opacity:0} }
+@keyframes om-glow { 0%,100%{transform:scale(1);opacity:.85}
+  50%{transform:scale(1.05);opacity:1} }
+@keyframes om-bob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-5px)} }
+@keyframes om-zzz { 0%{opacity:0;transform:translate(0,0) scale(.6)}
+  35%{opacity:1} 100%{opacity:0;transform:translate(16px,-26px) scale(1.15)} }
+@keyframes om-bar { 0%{transform:translateX(-100%)} 100%{transform:translateX(320%)} }
+@keyframes om-blink { 0%,100%{opacity:1} 50%{opacity:.35} }
+
+/* The board's own motion note: loops are for waiting, and only one thing
+   loops at a time. Under reduced-motion none of them do -- the pan is still
+   a pan, it just stops sizzling. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration:0.001ms !important;
+    animation-iteration-count:1 !important;
+    transition-duration:0.001ms !important;
+  }
+}
+
+.btn-primary {
+  border:0; cursor:pointer; padding:18px 34px; border-radius:var(--r-lg);
+  background:var(--yolk); color:#2B1E14;
+  font:700 20px 'Bricolage Grotesque', sans-serif;
+  box-shadow:0 12px 26px -12px rgba(255,176,32,.95);
+  transition:transform 120ms var(--ease);
+}
+.btn-primary:hover { transform:translateY(-2px); }
+.btn-primary:disabled { opacity:.6; cursor:not-allowed; transform:none; }
+.btn-secondary {
+  cursor:pointer; padding:15px 24px; border-radius:var(--r-md);
+  background:var(--surface); border:1px solid var(--line-2); color:var(--ink-2);
+  font:600 15.5px 'Hanken Grotesk', sans-serif;
+  transition:background 120ms var(--ease), color 120ms var(--ease);
+}
+.btn-secondary:hover { background:var(--surface-2); color:var(--ink); }
+
+/* Layout: window padding 40/48, card padding 16-22, gaps 10-14 within a
+   group, 22-28 between groups. Type scale from the board's token sheet. */
+.pad {
+  padding:48px 40px; display:flex; flex-direction:column; gap:24px;
+  flex:1; min-height:0;
+}
+.pad.centered { justify-content:center; align-items:flex-start; }
+
+.display {
+  font:800 42px/1.15 'Bricolage Grotesque', sans-serif;
+  margin:0; color:var(--ink);
+}
+.title {
+  font:800 31px/1.2 'Bricolage Grotesque', sans-serif;
+  margin:0; color:var(--ink);
+}
+.lede {
+  font:400 16.5px/1.5 'Hanken Grotesk', sans-serif;
+  margin:0; color:var(--ink-2); max-width:56ch;
+}
+.hint {
+  font:400 14.5px/1.4 'Hanken Grotesk', sans-serif;
+  color:var(--ink-3); margin:0;
+}
+.overline {
+  font:600 12px 'Hanken Grotesk', sans-serif;
+  letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3);
+}
+.mono { font:400 13px 'IBM Plex Mono', monospace; }
+
+.badge {
+  display:inline-block; align-self:flex-start;
+  font:600 14.5px 'Hanken Grotesk', sans-serif;
+  padding:4px 12px; border-radius:999px;
+  background:var(--cold-soft); color:var(--ink-2);
+  border:1px solid var(--line-2);
+}
+.badge-running { background:var(--basil-soft); color:var(--basil); border-color:transparent; }
+.badge-cold { background:var(--cold-soft); color:var(--cold); border-color:transparent; }
+.badge-bad { background:var(--paprika-soft); color:var(--paprika); border-color:transparent; }
+.badge-warm { background:var(--yolk-soft); color:var(--yolk-deep); border-color:transparent; }
+
+.steps {
+  list-style:none; margin:0; padding:0;
+  display:flex; flex-direction:column; gap:14px;
+}
+.steps li {
+  display:flex; flex-direction:column; gap:2px;
+  padding:16px 20px; border-radius:var(--r-md);
+  background:var(--surface); border:1px solid var(--line);
+}
+.steps li b { font:600 16.5px 'Hanken Grotesk', sans-serif; color:var(--ink); }
+.steps li span { font:400 14.5px 'Hanken Grotesk', sans-serif; color:var(--ink-2); }
+
+.row {
+  display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+}
+
+.log { margin-top:4px; }
+.log summary {
+  cursor:pointer; font:600 14.5px 'Hanken Grotesk', sans-serif; color:var(--ink-2);
+}
+.log pre {
+  font:400 13px 'IBM Plex Mono', monospace; white-space:pre-wrap; word-break:break-word;
+  background:var(--surface-2); border:1px solid var(--line); border-radius:var(--r-sm);
+  padding:12px 14px; color:var(--ink-2); margin-top:8px; max-height:160px; overflow:auto;
+}
+
+.odds {
+  margin-top:auto; padding-top:22px; border-top:1px solid var(--line);
+  display:flex; flex-direction:column; gap:10px;
+}
+.tiles {
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+}
+.tiles button {
+  cursor:pointer; padding:10px 16px; border-radius:var(--r-sm);
+  background:var(--surface); border:1px solid var(--line-2); color:var(--ink-2);
+  font:600 14.5px 'Hanken Grotesk', sans-serif;
+  transition:background 120ms var(--ease), color 120ms var(--ease);
+}
+.tiles button:hover { background:var(--surface-2); color:var(--ink); }
+.tiles button:disabled { opacity:.5; cursor:not-allowed; }
+.tile-danger { color:var(--paprika); border-color:var(--paprika-soft); }
+.tile-danger:hover { background:var(--paprika-soft); color:var(--paprika); }
+.tile-note {
+  font:400 13px 'IBM Plex Mono', monospace; color:var(--ink-3); margin-left:auto;
+}
