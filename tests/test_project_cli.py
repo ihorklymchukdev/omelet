@@ -109,15 +109,19 @@ def test_up_reports_the_guests_own_output_when_the_stack_does_not_stay_up(
     assert "omelet logs blog" in result.output
 
 
-def test_up_says_which_directory_has_no_compose_file(monkeypatch, tmp_path):
+def test_up_without_a_compose_file_imports_and_says_so(monkeypatch, tmp_path):
+    # The folder still lands in the VM; the coding agent writes the compose
+    # file later. Refusing here would refuse exactly the folders Import
+    # exists for.
     client = use(monkeypatch, FakeClient())
     empty = tmp_path / "nothing"
     empty.mkdir()
     result = runner.invoke(cli.app, ["up", str(empty)])
-    assert result.exit_code == 1
-    assert "docker-compose.yml" in result.output
-    # Nothing was created agent-side for a directory that cannot be a project.
-    assert client.calls == []
+    assert result.exit_code == 0
+    assert "nothing" in result.output and "there is nothing to start" in result.output.lower()
+    # The folder was still imported: ensure_project and upload_directory ran,
+    # but project_up must not have been called since there is nothing to start.
+    assert [c[0] for c in client.calls] == ["ensure_project", "upload_directory"]
 
 
 def test_an_unreachable_agent_is_reported_in_words_not_a_socket_error(

@@ -167,17 +167,20 @@ def up(directory: str = typer.Argument(".", help="Project directory with a docke
     from host.core.constants import COMPOSE_FILE
 
     local = _Path(directory).resolve()
-    if not (local / COMPOSE_FILE).is_file():
-        # Checked here so an empty folder is not registered as a project the
-        # agent then has to refuse.
-        typer.echo(f"There is no {COMPOSE_FILE} in {local}.", err=True)
-        raise typer.Exit(code=1)
     project_id = project_id_for(local.name)
 
     with _agent_errors():
         client = _client()
         client.ensure_project(project_id)
         client.upload_directory(project_id, local)
+        if not (local / COMPOSE_FILE).is_file():
+            # A folder with no compose file is still a real import: the
+            # upload above already happened, and the coding agent inside the
+            # VM writes the compose file later. This is the outcome the
+            # desktop app's Import screen exists for, not a refusal.
+            typer.echo(f"{project_id} was imported. There is no "
+                       f"{COMPOSE_FILE} yet, so there is nothing to start.")
+            return
         typer.echo(f"Starting {project_id} in the VM…")
         try:
             job = client.wait_for_job(client.project_up(project_id))
