@@ -186,3 +186,63 @@ class DesktopApi:
             # than disappearing as though it worked.
             return {"ok": False, "reason": "refused", "message": f"{e}"}
         return {"ok": True}
+
+    def doctor(self) -> dict:
+        from host.core.diagnose import render_diagnosis
+
+        diagnosis = self._provider.preflight()
+        # Rendered by host/core so the modal shows exactly what `omelet doctor`
+        # prints -- one wording for the user to read out to whoever helps them.
+        return {"ok": diagnosis.ok, "text": render_diagnosis(diagnosis)}
+
+    def start_vm(self) -> dict:
+        def work(emit):
+            self._provider.start()
+            return {"type": "done"}
+
+        return {"job": self.jobs.start("vm", work)}
+
+    def stop_vm(self) -> dict:
+        def work(emit):
+            self._provider.stop()
+            return {"type": "done"}
+
+        return {"job": self.jobs.start("vm", work)}
+
+    def restart_vm(self) -> dict:
+        def work(emit):
+            self._provider.stop()
+            self._provider.start()
+            return {"type": "done"}
+
+        return {"job": self.jobs.start("vm", work)}
+
+    def start_repair(self) -> dict:
+        from host.core.bootstrap import bootstrap
+        from host.core.install import connect_step
+
+        def work(emit):
+            emit({"type": "stage", "stage": "bootstrap"})
+            bootstrap(self._provider, repair=True)
+            emit({"type": "stage", "stage": "connect"})
+            connect_step(self._provider)
+            return {"type": "done"}
+
+        return {"job": self.jobs.start("repair", work)}
+
+    def start_uninstall(self, purge: bool) -> dict:
+        from host.core.install import remove_downloads, remove_vm_data
+        from host.providers import default_install_dir
+
+        def work(emit):
+            self._provider.destroy()
+            install_dir = default_install_dir()
+            remove_vm_data(install_dir.parent, install_dir)
+            # Purge is the app's second confirmation level (the design board's
+            # "Also delete downloads and settings" checkbox), not a gate like
+            # cli.uninstall's --purge -- the modal is the confirmation here.
+            if purge:
+                remove_downloads(install_dir.parent)
+            return {"type": "done"}
+
+        return {"job": self.jobs.start("uninstall", work)}

@@ -339,8 +339,7 @@ def uninstall(purge: bool = typer.Option(False, "--purge")):
         typer.echo("This destroys the VM and every project inside it. "
                    "Re-run with --purge to confirm.")
         raise typer.Exit(code=1)
-    import shutil
-    from host.core.install import InstallState
+    from host.core.install import remove_downloads, remove_vm_data
     from host.providers import default_install_dir
 
     destroy_error = None
@@ -351,16 +350,8 @@ def uninstall(purge: bool = typer.Option(False, "--purge")):
 
     install_dir = default_install_dir()
     root = install_dir.parent
-    InstallState(root / "install-state.json").clear()
-    shutil.rmtree(root / "cache", ignore_errors=True)
-    # The VM's own directory: wsl --unregister normally empties it, but a
-    # failed or partial destroy leaves a multi-gigabyte vhdx behind.
-    shutil.rmtree(install_dir, ignore_errors=True)
-    # macOS only in practice (root/lima is never created on Windows), but
-    # harmless to remove unconditionally: setup's install_runtime step puts
-    # the managed Lima here (lima_install.managed_root), and leaving it
-    # behind was the ~100 MB --purge never actually cleaned up.
-    shutil.rmtree(root / "lima", ignore_errors=True)
+    remove_vm_data(root, install_dir)
+    remove_downloads(root)
     # No host-side state.db to remove any more: project state lives in the VM
     # at /opt/omelet/state.db and goes with the VM.
 
