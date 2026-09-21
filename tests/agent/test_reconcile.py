@@ -1,5 +1,6 @@
 import shutil
 
+import agent.core.reconcile as reconcile
 from tests.agent.conftest import COMPOSE_ONE_WEB, _create, _write_compose
 
 
@@ -63,3 +64,22 @@ def test_a_new_empty_project_reads_as_empty_not_broken(env):
     project = env.client.get("/projects/blog").json()
     assert project["empty"] is True
     assert project["problem"]["code"] == "compose_missing"
+
+
+def test_a_folder_removed_mid_discovery_is_skipped_not_a_500(env, monkeypatch):
+    _create(env, "blog")
+    _folder(env, "ok-folder")
+    _folder(env, "vanishing-folder")
+    real_examine = reconcile.examine
+
+    def flaky_examine(folder):
+        if folder.name == "vanishing-folder":
+            raise FileNotFoundError(folder)
+        return real_examine(folder)
+
+    monkeypatch.setattr(reconcile, "examine", flaky_examine)
+    resp = env.client.get("/projects")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert [p["id"] for p in body["projects"]] == ["blog"]
+    assert [d["name"] for d in body["discovered"]] == ["ok-folder"]

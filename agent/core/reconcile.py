@@ -35,4 +35,12 @@ def discover(root: Path, known: set[str]) -> list[Discovered]:
                          if e.is_dir(follow_symlinks=False)
                          and not e.name.startswith(".")
                          and e.name not in known)
-    return [examine(root / name) for name in folders]
+    found = []
+    for name in folders:
+        try:
+            found.append(examine(root / name))
+        except FileNotFoundError:
+            # Removed between the scandir above and this stat -- a coding
+            # agent's own scratch folder churn, not a project to report.
+            continue
+    return found
