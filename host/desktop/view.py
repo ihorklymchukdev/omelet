@@ -75,3 +75,38 @@ def rows_for(steps: list[Step]) -> list[dict]:
     """
     return [{"name": s.name, "label": step_label(s), "progress": s.progress}
             for s in steps]
+
+
+from host.core.install import DeadEnd, InstallError, Progress, RebootRequired
+
+
+def progress_event(progress: Progress) -> dict:
+    return {
+        "type": "step",
+        "step": progress.step,
+        "status": progress.status,
+        "message": progress.message,
+        # None, never 0.0: only a step that declared progress=True has a
+        # fraction, and a zero here would draw an empty bar on every other row.
+        "fraction": progress.fraction,
+    }
+
+
+def terminal_event(exc: BaseException | None) -> dict:
+    """How the run ended, in the three shapes the board draws differently.
+
+    run_install has already reported a `failed` Progress naming the row, so
+    nothing here needs the step name -- only the ending, because each offers
+    a different pair of buttons.
+    """
+    if exc is None:
+        return {"type": "done"}
+    if isinstance(exc, RebootRequired):
+        return {"type": "reboot"}
+    if isinstance(exc, DeadEnd):
+        # No code can fix this one, so the failed screen's "Try this step
+        # again" is the wrong offer and the UI hides it for this type.
+        return {"type": "dead_end", "message": f"{exc}"}
+    if isinstance(exc, InstallError):
+        return {"type": "failed", "message": exc.message, "action": exc.action}
+    return {"type": "failed", "message": f"{exc}", "action": ""}

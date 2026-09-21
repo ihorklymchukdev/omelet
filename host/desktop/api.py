@@ -16,16 +16,17 @@ from host.core import constants
 from host.core.status import probe
 
 from .jobs import JobRegistry
-from .view import route_for
+from .view import progress_event, route_for, rows_for, terminal_event
 
 
 class DesktopApi:
     def __init__(self, provider, state, *, push,
-                 probe_fn=probe, browser_open=webbrowser.open):
+                 probe_fn=probe, browser_open=webbrowser.open, steps_factory=None):
         self._provider = provider
         self._state = state
         self._probe = probe_fn
         self._open = browser_open
+        self._steps_factory = steps_factory
         self.jobs = JobRegistry(push)
 
     # --- what to draw -------------------------------------------------
@@ -53,3 +54,24 @@ class DesktopApi:
         # routing, and becomes the web app for free when that ships.
         self._open(f"http://localhost:{constants.EDGE_PORT}")
         return {"ok": True}
+
+    def start_install(self) -> dict:
+        from host.core.install import run_install
+
+        # A fresh list per run: the steps close over provider state
+        # (provider.rootfs is assigned while the list is built), so re-running
+        # a list built for an earlier run installs against stale bindings.
+        steps = self._steps_factory()
+
+        def work(emit):
+            def report(progress):
+                emit(progress_event(progress))
+
+            try:
+                run_install(steps, self._state, report)
+            except Exception as e:
+                return terminal_event(e)
+            return terminal_event(None)
+
+        job_id = self.jobs.start("install", work)
+        return {"job": job_id, "rows": rows_for(steps)}
