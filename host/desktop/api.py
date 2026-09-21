@@ -20,14 +20,24 @@ from .view import inspect_folder, progress_event, route_for, rows_for, terminal_
 
 
 class DesktopApi:
+    IMPORT_MODES = ("merge", "replace")
+
     def __init__(self, provider, state, *, push,
-                 probe_fn=probe, browser_open=webbrowser.open, steps_factory=None):
+                 probe_fn=probe, browser_open=webbrowser.open, steps_factory=None,
+                 client_factory=None):
         self._provider = provider
         self._state = state
         self._probe = probe_fn
         self._open = browser_open
         self._steps_factory = steps_factory
+        self._client_factory = client_factory or self._default_client_factory
         self.jobs = JobRegistry(push)
+
+    @staticmethod
+    def _default_client_factory(provider):
+        from host.client import AgentClient
+
+        return AgentClient.for_provider(provider)
 
     # --- what to draw -------------------------------------------------
 
@@ -102,12 +112,12 @@ class DesktopApi:
         return self.inspect_folder(chosen[0])
 
     def inspect_folder(self, path: str) -> dict:
-        from host.client import AgentClient, project_id_for
+        from host.client import project_id_for
 
         summary = inspect_folder(path)
         project_id = project_id_for(summary["name"])
         try:
-            AgentClient.for_provider(self._provider).get_project(project_id)
+            self._client_factory(self._provider).get_project(project_id)
             conflict = True
         except Exception:
             # Any refusal means "no project by that name to merge into". A
@@ -116,3 +126,31 @@ class DesktopApi:
             conflict = False
         return {**summary, "path": path, "project_id": project_id,
                 "conflict": conflict}
+
+    def start_import(self, path: str, mode: str) -> dict:
+        from host.client import project_id_for
+
+        if mode not in self.IMPORT_MODES:
+            # Never guessed: one of the two modes deletes a project.
+            raise ValueError(f"unknown import mode {mode!r}")
+
+        summary = inspect_folder(path)
+        project_id = project_id_for(summary["name"])
+        client = self._client_factory(self._provider)
+
+        def work(emit):
+            if mode == "replace":
+                # Delete first. The other order merges the folder in and then
+                # wipes it, losing the import along with the old project.
+                client.delete_project(project_id)
+            client.ensure_project(project_id)
+
+            def on_progress(phase, done, total):
+                emit({"type": "progress", "phase": phase,
+                      "done": done, "total": total})
+
+            client.upload_directory(project_id, path, on_progress=on_progress)
+            return {"type": "done", "project_id": project_id}
+
+        return {"job": self.jobs.start("import", work),
+                "project_id": project_id, **summary}
