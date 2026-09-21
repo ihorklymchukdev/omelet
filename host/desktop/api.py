@@ -160,11 +160,21 @@ class DesktopApi:
                           for guest, host_port in self._provider.forwards()]}
 
     def add_port(self, guest: int, host_port: int) -> dict:
-        guest, host_port = int(guest), int(host_port)
+        try:
+            guest, host_port = int(guest), int(host_port)
+        except (TypeError, ValueError):
+            return {"ok": False, "reason": "range"}
         reason = validate_port(guest, host_port, self._provider.forwards())
         if reason:
             return {"ok": False, "reason": reason}
-        self._provider.forward(guest, host_port)
+        try:
+            self._provider.forward(guest, host_port)
+        except Exception as e:
+            # forward() shells netsh on Windows, which writes to HKLM and needs
+            # administrator: it can fail outright or be declined at the UAC
+            # prompt. Uncaught, this rejects the JS promise and the user's
+            # click silently does nothing.
+            return {"ok": False, "reason": "refused", "message": f"{e}"}
         return {"ok": True}
 
     def remove_port(self, guest: int, host_port: int) -> dict:
