@@ -19,7 +19,7 @@ from fastapi.responses import (FileResponse, JSONResponse, PlainTextResponse,
 from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from ..core import constants, files, lifecycle
+from ..core import constants, disk, files, lifecycle
 from ..core.config import AgentConfig
 from ..core.detect import AmbiguousError
 from ..core.exec import LocalRunner
@@ -50,6 +50,11 @@ class ApiError(Exception):
 def _busy(project_id: str) -> "ApiError":
     return ApiError("project_busy",
                     f"another operation on '{project_id}' is still running", 409)
+
+
+def _disk_full() -> ApiError:
+    return ApiError("disk_full", "Omelet's disk is full. Free up space in "
+                    "the desktop app, then try again.", 507)
 
 
 class ProjectLocks:
@@ -359,6 +364,10 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
     def version() -> dict:
         return {"version": config.version}
 
+    @router.get("/disk")
+    def disk_usage() -> dict:
+        return disk.usage(Path(config.projects_root))
+
     @router.post("/projects", status_code=201)
     def create_project(body: CreateProject) -> dict:
         # Same slug rule load_project applies to a directory name, so an id
@@ -440,7 +449,12 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
                             "may be. Remove the large files or folders from it "
                             "-- build output, videos and database files are the "
                             "usual cause -- and try again.", 413)
-                    f.write(chunk)
+                    try:
+                        f.write(chunk)
+                    except OSError as e:
+                        if disk.is_disk_full(e):
+                            raise _disk_full() from e
+                        raise
         except BaseException:
             # A client that disconnects mid-upload, or trips the size cap
             # above, must not leave a temp file behind.
@@ -466,6 +480,10 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
                     raise ApiError("path_traversal", str(e), 400) from e
                 except files.BadArchiveError as e:
                     raise ApiError("bad_archive", str(e), 400) from e
+                except OSError as e:
+                    if disk.is_disk_full(e):
+                        raise _disk_full() from e
+                    raise
             finally:
                 tmp.unlink(missing_ok=True)
         return {"id": project_id, "files": files.list_tree(d)}
