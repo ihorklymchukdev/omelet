@@ -1,6 +1,7 @@
 import shutil
 
 import agent.core.reconcile as reconcile
+from agent.core import constants
 from tests.agent.conftest import COMPOSE_ONE_WEB, _create, _write_compose
 
 
@@ -23,6 +24,13 @@ def test_registered_hidden_and_staging_entries_are_not_discovered(env):
     _create(env, "blog")
     _folder(env, ".cache")
     (env.config.projects_root / "tmpab12.upload").write_bytes(b"partial")
+    assert env.client.get("/projects").json()["discovered"] == []
+
+
+def test_the_setup_smoke_test_folder_is_never_discovered(env):
+    # The installer deletes it without purge, so the folder itself outlives
+    # the row -- it must not resurface as something a user can adopt.
+    _folder(env, constants.VERIFY_PROJECT_ID)
     assert env.client.get("/projects").json()["discovered"] == []
 
 

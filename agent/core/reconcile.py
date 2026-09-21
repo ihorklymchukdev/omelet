@@ -4,7 +4,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from .constants import COMPOSE_FILE
+from .constants import COMPOSE_FILE, VERIFY_PROJECT_ID
 from .project import _slug
 
 
@@ -34,7 +34,8 @@ def discover(root: Path, known: set[str]) -> list[Discovered]:
         folders = sorted(e.name for e in entries
                          if e.is_dir(follow_symlinks=False)
                          and not e.name.startswith(".")
-                         and e.name not in known)
+                         and e.name not in known
+                         and e.name != VERIFY_PROJECT_ID)
     found = []
     for name in folders:
         try:
