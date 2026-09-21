@@ -385,6 +385,16 @@ class LimaProvider:
     def reboot_required(self) -> bool:
         return False   # no OS features to enable; Lima needs no restart
 
+    def reboot(self) -> None:
+        """Restart macOS now.
+
+        Through Apple Events rather than `shutdown -r`, which needs root: this
+        prompts the user exactly as choosing Restart from the Apple menu does.
+        Unreachable in practice -- reboot_required() is always False here --
+        but the Protocol is satisfied honestly rather than with a pass.
+        """
+        self._run(["osascript", "-e", 'tell application "System Events" to restart'])
+
     # Nothing on macOS to turn on: the Virtualization framework is part of the
     # OS, so setup has no remediation step and no restart to gate on. Both
     # steps are dropped from the list rather than shown and skipped -- a Mac

@@ -75,3 +75,11 @@ class DesktopApi:
 
         job_id = self.jobs.start("install", work)
         return {"job": job_id, "rows": rows_for(steps)}
+
+    def reboot_now(self) -> dict:
+        import sys
+        # Order matters and is pinned by a test: a machine that goes down
+        # before RunOnce is written never comes back to setup.
+        self._provider.register_resume(sys.executable)
+        self._provider.reboot()
+        return {"ok": True}

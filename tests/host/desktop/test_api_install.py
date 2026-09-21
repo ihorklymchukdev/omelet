@@ -70,3 +70,22 @@ def test_the_steps_factory_is_called_per_run_not_once(tmp_path):
     api.start_install()
     _drain(api)
     assert len(calls) == 2
+
+
+def test_resume_is_registered_before_the_machine_goes_down(tmp_path):
+    """A reboot fired before RunOnce is written never comes back to setup."""
+    order = []
+
+    class RebootingProvider:
+        def register_resume(self, exe_path):
+            order.append("register")
+
+        def reboot(self):
+            order.append("reboot")
+
+    api = DesktopApi(RebootingProvider(), InstallState(tmp_path / "s.json"),
+                     push=lambda e: None, probe_fn=lambda p: Readiness(),
+                     steps_factory=lambda: [])
+    api.reboot_now()
+
+    assert order == ["register", "reboot"]

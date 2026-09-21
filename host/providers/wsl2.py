@@ -349,6 +349,15 @@ class Wsl2Provider:
     def reboot_required(self) -> bool:
         return self._features_enabled
 
+    def reboot(self) -> None:
+        """Restart Windows now.
+
+        /t 0 rather than a delay: the user pressed a button that says
+        "Restart now", and a countdown they cannot see is worse than none.
+        Resume is already registered by the gate before this is reachable.
+        """
+        self._run(["shutdown", "/r", "/t", "0"])
+
     def register_resume(self, exe_path: str) -> None:
         self._write_registry(RUNONCE_KEY, _RESUME_VALUE_NAME,
                              f'"{exe_path}" setup --resume')

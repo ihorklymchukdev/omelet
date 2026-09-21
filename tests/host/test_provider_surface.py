@@ -13,6 +13,7 @@ LIFECYCLE_SURFACE = {
     "preflight",
     "apply_remedy",
     "reboot_required",
+    "reboot",
     "exists",
     "create",
     "start",
