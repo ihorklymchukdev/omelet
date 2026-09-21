@@ -40,3 +40,38 @@ def route_for(readiness: Readiness) -> tuple[str, str]:
     if readiness.agent_api not in constants.SUPPORTED_API:
         return ("home", "wrong")
     return ("home", "running")
+
+
+from host.core.install import Step
+
+# Carried over from host/setup_app/wizard.py. install_runtime is absent on
+# purpose: its text comes from provider.runtime().label, because the version
+# in it is Lima's fact, not the installer's -- a second copy here would go
+# stale the first time the pinned version changes.
+STEP_LABELS = {
+    "preflight": "Checking this computer",
+    "remediate": "Turning on Windows features",
+    "reboot_gate": "Restart needed",
+    "fetch_image": "Downloading Linux image",
+    "create_vm": "Preparing the virtual machine",
+    "bootstrap": "Installing Omelet",
+    "connect": "Connecting to the Omelet service",
+    "verify": "Testing the setup",
+    "finish": "Finishing up",
+}
+
+
+def step_label(step: Step) -> str:
+    return step.label or STEP_LABELS.get(step.name, step.name)
+
+
+def rows_for(steps: list[Step]) -> list[dict]:
+    """One row per step the factory actually returned.
+
+    Never a fixed seven: default_steps drops install_runtime on Windows (wsl
+    ships with the OS) and drops remediate, reboot_gate and fetch_image on
+    macOS (no features to enable, and limactl fetches its own image). The
+    "Step N of M" counter is derived from this list for the same reason.
+    """
+    return [{"name": s.name, "label": step_label(s), "progress": s.progress}
+            for s in steps]
