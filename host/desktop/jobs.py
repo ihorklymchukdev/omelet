@@ -38,7 +38,7 @@ class JobRegistry:
             thread = threading.Thread(
                 target=self._run, args=(job_id, kind, work), daemon=True)
             self._thread = thread
-        thread.start()
+            thread.start()
         return job_id
 
     def join(self, timeout: float | None = None) -> None:
@@ -49,6 +49,7 @@ class JobRegistry:
 
     def _run(self, job_id: str, kind: str, work) -> None:
         last = [None]
+        pending = [None]
 
         def send(event: dict) -> None:
             self._push({**event, "job": job_id, "kind": kind})
@@ -58,11 +59,19 @@ class JobRegistry:
             # held back for a tenth of a second is a screen that lies; a
             # dropped one is a screen that never recovers.
             if event.get("type") != "progress":
+                # A dropped progress event must not be the last word: the
+                # final one usually carries done == total, and a bar frozen
+                # short of full under a "done" reads as a job that stalled.
+                if pending[0] is not None:
+                    send(pending[0])
+                    pending[0] = None
                 return send(event)
             now = self._clock()
             if last[0] is not None and now - last[0] < self._min_interval:
+                pending[0] = event
                 return
             last[0] = now
+            pending[0] = None
             send(event)
 
         try:
@@ -70,6 +79,10 @@ class JobRegistry:
         except Exception as e:
             # Never let a worker die into a daemon thread's silence: the
             # screen that started it would spin forever.
+            if pending[0] is not None:
+                send(pending[0])
             send({"type": "crashed", "message": f"{e}"})
             return
+        if pending[0] is not None:
+            send(pending[0])
         send(result if result is not None else {"type": "done"})

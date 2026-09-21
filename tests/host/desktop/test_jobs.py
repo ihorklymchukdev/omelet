@@ -32,10 +32,12 @@ def test_progress_events_are_coalesced_but_terminal_events_are_not():
     jobs.join(timeout=5)
 
     kinds = [e["type"] for e in pushed]
-    # Three progress events inside one interval collapse to the first;
-    # the terminal event is never held back.
-    assert kinds == ["progress", "done"]
+    # Three progress events inside one interval: the first passes, later ones
+    # are dropped but the final dropped one is flushed before done so the bar
+    # doesn't stick at the first value.
+    assert kinds == ["progress", "progress", "done"]
     assert pushed[0]["percent"] == 10
+    assert pushed[1]["percent"] == 30
 
 
 def test_a_later_progress_event_passes_once_the_interval_elapses():
@@ -98,3 +100,49 @@ def test_the_registry_frees_up_after_a_crash():
     # button afterwards would raise JobBusy until relaunch.
     jobs.start("doctor", lambda emit: {"type": "done"})
     jobs.join(timeout=5)
+
+
+def test_only_one_of_several_simultaneous_starts_wins():
+    """The refusal must hold when two starts collide, not merely when the
+    first job is already long-running: pywebview dispatches each bridge call
+    on its own thread."""
+    import threading
+    for _ in range(50):
+        jobs = JobRegistry(lambda event: None)
+        release = threading.Event()
+        gate = threading.Barrier(4)
+        wins, busy = [], []
+
+        def racer():
+            gate.wait(5)
+            try:
+                jobs.start("install", lambda emit: (release.wait(5), {"type": "done"})[1])
+                wins.append(1)
+            except JobBusy:
+                busy.append(1)
+
+        threads = [threading.Thread(target=racer) for _ in range(4)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(5)
+        release.set()
+        jobs.join(timeout=5)
+        assert (len(wins), len(busy)) == (1, 3)
+
+
+def test_the_last_dropped_progress_event_is_flushed_before_the_terminal_event():
+    """The final progress event usually carries done == total."""
+    clock, pushed = FakeClock(), []
+    jobs = JobRegistry(pushed.append, clock=clock, min_interval=1.0)
+
+    def work(emit):
+        emit({"type": "progress", "percent": 10})
+        emit({"type": "progress", "percent": 100})   # coalesced away today
+        return {"type": "done"}
+
+    jobs.start("import", work)
+    jobs.join(timeout=5)
+
+    assert [e["type"] for e in pushed] == ["progress", "progress", "done"]
+    assert pushed[1]["percent"] == 100
