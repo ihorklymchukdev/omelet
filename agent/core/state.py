@@ -58,6 +58,13 @@ class State:
                 (code, message, id))
             self._conn.commit()
 
+    def mark_started(self, id, compose_name, at):
+        with self._lock:
+            self._conn.execute(
+                "UPDATE projects SET last_started_at=?, compose_name=? WHERE id=?",
+                (at, compose_name, id))
+            self._conn.commit()
+
     def remove_project(self, id):
         with self._lock:
             self._conn.execute("DELETE FROM projects WHERE id=?", (id,))

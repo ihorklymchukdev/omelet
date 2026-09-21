@@ -24,9 +24,13 @@ class JobFailed(Exception):
 
 
 class Job:
-    def __init__(self, job_id: str):
+    def __init__(self, job_id: str, kind: str | None = None,
+                 project_id: str | None = None):
         self.id = job_id
+        self.kind = kind
+        self.project_id = project_id
         self.state = RUNNING
+        self.phase = "preparing"
         self.detail = ""
         self.result: dict | None = None
         self.logs: list[str] = []
@@ -38,6 +42,10 @@ class Job:
         with self.cond:
             self.logs.append(chunk)
             self.cond.notify_all()
+
+    def set_phase(self, phase: str) -> None:
+        with self.cond:
+            self.phase = phase
 
     def finish(self, state: str, detail: str = "", result: dict | None = None) -> None:
         with self.cond:
@@ -55,12 +63,28 @@ class Job:
         with self.cond:
             return {
                 "job_id": self.id,
+                "kind": self.kind,
+                "phase": self.phase,
                 "state": self.state,
                 "detail": self.detail,
                 "result": self.result,
                 "started_at": self.started_at,
                 "finished_at": self.finished_at,
             }
+
+
+class _Output:
+    """What a work function receives: call it to log, `.phase()` to say where
+    it is. Callable so every existing `write(...)` keeps working."""
+
+    def __init__(self, job: Job):
+        self._job = job
+
+    def __call__(self, chunk: str) -> None:
+        self._job.append(chunk)
+
+    def phase(self, name: str) -> None:
+        self._job.set_phase(name)
 
 
 class JobRegistry:
@@ -76,8 +100,9 @@ class JobRegistry:
         self._lock = threading.Lock()
         self._max_finished = max_finished
 
-    def submit(self, work: Work) -> str:
-        job = Job(uuid.uuid4().hex[:12])
+    def submit(self, work: Work, *, kind: str | None = None,
+               project_id: str | None = None) -> str:
+        job = Job(uuid.uuid4().hex[:12], kind, project_id)
         with self._lock:
             self._jobs[job.id] = job
             self._evict_finished()
@@ -86,7 +111,7 @@ class JobRegistry:
 
     def _run(self, job: Job, work: Work) -> None:
         try:
-            result = work(job.append)
+            result = work(_Output(job))
         except JobFailed as e:
             job.finish(FAILED, detail=str(e), result=e.result)
         except Exception as e:  # a crashed worker must not stay "running" forever
@@ -113,6 +138,12 @@ class JobRegistry:
         if job is None:
             raise KeyError(job_id)
         return job
+
+    def active_for(self, project_id: str) -> Job | None:
+        with self._lock:
+            running = [j for j in self._jobs.values()
+                       if j.project_id == project_id and j.state == RUNNING]
+        return running[-1] if running else None
 
     def wait(self, job_id: str, timeout: float | None = None) -> Job:
         job = self.require(job_id)

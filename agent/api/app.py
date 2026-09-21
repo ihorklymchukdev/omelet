@@ -5,6 +5,7 @@ import os
 import secrets
 import tempfile
 import threading
+import time
 from contextlib import contextmanager
 from dataclasses import asdict
 from pathlib import Path
@@ -290,6 +291,7 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
         # broken project must never take the whole listing down with it.
         problem = None
         urls: list[str] = []
+        web: list[dict] = []
         project = None
         folder = project_dir(row["id"])
         if not folder.is_dir():
@@ -299,6 +301,8 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
             try:
                 project = load(row["id"])
                 urls = urls_for(project, row["domain"])
+                web = [{"url": url, "service": spec.service, "primary": index == 0}
+                       for index, (url, spec) in enumerate(zip(urls, project.webs))]
             except ApiError as e:
                 problem = {"code": e.code, "message": e.message}
         if problem is None and row.get("problem_code"):
@@ -315,16 +319,22 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
                 # diagnosis that is true for a minute and false forever after.
                 state.set_problem(row["id"])
                 problem = None
+        active = jobs.active_for(row["id"])
         return {"id": row["id"], "status": row["status"], "domain": row["domain"],
                 "path": row["guest_path"], "urls": urls, "problem": problem,
-                "empty": folder.is_dir() and not (folder / constants.COMPOSE_FILE).exists()}
+                "empty": folder.is_dir() and not (folder / constants.COMPOSE_FILE).exists(),
+                "web": web,
+                "first_run": row.get("last_started_at") is None,
+                "job": None if active is None else {
+                    "id": active.id, "kind": active.kind,
+                    "phase": active.phase, "started_at": active.started_at}}
 
-    def submit_locked(project_id: str, work) -> str:
+    def submit_locked(project_id: str, work, kind: str | None = None) -> str:
         """The job releases the lock itself, in its own `finally`."""
         if not locks.acquire(project_id):
             raise _busy(project_id)
         try:
-            return jobs.submit(work)
+            return jobs.submit(work, kind=kind, project_id=project_id)
         except BaseException:
             locks.release(project_id)
             raise
@@ -513,22 +523,32 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
         return {"id": project_id, "stopped": result.ok,
                 "detail": "" if result.ok else (result.stderr or result.stdout).strip()}
 
-    @router.post("/projects/{project_id}/up", status_code=202)
-    def project_up(project_id: str) -> dict:
+    def compose_name_of(project_id: str) -> str:
+        data = parse_yaml(project_dir(project_id) / constants.COMPOSE_FILE)
+        return str(data.get("name") or project_id)
+
+    def start_work(project_id: str, *, stop_first: bool):
         row = require_row(project_id)
         # Parsing happens here, not in the job, so a broken compose file comes
         # back as an error code the caller can read instead of a failed job.
         project = load(project_id)
+        name = compose_name_of(project_id)
         domain = row["domain"]
         directory = project_dir(project_id)
 
         def work(write):
             try:
+                if stop_first:
+                    write(f"compose down {project_id}\n")
+                    lifecycle.compose_down(runner, directory)
+                write.phase("starting")
                 write(f"compose up {project_id}\n")
                 status, detail = lifecycle.compose_up(
                     runner, project, directory, domain)
                 diagnosis = None
                 if status == STARTED_OK:
+                    state.mark_started(project_id, name, time.time())
+                    write.phase("checking")
                     write("waiting for the project to answer through Traefik\n")
                     diagnosis = diagnose(
                         runner, project, domain, directory=directory,
@@ -558,7 +578,17 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
             finally:
                 locks.release(project_id)
 
-        return {"job_id": submit_locked(project_id, work)}
+        return work
+
+    @router.post("/projects/{project_id}/up", status_code=202)
+    def project_up(project_id: str) -> dict:
+        return {"job_id": submit_locked(
+            project_id, start_work(project_id, stop_first=False), "up")}
+
+    @router.post("/projects/{project_id}/restart", status_code=202)
+    def project_restart(project_id: str) -> dict:
+        return {"job_id": submit_locked(
+            project_id, start_work(project_id, stop_first=True), "restart")}
 
     @router.post("/projects/{project_id}/down", status_code=202)
     def project_down(project_id: str) -> dict:
@@ -577,7 +607,7 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
             finally:
                 locks.release(project_id)
 
-        return {"job_id": submit_locked(project_id, work)}
+        return {"job_id": submit_locked(project_id, work, "down")}
 
     @router.get("/projects/{project_id}/logs")
     def project_logs(project_id: str, follow: bool = False,
