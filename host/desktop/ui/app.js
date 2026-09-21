@@ -68,6 +68,7 @@ ACTIONS['start-install'] = async (node, data) => {
     const li = document.createElement('li');
     li.className = 'row-step';
     li.dataset.status = 'waiting';
+    li.dataset.name = row.name;
     li.innerHTML = '<span class="mark"></span><span class="label"></span><span class="state"></span>';
     li.querySelector('.label').textContent = row.label;
     li.querySelector('.state').textContent = 'Waiting';
@@ -94,37 +95,68 @@ window.omelet.handlers.install = (event) => {
       li.dataset.status = event.status;
       li.querySelector('.state').textContent = STATE_WORDS[event.status] || '';
     }
+    // The overall bar and "Step N of M" move together, on completed steps
+    // only -- not on every 'running' tick, and clamped so the last step's
+    // 'done' can never read "Step 8 of 7" before the terminal 'done' event
+    // (which follows immediately) swaps the screen away.
     if (event.status === 'done' || event.status === 'skipped') {
       window.omelet.done += 1;
       const counter = document.querySelector('[data-field="counter"]');
       if (counter) {
-        counter.textContent = `Step ${window.omelet.done + 1} of ${window.omelet.total}`;
+        const step = Math.min(window.omelet.done + 1, window.omelet.total);
+        counter.textContent = `Step ${step} of ${window.omelet.total}`;
+      }
+      const bar = document.querySelector('[data-field="progress"]');
+      if (bar) {
+        bar.style.width = `${Math.round((window.omelet.done / window.omelet.total) * 100)}%`;
       }
     }
-    if (event.fraction !== null && event.fraction !== undefined) {
-      const bar = document.querySelector('[data-field="fraction"]');
-      if (bar) bar.style.width = `${Math.round(event.fraction * 100)}%`;
+    // fraction is non-null only on the download step: a separate footer line
+    // for it, never the overall bar, or the bar would sit full through the
+    // several minutes create_vm/bootstrap/connect/verify/finish still take.
+    const note = document.querySelector('[data-field="download"]');
+    if (note) {
+      if (event.fraction !== null && event.fraction !== undefined) {
+        const label = li ? li.querySelector('.label').textContent : '';
+        note.textContent = `${label} · ${Math.round(event.fraction * 100)}%`;
+        note.hidden = false;
+      } else {
+        note.hidden = true;
+      }
     }
     return;
   }
   if (event.type === 'done') return refresh();
   if (event.type === 'reboot') return swap('install:reboot');
-  if (event.type === 'failed' || event.type === 'dead_end') {
+  // A worker exception ('crashed', from jobs.py) is otherwise unhandled and
+  // would leave the screen spinning forever with no way out but quitting.
+  // Unlike dead_end, a crash may well succeed on retry, so the button stays.
+  if (event.type === 'failed' || event.type === 'dead_end' || event.type === 'crashed') {
     swap('install:failed', { action: event.action || event.message });
     // DeadEnd means no code can fix it; a retry button there loops forever.
     if (event.type === 'dead_end') {
       document.querySelector('[data-retry]')?.remove();
     }
+    return;
   }
 };
 
 // Swap the left column without rebuilding the row panel, so the rows keep the
-// states the stream already put on them.
+// states the stream already put on them. rowsByName is rebuilt from the
+// spliced-in clone (keyed by the data-name each <li> carries) rather than
+// left pointing at the pre-clone elements, so a later 'step' event still
+// finds its row instead of silently no-oping.
 function swap(screen, data) {
   const rows = document.querySelector('[data-rows]');
   const keep = rows ? rows.cloneNode(true) : null;
   show(screen, data);
-  if (keep) document.querySelector('[data-rows]').replaceWith(keep);
+  if (keep) {
+    document.querySelector('[data-rows]').replaceWith(keep);
+    rowsByName = {};
+    keep.querySelectorAll('.row-step').forEach((li) => {
+      rowsByName[li.dataset.name] = li;
+    });
+  }
 }
 
 ACTIONS['start-over'] = async () => { await api().reset_install(); refresh(); };

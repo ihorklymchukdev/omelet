@@ -134,3 +134,23 @@ def test_the_resume_notice_is_the_exact_sentence_from_install_py():
     assert notice in screen
     notice_line = next(line for line in screen.splitlines() if notice in line)
     assert 'data-when="resumed"' in notice_line
+
+
+def test_the_step_counter_is_clamped_to_the_total():
+    """A 7-step run must not end by announcing "Step 8 of 7"."""
+    js = (UI / "app.js").read_text()
+    assert "Math.min(" in js, "step counter must be clamped to the total"
+
+
+def test_a_crashed_job_reaches_the_failed_screen():
+    """jobs.py emits {"type":"crashed"} when a worker raises; unhandled, the
+    install screen spins forever with no way out."""
+    js = (UI / "app.js").read_text()
+    assert "'crashed'" in js or '"crashed"' in js
+
+
+def test_the_progress_bar_is_not_driven_by_the_download_fraction_alone():
+    """fraction is non-null only on the download step, so binding the bar to
+    it leaves the bar full through the several minutes that follow."""
+    js = (UI / "app.js").read_text()
+    assert "omelet.total" in js and "style.width" in js
