@@ -1,3 +1,4 @@
+import errno
 import io
 import tarfile
 from pathlib import Path
@@ -221,6 +222,20 @@ def test_upload_to_an_unknown_project_is_project_not_found(env):
     resp = client.post("/projects/nope/files", content=_tar_bytes())
     assert resp.status_code == 404
     assert resp.json()["error"]["code"] == "project_not_found"
+
+
+def test_archive_upload_disk_full_is_507_and_leaves_no_temp_file(env, monkeypatch):
+    client, config = env
+    _create(client)
+
+    def _disk_full_on_extract(*a, **kw):
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    monkeypatch.setattr(files, "extract_archive", _disk_full_on_extract)
+    resp = client.post("/projects/blog/files", content=_tar_bytes())
+    assert resp.status_code == 507
+    assert resp.json()["error"]["code"] == "disk_full"
+    assert _stray_temp_files(config) == []
 
 
 def test_upload_merges_and_tree_lists_tracked_and_untracked_files(env):
