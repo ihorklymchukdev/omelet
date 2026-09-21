@@ -245,7 +245,8 @@ def test_delete_stops_the_containers_and_forgets_the_project(env):
     _create(env)
     _write_compose(env, "blog")
     assert env.client.delete("/projects/blog").status_code == 200
-    assert env.runner.argv_containing("down"), "delete must stop the containers"
+    assert any("label=com.docker.compose.project=blog" in a
+               for a in env.runner.calls), "delete must remove by compose label"
     assert env.client.get("/projects/blog").status_code == 404
 
 

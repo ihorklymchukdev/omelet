@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import base64
+import os
 
 # Absolute path: Docker Desktop's WSL integration puts its own docker CLI on
 # PATH, and a bare `docker` would send this VM's projects to Desktop's engine.
 DOCKER = "/usr/bin/docker"
 
 from .constants import COMPOSE_FILE
+from .exec import Completed
 from .project import Project, FAILED_TO_START, STARTED_OK, classify, overlay_yaml
+
+PROJECT_LABEL = "com.docker.compose.project"
 
 # Every path here comes from the caller's project directory, never from
 # constants: the agent writes uploads to `config.projects_root`, and a second
@@ -57,6 +61,50 @@ def compose_down(provider, directory):
     return provider.exec([DOCKER, "compose", "-f", f"{directory}/{COMPOSE_FILE}",
                           "-f", f"{directory}/.omelet/overlay.yml", "down"],
                          root=True)
+
+
+def _labelled(runner, kind: list[str], name: str, fmt: str) -> list[str]:
+    result = runner.exec([DOCKER, *kind, "--filter",
+                          f"label={PROJECT_LABEL}={name}", "--format", fmt],
+                         root=True)
+    return result.stdout.split() if result.ok else []
+
+
+def project_resources(runner, name: str) -> dict:
+    return {"containers": _labelled(runner, ["ps", "-a"], name, "{{.Names}}"),
+            "volumes": _labelled(runner, ["volume", "ls"], name, "{{.Name}}")}
+
+
+def remove_by_label(runner, name: str, *, volumes: bool) -> Completed:
+    """Compose-free teardown: the labels compose stamped on everything it
+    created outlive a compose file that no longer parses."""
+    steps = [(["ps", "-a"], "{{.ID}}", ["rm", "-f"]),
+             (["network", "ls"], "{{.ID}}", ["network", "rm"])]
+    if volumes:
+        steps.append((["volume", "ls"], "{{.Name}}", ["volume", "rm", "-f"]))
+    for listing, fmt, remove in steps:
+        ids = _labelled(runner, listing, name, fmt)
+        if not ids:
+            continue
+        result = runner.exec([DOCKER, *remove, *ids], root=True)
+        if not result.ok:
+            return result
+    return Completed(0, "", "")
+
+
+def remove_tree_as_root(runner, path) -> Completed:
+    """The agent runs as uid 1000, and containers write root-owned files into
+    bind-mounted project folders. Removes `path` from a throwaway container of
+    this agent's own image (already on the VM, so no pull) running as root."""
+    me = os.environ.get("HOSTNAME", "")
+    image = runner.exec([DOCKER, "inspect", "--format", "{{.Config.Image}}", me],
+                        root=True)
+    if not image.ok:
+        return image
+    parent = str(os.path.dirname(str(path)))
+    return runner.exec([DOCKER, "run", "--rm", "--user", "0",
+                        "-v", f"{parent}:{parent}", "--entrypoint", "",
+                        image.stdout.strip(), "rm", "-rf", str(path)], root=True)
 
 
 def container_id(provider, directory, service: str) -> str:

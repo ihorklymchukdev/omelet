@@ -1,7 +1,8 @@
 import threading
 
 from agent.core.exec import Completed
-from tests.agent.conftest import (_create, _run_to_completion, _write_compose)
+from tests.agent.conftest import (COMPOSE_MALFORMED, _create,
+                                  _run_to_completion, _write_compose)
 
 COMPOSE_TWO_WEBS = """
 services:
@@ -88,3 +89,54 @@ def test_a_failed_teardown_fails_restart_without_starting(env):
     assert result["state"] == "failed"
     assert "container busy" in result["detail"]
     assert not any(a[-2:] == ["up", "-d"] for a in env.runner.calls)
+
+
+def test_delete_never_reads_the_compose_file(env):
+    # A broken docker-compose.yml used to make delete fail and leave
+    # containers behind that nothing would list again.
+    _create(env, "blog")
+    _write_compose(env, "blog", COMPOSE_MALFORMED)
+    resp = env.client.delete("/projects/blog")
+    assert resp.status_code == 200
+    removal = [a for a in env.runner.calls if "compose" not in a]
+    assert removal, "delete issued no docker commands"
+    assert not [a for a in env.runner.calls if "compose" in a]
+    assert any("label=com.docker.compose.project=blog" in a for a in removal)
+
+
+def test_delete_without_purge_keeps_files_and_volumes(env):
+    # The host CLI's `destroy` and install verification rely on this.
+    _create(env, "blog")
+    _write_compose(env, "blog")
+    env.client.delete("/projects/blog")
+    assert (env.config.projects_root / "blog").is_dir()
+    assert not env.runner.argv_containing("volume")
+
+
+def test_purge_removes_folder_volumes_and_record(env):
+    _create(env, "blog")
+    _write_compose(env, "blog")
+    env.client.delete("/projects/blog", params={"purge": "true"})
+    assert not (env.config.projects_root / "blog").exists()
+    assert env.runner.argv_containing("volume")
+    assert env.state.get_project("blog") is None
+
+
+def test_delete_uses_the_recorded_compose_name(env):
+    _create(env, "blog")
+    _write_compose(env, "blog")
+    env.state.mark_started("blog", "fancy", 1.0)
+    env.client.delete("/projects/blog")
+    assert any("label=com.docker.compose.project=fancy" in a
+               for a in env.runner.calls)
+
+
+def test_delete_preview_counts_the_real_tree(env):
+    _create(env, "blog")
+    _write_compose(env, "blog")
+    (env.config.projects_root / "blog" / "data").mkdir()
+    (env.config.projects_root / "blog" / "data" / "a.bin").write_bytes(b"x" * 10)
+    preview = env.client.get("/projects/blog/delete-preview").json()
+    compose_size = len((env.config.projects_root / "blog" /
+                        "docker-compose.yml").read_bytes())
+    assert (preview["files"], preview["bytes"]) == (2, 10 + compose_size)

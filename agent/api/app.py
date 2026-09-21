@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import secrets
+import shutil
 import tempfile
 import threading
 import time
@@ -511,14 +512,31 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
             target.unlink()
         return {"path": file_path, "deleted": True}
 
+    def compose_name_for(row: dict) -> str:
+        return row.get("compose_name") or row["id"]
+
+    @router.get("/projects/{project_id}/delete-preview")
+    def delete_preview(project_id: str) -> dict:
+        row = require_row(project_id)
+        return {**files.tree_stats(project_dir(project_id)),
+                **lifecycle.project_resources(runner, compose_name_for(row))}
+
     @router.delete("/projects/{project_id}")
-    def delete_project(project_id: str) -> dict:
-        require_row(project_id)
-        # `compose down` is bounded by container stop timeouts, not by an image
-        # build, so this is the one compose call that stays synchronous. The
-        # lock stops it removing the state row under a running `up`.
+    def delete_project(project_id: str, purge: bool = False) -> dict:
+        row = require_row(project_id)
+        folder = project_dir(project_id)
+        # Synchronous: the host CLI, install verification and the desktop's
+        # replace-import all wait on this answer. Removal is by compose label,
+        # not `compose down`, so a broken compose file can never block it.
         with locks.held(project_id):
-            result = lifecycle.compose_down(runner, project_dir(project_id))
+            result = lifecycle.remove_by_label(runner, compose_name_for(row),
+                                               volumes=purge)
+            if purge and folder.exists():
+                shutil.rmtree(folder, ignore_errors=True)
+                if folder.exists():
+                    removed = lifecycle.remove_tree_as_root(runner, folder)
+                    if not removed.ok and result.ok:
+                        result = removed
             state.remove_project(project_id)
         return {"id": project_id, "stopped": result.ok,
                 "detail": "" if result.ok else (result.stderr or result.stdout).strip()}

@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from agent.api.app import create_app
 from agent.core import files
 from agent.core.config import AgentConfig
+from agent.core.exec import Completed
 
 
 def _tar_bytes(*, add_default_file=True, entries=None) -> bytes:
@@ -355,3 +356,25 @@ def test_the_upload_cap_is_reported_in_a_size_a_person_can_read(tmp_path):
 
     assert "1 MB" in message
     assert str(config.max_upload_bytes) not in message
+
+
+def test_remove_tree_falls_back_to_root_for_files_a_container_owns(tmp_path):
+    from agent.core import lifecycle
+
+    class Runner:
+        def __init__(self):
+            self.calls = []
+
+        def exec(self, argv, *, root=False):
+            self.calls.append(argv)
+            if argv[:2] == [lifecycle.DOCKER, "inspect"]:
+                return Completed(0, "ghcr.io/x/omelet-agent:9\n", "")
+            return Completed(0, "", "")
+
+    runner = Runner()
+    lifecycle.remove_tree_as_root(runner, tmp_path / "projects" / "blog")
+    run = runner.calls[-1]
+    assert run[:3] == [lifecycle.DOCKER, "run", "--rm"]
+    assert ["--user", "0"] == run[run.index("--user"):run.index("--user") + 2]
+    assert f"{tmp_path / 'projects'}:{tmp_path / 'projects'}" in run
+    assert run[-3:] == ["rm", "-rf", str(tmp_path / "projects" / "blog")]

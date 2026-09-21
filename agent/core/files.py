@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import posixpath
 import tarfile
 from pathlib import Path, PurePosixPath
@@ -88,6 +89,20 @@ def resolve_within(root: Path, rel_path: str) -> Path:
     if candidate != root and root not in candidate.parents:
         raise PathTraversalError(f"'{rel_path}' escapes the project directory")
     return candidate
+
+
+def tree_stats(root: Path) -> dict:
+    """Unreadable folders (root-owned, written by a container) are skipped
+    rather than failing the whole count."""
+    count = size = 0
+    for dirpath, _dirs, names in os.walk(root, onerror=lambda e: None):
+        for name in names:
+            try:
+                size += os.lstat(os.path.join(dirpath, name)).st_size
+                count += 1
+            except OSError:
+                continue
+    return {"files": count, "bytes": size}
 
 
 def list_tree(root: Path) -> list[dict]:
