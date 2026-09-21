@@ -152,6 +152,30 @@ def _uploadable(info: tarfile.TarInfo) -> tarfile.TarInfo | None:
     return info
 
 
+class _CountingReader:
+    """Wraps the archive so urllib's read loop reports bytes as they leave.
+
+    urllib calls read(blocksize) until it gets b"", so the count here is what
+    was actually handed to the socket. The final call reports done == total
+    explicitly: a bar that stops at 99.6% reads as a hang.
+    """
+
+    def __init__(self, stream, total: int, report):
+        self._stream = stream
+        self._total = total
+        self._report = report
+        self._done = 0
+
+    def read(self, amount: int = -1) -> bytes:
+        chunk = self._stream.read(amount)
+        if chunk:
+            self._done += len(chunk)
+            self._report("sending", self._done, self._total)
+        else:
+            self._report("sending", self._total, self._total)
+        return chunk
+
+
 class AgentClient:
     """Every route the CLI needs, and no transport detail above this line."""
 
@@ -258,24 +282,33 @@ class AgentClient:
             lambda: self._call("DELETE", f"/projects/{project_id}",
                                timeout=LOGS_TIMEOUT))
 
-    def upload_directory(self, project_id: str, local_dir) -> dict:
+    def upload_directory(self, project_id: str, local_dir, *,
+                         on_progress=None) -> dict:
         """Send the directory's contents as a raw tar.gz body (not multipart).
 
         Archived into a temp file rather than memory so a large project is
         never held twice, and streamed from there by urllib.
+
+        `on_progress(phase, done, total)` is called for both phases the user
+        waits through: "packing" counts top-level entries, "sending" counts
+        bytes. A caller that passes nothing pays for nothing.
         """
+        report = on_progress or (lambda phase, done, total: None)
         with tempfile.TemporaryFile() as archive:
+            items = sorted(Path(local_dir).iterdir())
             with tarfile.open(fileobj=archive, mode="w:gz") as tar:
-                for item in sorted(Path(local_dir).iterdir()):
+                for index, item in enumerate(items, 1):
                     tar.add(item, arcname=item.name, filter=_uploadable)
+                    report("packing", index, len(items))
             size = archive.tell()
 
             def send():
                 # Rewound per attempt: a retry after `project_busy` must send
                 # the archive again, not the empty tail the last one left.
                 archive.seek(0)
+                body = _CountingReader(archive, size, report)
                 with self._open("POST", f"/projects/{project_id}/files",
-                                data=archive,
+                                data=body,
                                 headers={"Content-Type": "application/gzip",
                                          "Content-Length": str(size)},
                                 timeout=UPLOAD_TIMEOUT) as response:
