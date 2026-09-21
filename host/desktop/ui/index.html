@@ -12,6 +12,15 @@
 <body>
 <main id="screen"></main>
 
+<!-- Outside #screen on purpose: show() replaces #screen wholesale on every
+     navigation, so a notice living inside it would vanish the instant the
+     crash handler calls refresh() -- the one moment it needs to stay put. -->
+<aside id="notice" hidden>
+  <p class="notice-head">Something went wrong.</p>
+  <pre class="notice-detail" id="notice-detail"></pre>
+  <button class="btn-secondary" data-action="dismiss-notice">Dismiss</button>
+</aside>
+
 <template data-screen="first-run">
   <section class="pad">
     <h1 class="display">Welcome to Omelet</h1>

@@ -45,10 +45,27 @@ function wire(root) {
   });
 }
 
+// #notice sits outside #screen (a sibling in the body, not inside any
+// <template>) so it survives show()'s wholesale replaceChildren -- a crash
+// bouncing the user Home must not also erase the reason it happened.
+function showNotice(message) {
+  // textContent: this is exception text from a subprocess inside the VM.
+  document.getElementById('notice-detail').textContent = String(message || '');
+  document.getElementById('notice').hidden = false;
+}
+
 const ACTIONS = {
   'open-omelet': () => api().open_omelet(),
   'go-home': () => refresh(),
+  'dismiss-notice': () => { document.getElementById('notice').hidden = true; },
 };
+
+// #notice lives outside #screen, so wire() -- which only ever runs against
+// the freshly-swapped-in screen root -- never reaches it. Wired once, here,
+// since the script tag runs after the body has parsed.
+document.getElementById('notice')
+  .querySelector('[data-action="dismiss-notice"]')
+  .addEventListener('click', () => ACTIONS['dismiss-notice']());
 
 // Ships visible and honest rather than hidden: the board has the tile, and
 // there is no update backend behind it yet.
@@ -205,6 +222,7 @@ window.omelet.handlers.import = (event) => {
     }
     return;
   }
+  if (event.type === 'crashed') showNotice(event.message);
   if (event.type === 'done' || event.type === 'crashed') refresh();
 };
 
@@ -237,6 +255,10 @@ const PORT_REFUSALS = {
   range: 'Ports must be between 1 and 65535.',
   duplicate: 'That port on this computer is already in use by another hatch.',
   reserved: 'Omelet needs that port for itself. Pick another.',
+  // Guards an unmapped reason from today's closed set of range/duplicate/
+  // reserved/refused -- "undefined" on screen is a worse failure than a
+  // generic sentence.
+  default: 'That port could not be added.',
 };
 
 // A highlighted, editable row (the board's --yolk-soft "New" row) rather than
@@ -261,7 +283,8 @@ function newPortRow() {
     }
     // message is raw subprocess/exception text; never rendered as HTML.
     note.textContent = result.reason === 'refused'
-      ? result.message : PORT_REFUSALS[result.reason];
+      ? result.message
+      : (PORT_REFUSALS[result.reason] || PORT_REFUSALS.default);
   });
   return tr;
 }
@@ -284,9 +307,20 @@ ACTIONS['do-uninstall'] = async () => {
   await api().start_uninstall(purge);
 };
 
-window.omelet.handlers.vm = (event) => { if (event.type !== 'progress') refresh(); };
-window.omelet.handlers.repair = (event) => { if (event.type !== 'progress') refresh(); };
-window.omelet.handlers.uninstall = () => refresh();
+window.omelet.handlers.vm = (event) => {
+  if (event.type === 'progress') return;
+  if (event.type === 'crashed') showNotice(event.message);
+  refresh();
+};
+window.omelet.handlers.repair = (event) => {
+  if (event.type === 'progress') return;
+  if (event.type === 'crashed') showNotice(event.message);
+  refresh();
+};
+window.omelet.handlers.uninstall = (event) => {
+  if (event.type === 'crashed') showNotice(event.message);
+  refresh();
+};
 
 async function refresh() {
   const home = await api().home();

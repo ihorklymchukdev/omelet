@@ -197,3 +197,25 @@ def test_the_ports_table_has_no_project_column():
     start = markup.index('data-screen="ports"')
     end = markup.index("</template>", start)
     assert "Project" not in markup[start:end]
+
+
+def test_a_crashed_job_tells_the_user_something_went_wrong():
+    """import/vm/repair/uninstall crashes used to bounce the user Home with
+    the reason discarded."""
+    js = (UI / "app.js").read_text()
+    assert js.count("showNotice(") >= 4, "every job kind must surface a crash"
+    markup = (UI / "index.html").read_text()
+    assert 'id="notice"' in markup
+
+
+def test_the_notice_survives_a_screen_change():
+    """It must sit outside the templates: show() replaces #screen wholesale."""
+    markup = (UI / "index.html").read_text()
+    notice = markup.index('id="notice"')
+    # Everything from the first <template> onwards is swapped out by show().
+    assert notice < markup.index("<template"), "notice must precede the templates"
+
+
+def test_no_port_refusal_renders_undefined():
+    js = (UI / "app.js").read_text()
+    assert "PORT_REFUSALS[result.reason] ||" in js

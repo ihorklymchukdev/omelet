@@ -355,3 +355,26 @@ pre.log {
   background:var(--surface-2); border:1px solid var(--line); border-radius:var(--r-sm);
   padding:12px 14px; color:var(--ink-2); max-height:340px; overflow:auto;
 }
+
+/* A crashed job's notice. Fixed to the bottom edge, above the content rather
+   than inside it, so it survives show()'s screen swap without competing with
+   a screen's own primary row -- every .row in this app sits above the fold,
+   not flush against the window's bottom edge. Capped height plus its own
+   scroll keeps a long traceback from swallowing the 560px floor. */
+#notice {
+  position:fixed; left:0; right:0; bottom:0; z-index:10;
+  max-height:160px; overflow:auto;
+  display:flex; align-items:flex-start; gap:14px; flex-wrap:wrap;
+  padding:14px 20px; background:var(--paprika-soft);
+  border-top:1px solid var(--paprika);
+  box-shadow:0 -8px 20px -12px var(--shadow);
+}
+.notice-head {
+  margin:0; flex:0 0 auto; font:700 14.5px 'Hanken Grotesk', sans-serif; color:var(--paprika);
+}
+.notice-detail {
+  margin:0; flex:1 1 260px; min-width:0;
+  font:400 12.5px 'IBM Plex Mono', monospace; white-space:pre-wrap; word-break:break-word;
+  color:var(--ink-2);
+}
+#notice .btn-secondary { flex:0 0 auto; }
