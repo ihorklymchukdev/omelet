@@ -200,6 +200,95 @@
   </section>
 </template>
 
+<template data-screen="import">
+  <section class="pad">
+    <h2 class="title">Bring in a folder</h2>
+    <p class="lede">Copy a folder from your computer into the kitchen. The
+      original stays exactly where it is.</p>
+    <div class="field">
+      <span class="overline">Folder</span>
+      <div class="picker">
+        <span class="mono" data-field="path"></span>
+        <button class="btn-secondary" data-action="choose-folder">Choose…</button>
+      </div>
+    </div>
+    <div class="field">
+      <span class="overline">Name</span>
+      <div class="derived"><span data-field="name"></span>
+        <span class="hint">from folder name</span></div>
+    </div>
+    <fieldset data-conflict hidden>
+      <legend class="overline">A project with this name already exists in here</legend>
+      <label class="choice"><input type="radio" name="mode" value="merge" checked>
+        <b>Merge into it</b>
+        <span>Adds the new files and updates ones with the same name.
+          Everything else stays put.</span></label>
+      <label class="choice"><input type="radio" name="mode" value="replace">
+        <b>Replace it</b>
+        <span>Empties the project first, then copies your folder in.</span></label>
+      <p class="warn"><b>Replace deletes files.</b> Anything in the existing
+        project that isn't in your folder is gone for good — including work the
+        cook did in there. There's no undo.</p>
+    </fieldset>
+    <div class="row">
+      <button class="btn-primary" data-action="do-import">Bring it in</button>
+      <button class="btn-secondary" data-action="go-home">Cancel</button>
+      <span class="hint" data-field="summary"></span>
+    </div>
+  </section>
+</template>
+
+<template data-screen="import:progress">
+  <section class="pad centered">
+    <div class="pan pan-carry" aria-hidden="true"></div>
+    <h2 class="title">Carrying it in…</h2>
+    <p class="lede">Copying <b data-field="name"></b> into the kitchen. Your
+      original folder isn't being touched.</p>
+    <div class="bar"><span data-field="fraction"></span></div>
+    <span class="hint" data-field="counter"></span>
+  </section>
+</template>
+
+<template data-screen="ports">
+  <section class="pad">
+    <h2 class="title">Serving hatches</h2>
+    <p class="lede">Each one lets something inside the kitchen show up in your
+      browser at a normal web address.</p>
+    <button class="btn-primary" data-action="add-port-row">Add a port</button>
+    <table class="hatches">
+      <thead><tr><th>On this computer</th><th>Inside the kitchen</th><th></th></tr></thead>
+      <tbody data-ports></tbody>
+    </table>
+    <p class="note">Only you can reach these. Nothing is published to the internet.</p>
+    <div class="row"><button class="btn-secondary" data-action="go-home">Done</button></div>
+  </section>
+</template>
+
+<template data-screen="doctor">
+  <section class="pad">
+    <h2 class="title">Doctor</h2>
+    <pre class="log" data-field="text"></pre>
+    <div class="row"><button class="btn-secondary" data-action="go-home">Done</button></div>
+  </section>
+</template>
+
+<template data-screen="uninstall-confirm">
+  <section class="pad">
+    <h2 class="title">Close the kitchen for good?</h2>
+    <p class="lede">This removes the Linux machine and everything inside it.
+      Your own files, outside the kitchen, are untouched.</p>
+    <label class="choice"><input type="checkbox" name="purge">
+      <b>Also delete downloads and settings</b>
+      <span>Frees the disk space Omelet used. You'd start from scratch next time.</span></label>
+    <p class="warn"><b>There's no undo.</b> Any project the cook made in there
+      goes with it.</p>
+    <div class="row">
+      <button class="btn-danger" data-action="do-uninstall">Remove Omelet</button>
+      <button class="btn-secondary" data-action="go-home">Keep it</button>
+    </div>
+  </section>
+</template>
+
 <script src="app.js"></script>
 </body>
 </html>

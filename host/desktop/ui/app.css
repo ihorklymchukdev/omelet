@@ -275,3 +275,83 @@ body {
 .row-step[data-status="failed"] .mark { background:var(--paprika); color:var(--surface); }
 .row-step[data-status="failed"] .mark::after { content:'!'; }
 .row-step[data-status="failed"] .state { color:var(--paprika); }
+
+/* Import, Ports, Doctor, Uninstall -- odds-and-ends screens reached from the
+   home tiles rather than the main flow, so they reuse .pad/.title/.lede/.row
+   above and only add what those screens need. */
+.field {
+  display:flex; flex-direction:column; gap:6px;
+}
+.picker, .derived {
+  display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+  padding:12px 14px; border-radius:var(--r-md);
+  background:var(--surface); border:1px solid var(--line);
+}
+.picker .mono:empty::before { content:'Nothing chosen yet'; color:var(--ink-3); }
+
+fieldset[data-conflict] {
+  border:1px solid var(--line); border-radius:var(--r-md);
+  padding:16px 18px; display:flex; flex-direction:column; gap:12px; margin:0;
+}
+.choice {
+  display:grid; grid-template-columns:auto 1fr; column-gap:12px; row-gap:2px;
+  align-items:start; cursor:pointer;
+}
+.choice input { margin-top:3px; }
+.choice b { font:600 15.5px 'Hanken Grotesk', sans-serif; color:var(--ink); }
+.choice span { grid-column:2; font:400 14.5px 'Hanken Grotesk', sans-serif; color:var(--ink-2); }
+.warn {
+  margin:0; padding:12px 14px; border-radius:var(--r-sm);
+  background:var(--paprika-soft); color:var(--paprika);
+  font:400 14px 'Hanken Grotesk', sans-serif;
+}
+.warn b { font-weight:700; }
+
+.btn-danger {
+  border:0; cursor:pointer; padding:15px 24px; border-radius:var(--r-md);
+  background:var(--paprika); color:var(--surface);
+  font:700 15.5px 'Hanken Grotesk', sans-serif;
+  transition:transform 120ms var(--ease);
+}
+.btn-danger:hover { transform:translateY(-2px); }
+
+/* import:progress reuses .pan and adds one more loop; only one animates at a
+   time because it is the only template that shows a .pan. */
+.pan-carry { background:var(--yolk-soft); border-color:transparent; }
+.pan-carry::after {
+  content:''; position:absolute; left:50%; top:50%; width:26px; height:18px;
+  margin:-9px 0 0 -13px; border-radius:4px; background:var(--yolk-deep);
+  animation:om-bob 1.1s var(--ease) infinite;
+}
+
+.hatches { width:100%; border-collapse:collapse; }
+.hatches th {
+  text-align:left; font:600 12px 'Hanken Grotesk', sans-serif;
+  letter-spacing:.06em; text-transform:uppercase; color:var(--ink-3);
+  padding:8px 10px; border-bottom:1px solid var(--line);
+}
+.hatches td {
+  padding:10px; border-bottom:1px solid var(--line); color:var(--ink);
+}
+.hatches tr.row-new td { background:var(--yolk-soft); }
+.hatches input {
+  width:100%; padding:8px 10px; border-radius:var(--r-sm);
+  border:1px solid var(--line-2); background:var(--surface);
+  font:400 13px 'IBM Plex Mono', monospace; color:var(--ink);
+}
+.btn-remove {
+  cursor:pointer; padding:8px 14px; border-radius:var(--r-sm);
+  background:var(--surface); border:1px solid var(--line-2); color:var(--paprika);
+  font:600 13px 'Hanken Grotesk', sans-serif;
+}
+.btn-remove:hover { background:var(--paprika-soft); }
+.note { font:400 13px 'Hanken Grotesk', sans-serif; color:var(--ink-3); margin:0; }
+.port-error {
+  margin:6px 0 0; font:400 12.5px 'Hanken Grotesk', sans-serif; color:var(--paprika);
+}
+
+pre.log {
+  font:400 13px 'IBM Plex Mono', monospace; white-space:pre-wrap; word-break:break-word;
+  background:var(--surface-2); border:1px solid var(--line); border-radius:var(--r-sm);
+  padding:12px 14px; color:var(--ink-2); max-height:340px; overflow:auto;
+}

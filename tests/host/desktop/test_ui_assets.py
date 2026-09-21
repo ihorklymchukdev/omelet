@@ -162,3 +162,34 @@ def test_only_a_dead_end_removes_the_retry_button():
     # not inside the shared failed/crashed branch.
     assert "crashed" not in js[guard:retry], \
         "retry removal must be guarded by dead_end alone"
+
+
+def test_the_utility_screens_have_templates():
+    markup = (UI / "index.html").read_text()
+    for screen in ("import", "import:progress", "ports", "doctor",
+                   "uninstall-confirm"):
+        assert f'data-screen="{screen}"' in markup, f"no template for {screen}"
+
+
+def test_purge_is_not_preselected():
+    # Uninstall removes the VM; purge additionally deletes everything on disk.
+    markup = (UI / "index.html").read_text()
+    purge = markup.index('name="purge"')
+    assert "checked" not in markup[purge:purge + 120]
+
+
+def test_replace_is_not_the_preselected_import_mode():
+    # Replace deletes files with no undo. The board preselects Merge; a
+    # stray Enter on this screen must not wipe a project.
+    markup = (UI / "index.html").read_text()
+    merge = markup.index('value="merge"')
+    replace = markup.index('value="replace"')
+    assert "checked" in markup[merge:merge + 120]
+    assert "checked" not in markup[replace:replace + 120]
+
+
+def test_the_ports_table_has_no_project_column():
+    # Providers store (guest, host) pairs only; nothing records an owner, and
+    # a column of empty cells is worse than three true ones.
+    markup = (UI / "index.html").read_text()
+    assert "Project" not in markup

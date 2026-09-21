@@ -161,15 +161,132 @@ function swap(screen, data) {
 
 ACTIONS['start-over'] = async () => { await api().reset_install(); refresh(); };
 
-// Wired in later milestones; present so a click is inert rather than fatal.
-// Covers every action name the app will ever use, not just this task's
-// screens, so a later template landing without its handler yet still clicks
-// safely. 'uninstall' is deliberately left to this same fallback: its real
-// handler shows 'uninstall-confirm', a template a later task adds.
-['stop-vm', 'start-vm', 'restart-vm', 'doctor', 'repair',
- 'import', 'ports', 'uninstall', 'do-import', 'choose-folder',
- 'add-port-row', 'do-uninstall']
-  .forEach((name) => { if (!ACTIONS[name]) ACTIONS[name] = () => {}; });
+// --- Import ---------------------------------------------------------
+
+// Set by choose-folder, read by do-import. Cleared by nothing else: leaving
+// the import screen without importing just abandons it, same as any other
+// unsaved form.
+let pending = null;
+
+ACTIONS['import'] = () => show('import', { path: '', name: '', summary: '' });
+
+ACTIONS['choose-folder'] = async () => {
+  const chosen = await api().choose_folder();
+  if (chosen.cancelled) return;
+  pending = chosen;
+  const megabytes = (chosen.bytes / 1e6).toFixed(1);
+  fill(document.getElementById('screen'), {
+    path: chosen.path, name: chosen.name,
+    summary: `${chosen.files} files · ${megabytes} MB`,
+  });
+  document.querySelector('[data-conflict]').hidden = !chosen.conflict;
+};
+
+ACTIONS['do-import'] = async () => {
+  if (!pending) return;
+  // No conflict means there is nothing to merge into or replace, so the
+  // radios are hidden and merge is the only meaning.
+  const picked = document.querySelector('input[name="mode"]:checked');
+  const mode = pending.conflict && picked ? picked.value : 'merge';
+  const started = await api().start_import(pending.path, mode);
+  show('import:progress', { name: started.name, counter: '' });
+};
+
+window.omelet.handlers.import = (event) => {
+  if (event.type === 'progress') {
+    const percent = event.total ? Math.round((event.done / event.total) * 100) : 0;
+    const bar = document.querySelector('[data-field="fraction"]');
+    if (bar) bar.style.width = `${percent}%`;
+    const counter = document.querySelector('[data-field="counter"]');
+    if (counter) {
+      counter.textContent = event.phase === 'packing'
+        ? `Packing ${event.done} of ${event.total} files`
+        : `${percent}% copied`;
+    }
+    return;
+  }
+  if (event.type === 'done' || event.type === 'crashed') refresh();
+};
+
+// --- Ports ------------------------------------------------------------
+
+ACTIONS['ports'] = async () => {
+  const listed = await api().list_ports();
+  show('ports', {});
+  const body = document.querySelector('[data-ports]');
+  listed.ports.forEach((port) => body.appendChild(portRow(port)));
+};
+
+function portRow(port) {
+  const tr = document.createElement('tr');
+  tr.innerHTML = '<td class="mono"></td><td class="mono"></td>'
+    + '<td><button class="btn-remove">Remove</button></td>';
+  tr.children[0].textContent = `localhost:${port.host}`;
+  tr.children[1].textContent = `vm:${port.guest}`;
+  tr.querySelector('button').addEventListener('click', async () => {
+    const result = await api().remove_port(port.guest, port.host);
+    if (result.ok) return tr.remove();
+    // netsh needs administrator. Say so in the row rather than pretending.
+    tr.dataset.error = 'refused';
+    tr.children[2].textContent = 'Could not remove — needs administrator';
+  });
+  return tr;
+}
+
+const PORT_REFUSALS = {
+  range: 'Ports must be between 1 and 65535.',
+  duplicate: 'That port on this computer is already in use by another hatch.',
+  reserved: 'Omelet needs that port for itself. Pick another.',
+};
+
+// A highlighted, editable row (the board's --yolk-soft "New" row) rather than
+// a dialog, so adding a port never leaves the ports list.
+function newPortRow() {
+  const tr = document.createElement('tr');
+  tr.className = 'row-new';
+  tr.innerHTML = '<td><input class="mono" type="number" min="1" max="65535" placeholder="Host port"></td>'
+    + '<td><input class="mono" type="number" min="1" max="65535" placeholder="Inside the kitchen"></td>'
+    + '<td><button class="btn-secondary">Save</button></td>';
+  const [hostInput, guestInput] = tr.querySelectorAll('input');
+  tr.querySelector('button').addEventListener('click', async () => {
+    const guest = Number(guestInput.value);
+    const host = Number(hostInput.value);
+    const result = await api().add_port(guest, host);
+    if (result.ok) return tr.replaceWith(portRow({ guest, host }));
+    let note = tr.querySelector('.port-error');
+    if (!note) {
+      note = document.createElement('p');
+      note.className = 'port-error';
+      tr.children[2].appendChild(note);
+    }
+    // message is raw subprocess/exception text; never rendered as HTML.
+    note.textContent = result.reason === 'refused'
+      ? result.message : PORT_REFUSALS[result.reason];
+  });
+  return tr;
+}
+
+ACTIONS['add-port-row'] = () => {
+  document.querySelector('[data-ports]').appendChild(newPortRow());
+};
+
+// --- Doctor, repair, VM lifecycle, uninstall --------------------------
+
+ACTIONS['doctor'] = async () => show('doctor', await api().doctor());
+ACTIONS['repair'] = async () => { await api().start_repair(); };
+ACTIONS['start-vm'] = async () => { await api().start_vm(); };
+ACTIONS['stop-vm'] = async () => { await api().stop_vm(); };
+ACTIONS['restart-vm'] = async () => { await api().restart_vm(); };
+
+ACTIONS['uninstall'] = () => show('uninstall-confirm', {});
+ACTIONS['do-uninstall'] = async () => {
+  const purge = document.querySelector('input[name="purge"]').checked;
+  await api().start_uninstall(purge);
+};
+
+window.omelet.handlers.vm = (event) => { if (event.type !== 'progress') refresh(); };
+window.omelet.handlers.repair = (event) => { if (event.type !== 'progress') refresh(); };
+window.omelet.handlers.uninstall = () => refresh();
 
 async function refresh() {
   const home = await api().home();
