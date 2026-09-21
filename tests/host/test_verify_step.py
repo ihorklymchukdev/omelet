@@ -20,7 +20,7 @@ from host.client import AgentClient, AgentError
 from host.core.constants import DEFAULT_DOMAIN, EDGE_PORT
 from host.core.install import VerificationFailed, verify_step
 
-from tests.agent.test_api_routes import PS_RESTARTING, FakeProbe, FakeRunner
+from tests.agent.conftest import PS_RESTARTING, FakeProbe, FakeRunner
 from tests.host.test_client_seam import AppOpener
 
 TOKEN = "test-token"

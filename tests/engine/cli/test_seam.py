@@ -4,7 +4,7 @@ import time
 import pytest
 
 from agent.core.exec import Completed
-from tests.agent.test_api_routes import COMPOSE_MALFORMED, COMPOSE_ONE_WEB
+from tests.agent.conftest import COMPOSE_MALFORMED, COMPOSE_ONE_WEB
 from tests.engine.cli.loader import load
 
 cli = load()

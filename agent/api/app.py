@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import yaml
-from fastapi import FastAPI, Request
+from fastapi import APIRouter, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import (FileResponse, JSONResponse, PlainTextResponse,
                                StreamingResponse)
@@ -132,6 +132,7 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
     app.state.runner = runner
     app.state.state = state
     app.state.jobs = jobs
+    router = APIRouter()
 
     @app.exception_handler(ApiError)
     async def _api_error(_request, exc: ApiError):
@@ -167,13 +168,14 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
     # device token per host.
     token = _read_token(config.token_path)
 
-    @app.middleware("http")
-    async def _require_bearer_token(request: Request, call_next):
-        if request.url.path == "/health":
-            return await call_next(request)
-        if not token:
-            return _body("agent_unconfigured",
-                         "the agent has no token configured; run setup again", 503)
+    allowed_hosts = {f"localhost:{config.edge_port}",
+                     f"127.0.0.1:{config.edge_port}"}
+    allowed_origins = {f"http://{host}" for host in allowed_hosts}
+    # Reachable before sign-in: the page checks the API version, and trades
+    # a handoff code for a cookie.
+    open_browser_paths = {"/api/health", "/api/session"}
+
+    def _bearer_ok(request: Request) -> bool:
         scheme, _, supplied = request.headers.get("authorization", "").partition(" ")
         # Starlette decodes headers as latin-1, so a header value can carry
         # bytes that are not valid ASCII; compare_digest raises TypeError on
@@ -181,9 +183,37 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
         # encoded bytes instead means every wire-valid header reaches a
         # normal true/false answer, never an exception out of the one guard
         # that must never throw.
-        match = (scheme.lower() == "bearer"
+        return (scheme.lower() == "bearer"
                 and secrets.compare_digest(supplied.encode(), token.encode()))
-        if not match:
+
+    def _browser_refusal(request: Request) -> JSONResponse | None:
+        if request.headers.get("host", "") not in allowed_hosts:
+            return _body("forbidden_host",
+                         "this address is not where Omelet's page lives", 403)
+        if (request.method not in ("GET", "HEAD")
+                and request.headers.get("origin", "") not in allowed_origins):
+            return _body("forbidden_origin",
+                         "requests that change something must come from "
+                         "Omelet's own page", 403)
+        return None
+
+    @app.middleware("http")
+    async def _authenticate(request: Request, call_next):
+        path = request.url.path
+        if path == "/api" or path.startswith("/api/"):
+            refusal = _browser_refusal(request)
+            if refusal is not None:
+                return refusal
+            if path in open_browser_paths:
+                return await call_next(request)
+            return _body("not_signed_in", "open Omelet from the desktop app "
+                         "to sign in", 401)
+        if path == "/health":
+            return await call_next(request)
+        if not token:
+            return _body("agent_unconfigured",
+                         "the agent has no token configured; run setup again", 503)
+        if not _bearer_ok(request):
             return _body("unauthorized", "missing or invalid bearer token", 401)
         return await call_next(request)
 
@@ -276,7 +306,7 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
             locks.release(project_id)
             raise
 
-    @app.get("/health")
+    @router.get("/health")
     def health() -> dict:
         probe = runner.exec([lifecycle.DOCKER, "version", "--format",
                              "{{.Server.Version}}"])
@@ -291,11 +321,11 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
             },
         }
 
-    @app.get("/version")
+    @router.get("/version")
     def version() -> dict:
         return {"version": config.version}
 
-    @app.post("/projects", status_code=201)
+    @router.post("/projects", status_code=201)
     def create_project(body: CreateProject) -> dict:
         # Same slug rule load_project applies to a directory name, so an id
         # survives the round trip host -> agent -> compose project name.
@@ -317,7 +347,7 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
         state.add_project(project_id, str(d), body.domain or config.domain)
         return payload(state.get_project(project_id))
 
-    @app.get("/projects")
+    @router.get("/projects")
     def list_projects() -> dict:
         # `omelet status` is the surface users actually read, so a stale
         # diagnosis has to clear here too. payload() only probes a row that
@@ -326,7 +356,7 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
         return {"projects": [payload(row, recheck=True)
                              for row in state.list_projects()]}
 
-    @app.get("/projects/{project_id}")
+    @router.get("/projects/{project_id}")
     def get_project(project_id: str) -> dict:
         return payload(require_row(project_id), recheck=True)
 
@@ -370,7 +400,7 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
     # starts a project from two different versions of itself. Refused rather
     # than queued, like every other lock holder here -- the host client retries
     # a `project_busy` on its own, where the wait can be bounded and reported.
-    @app.post("/projects/{project_id}/files")
+    @router.post("/projects/{project_id}/files")
     async def upload_files(project_id: str, request: Request) -> dict:
         require_row(project_id)
         d = project_dir(project_id)
@@ -387,12 +417,12 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
                 tmp.unlink(missing_ok=True)
         return {"id": project_id, "files": files.list_tree(d)}
 
-    @app.get("/projects/{project_id}/files")
+    @router.get("/projects/{project_id}/files")
     def list_files(project_id: str) -> dict:
         require_row(project_id)
         return {"files": files.list_tree(project_dir(project_id))}
 
-    @app.put("/projects/{project_id}/files/{file_path:path}")
+    @router.put("/projects/{project_id}/files/{file_path:path}")
     async def write_file(project_id: str, file_path: str, request: Request) -> dict:
         require_row(project_id)
         target = resolve_path(project_id, file_path)
@@ -408,7 +438,7 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
                 tmp.unlink(missing_ok=True)
         return {"path": file_path, "size": target.stat().st_size}
 
-    @app.get("/projects/{project_id}/files/{file_path:path}")
+    @router.get("/projects/{project_id}/files/{file_path:path}")
     def read_file(project_id: str, file_path: str):
         require_row(project_id)
         target = resolve_path(project_id, file_path)
@@ -418,7 +448,7 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
         # Starlette streams this from disk; the file is never read whole.
         return FileResponse(target)
 
-    @app.delete("/projects/{project_id}/files/{file_path:path}")
+    @router.delete("/projects/{project_id}/files/{file_path:path}")
     def delete_file(project_id: str, file_path: str) -> dict:
         require_row(project_id)
         target = resolve_path(project_id, file_path)
@@ -429,7 +459,7 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
             target.unlink()
         return {"path": file_path, "deleted": True}
 
-    @app.delete("/projects/{project_id}")
+    @router.delete("/projects/{project_id}")
     def delete_project(project_id: str) -> dict:
         require_row(project_id)
         # `compose down` is bounded by container stop timeouts, not by an image
@@ -441,7 +471,7 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
         return {"id": project_id, "stopped": result.ok,
                 "detail": "" if result.ok else (result.stderr or result.stdout).strip()}
 
-    @app.post("/projects/{project_id}/up", status_code=202)
+    @router.post("/projects/{project_id}/up", status_code=202)
     def project_up(project_id: str) -> dict:
         row = require_row(project_id)
         # Parsing happens here, not in the job, so a broken compose file comes
@@ -488,7 +518,7 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
 
         return {"job_id": submit_locked(project_id, work)}
 
-    @app.post("/projects/{project_id}/down", status_code=202)
+    @router.post("/projects/{project_id}/down", status_code=202)
     def project_down(project_id: str) -> dict:
         require_row(project_id)
 
@@ -507,7 +537,7 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
 
         return {"job_id": submit_locked(project_id, work)}
 
-    @app.get("/projects/{project_id}/logs")
+    @router.get("/projects/{project_id}/logs")
     def project_logs(project_id: str, follow: bool = False,
                      service: str | None = None):
         require_row(project_id)
@@ -522,15 +552,18 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
         argv = lifecycle.logs_argv(project_dir(project_id), service, follow=True)
         return StreamingResponse(runner.stream(argv, root=True), media_type=TEXT)
 
-    @app.get("/jobs/{job_id}")
+    @router.get("/jobs/{job_id}")
     def job_status(job_id: str) -> dict:
         return require_job(job_id).as_dict()
 
-    @app.get("/jobs/{job_id}/logs")
+    @router.get("/jobs/{job_id}/logs")
     def job_logs(job_id: str, follow: bool = False):
         job = require_job(job_id)
         if not follow:
             return PlainTextResponse(job.text(), media_type=TEXT)
         return StreamingResponse(jobs.follow(job_id), media_type=TEXT)
+
+    app.include_router(router)
+    app.include_router(router, prefix="/api")
 
     return app
