@@ -50,7 +50,7 @@ def _default_start(**kwargs):
 
 
 def run(provider, state, *, create=_default_create, start=_default_start,
-        resumed: bool = False) -> int:
+        resumed: bool = False, steps_factory=None) -> int:
     from .api import DesktopApi
 
     holder: dict = {}
@@ -64,7 +64,7 @@ def run(provider, state, *, create=_default_create, start=_default_start,
         if window is not None:
             window.evaluate_js(f"window.omelet.on({json.dumps(event)})")
 
-    api = DesktopApi(provider, state, push=push)
+    api = DesktopApi(provider, state, push=push, steps_factory=steps_factory)
     # Surfaced by a later task: the install screen reads this to show
     # host.core.install.RESUME_NOTICE when RunOnce reopened the window.
     api.resumed = resumed
@@ -89,7 +89,8 @@ def run(provider, state, *, create=_default_create, start=_default_start,
 
 
 def main(argv: list[str] | None = None) -> int:
-    from host.core.install import InstallState
+    from host.core import constants
+    from host.core.install import VERIFY_TEMPLATE, InstallState, default_steps
     from host.providers import default_install_dir, get_provider
 
     parser = argparse.ArgumentParser(prog="omelet-desktop")
@@ -101,7 +102,19 @@ def main(argv: list[str] | None = None) -> int:
     root = default_install_dir().parent
     state = InstallState(root / "install-state.json")
     provider = get_provider()
-    return run(provider, state, resumed=args.resume)
+
+    # Mirrors host.cli.setup's build_steps exactly: launching this module
+    # directly and launching it via `omelet setup` must install identically.
+    def build_steps():
+        return default_steps(
+            provider,
+            cache_dir=root / "cache",
+            template_dir=VERIFY_TEMPLATE,
+            domain=constants.DEFAULT_DOMAIN,
+            exe_path=sys.executable,
+        )
+
+    return run(provider, state, steps_factory=build_steps, resumed=args.resume)
 
 
 if __name__ == "__main__":

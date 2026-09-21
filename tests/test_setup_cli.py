@@ -263,22 +263,17 @@ def test_setup_hands_the_window_a_factory_it_can_call_twice(monkeypatch, tmp_pat
     list passes that identically, so this keeps both results and asserts
     they are distinct objects.
     """
-    # The monkeypatch target below is a dotted string, which forces a real
-    # import of host.setup_app.app -- and therefore of tkinter, a stdlib
-    # module this repo's own dev sandbox (WSL) does not always have installed.
-    pytest.importorskip("tkinter")
-
     captured = {}
     provider = StubProvider()
 
-    def fake_run_window(provider, steps_factory, state, *, resumed=False):
+    def fake_run(provider, state, *, steps_factory=None, resumed=False):
         captured["provider"] = provider
         captured["a"] = steps_factory()
         captured["b"] = steps_factory()
         captured["resumed"] = resumed
         return 0
 
-    monkeypatch.setattr("host.setup_app.app.run_window", fake_run_window)
+    monkeypatch.setattr("host.desktop.__main__.run", fake_run)
     monkeypatch.setattr(cli, "_provider_factory", lambda: provider)
     monkeypatch.setattr("host.providers.default_install_dir",
                         lambda: tmp_path / "vm")
@@ -295,15 +290,13 @@ def test_setup_resume_reaches_the_window_as_resumed(monkeypatch, tmp_path):
     """--resume must reach the window, not just the headless path -- the
     router's own copy of `resumed` is what decides whether the wizard opens
     with "Continuing setup after the restart"."""
-    pytest.importorskip("tkinter")
-
     captured = {}
 
-    def fake_run_window(provider, steps_factory, state, *, resumed=False):
+    def fake_run(provider, state, *, steps_factory=None, resumed=False):
         captured["resumed"] = resumed
         return 0
 
-    monkeypatch.setattr("host.setup_app.app.run_window", fake_run_window)
+    monkeypatch.setattr("host.desktop.__main__.run", fake_run)
     monkeypatch.setattr(cli, "_provider_factory", lambda: StubProvider())
     monkeypatch.setattr("host.providers.default_install_dir",
                         lambda: tmp_path / "vm")

@@ -288,8 +288,9 @@ def setup(resume: bool = typer.Option(False, "--resume"),
         )
 
     if not headless:
-        from host.setup_app.app import run_window
-        raise typer.Exit(code=run_window(provider, build_steps, state, resumed=resume))
+        from host.desktop.__main__ import run
+        raise typer.Exit(code=run(provider, state, steps_factory=build_steps,
+                                  resumed=resume))
 
     steps = build_steps()
     # A provider names its own step's words -- "Installing Lima 2.2.0" is
