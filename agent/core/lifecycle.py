@@ -36,11 +36,17 @@ def _write_overlay(provider, project: Project, directory, domain: str):
                          root=True)
 
 
-def compose_up(provider, project: Project, directory, domain: str):
+def compose_up(provider, project: Project, directory, domain: str, *,
+              on_phase=None):
     """Returns (status, detail). `detail` carries the guest's own output when
     the stack did not start, so callers never have to report a bare status code
     that no one can act on. URLs are the API layer's job -- it is the only place
-    that holds the configured edge port."""
+    that holds the configured edge port.
+
+    `on_phase`, when given, is called with "starting" once the overlay is
+    written and before `docker compose up` itself -- the caller's phase
+    report has to follow the overlay write, not precede it, or a failed
+    write would be reported as "starting" a stack that never did."""
     written = _write_overlay(provider, project, directory, domain)
     if not written.ok:
         # exec() never raises. Starting the stack anyway would produce a project
@@ -48,6 +54,8 @@ def compose_up(provider, project: Project, directory, domain: str):
         return (FAILED_TO_START,
                 (written.stderr or written.stdout).strip()
                 or "could not write the Traefik overlay inside the VM")
+    if on_phase:
+        on_phase("starting")
     up = provider.exec(_compose_argv(directory), root=True)
     ps = provider.exec([DOCKER, "compose", "-f",
                         f"{directory}/{COMPOSE_FILE}",
@@ -68,6 +76,23 @@ def _labelled(runner, kind: list[str], name: str, fmt: str) -> list[str]:
                           f"label={PROJECT_LABEL}={name}", "--format", fmt],
                          root=True)
     return result.stdout.split() if result.ok else []
+
+
+WORKING_DIR_LABEL = "com.docker.compose.project.working_dir"
+
+
+def resolve_compose_name(runner, directory, fallback: str) -> str:
+    """The name compose actually stamped on this project's containers, not
+    what a compose file's `name:` says today -- the two can disagree after
+    the file changes post-start, and delete must find what is running."""
+    result = runner.exec([DOCKER, "ps", "-a", "--filter",
+                          f"label={WORKING_DIR_LABEL}={directory}", "--format",
+                          '{{.Label "com.docker.compose.project"}}'], root=True)
+    if result.ok:
+        for line in result.stdout.splitlines():
+            if line.strip():
+                return line.strip()
+    return fallback
 
 
 def project_resources(runner, name: str) -> dict:

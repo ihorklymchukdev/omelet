@@ -1,3 +1,4 @@
+from agent.core import lifecycle
 from agent.core.lifecycle import compose_up, _compose_argv
 from agent.core.project import Project, STARTED_OK
 from agent.core.detect import WebSpec
@@ -89,3 +90,34 @@ def test_compose_up_reports_a_failed_overlay_write_instead_of_starting_the_stack
     assert "Permission denied" in detail
     assert not any(a[-2:] == ["up", "-d"] for a in p.execs), \
         "compose must not start a stack whose overlay was never written"
+
+
+def test_resolve_compose_name_prefers_what_the_containers_carry():
+    # A compose file's `name:` can change after the last start; delete must
+    # find what is actually running, not what the file says today.
+    class Runner:
+        def exec(self, argv, *, root=False):
+            if argv[1:3] == ["ps", "-a"] and any("working_dir" in a for a in argv):
+                return Completed(0, "fancy\n", "")
+            return Completed(0, "", "")
+
+    name = lifecycle.resolve_compose_name(Runner(), "/opt/omelet/projects/blog", "blog")
+    assert name == "fancy"
+
+
+def test_resolve_compose_name_falls_back_when_no_container_carries_the_label():
+    class Runner:
+        def exec(self, argv, *, root=False):
+            return Completed(0, "", "")
+
+    name = lifecycle.resolve_compose_name(Runner(), "/opt/omelet/projects/blog", "stored")
+    assert name == "stored"
+
+
+def test_resolve_compose_name_falls_back_when_the_lookup_command_fails():
+    class Runner:
+        def exec(self, argv, *, root=False):
+            return Completed(1, "", "daemon not running")
+
+    name = lifecycle.resolve_compose_name(Runner(), "/opt/omelet/projects/blog", "stored")
+    assert name == "stored"

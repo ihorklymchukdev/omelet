@@ -637,11 +637,16 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
     def compose_name_for(row: dict) -> str:
         return row.get("compose_name") or row["id"]
 
+    def resolve_compose_name(project_id: str, row: dict) -> str:
+        return lifecycle.resolve_compose_name(
+            runner, project_dir(project_id), compose_name_for(row))
+
     @router.get("/projects/{project_id}/delete-preview")
     def delete_preview(project_id: str) -> dict:
         row = require_row(project_id)
         return {**files.tree_stats(project_dir(project_id)),
-                **lifecycle.project_resources(runner, compose_name_for(row))}
+                **lifecycle.project_resources(
+                    runner, resolve_compose_name(project_id, row))}
 
     @router.delete("/projects/{project_id}")
     def delete_project(project_id: str, purge: bool = False) -> dict:
@@ -651,8 +656,8 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
         # replace-import all wait on this answer. Removal is by compose label,
         # not `compose down`, so a broken compose file can never block it.
         with locks.held(project_id):
-            result = lifecycle.remove_by_label(runner, compose_name_for(row),
-                                               volumes=purge)
+            result = lifecycle.remove_by_label(
+                runner, resolve_compose_name(project_id, row), volumes=purge)
             if purge:
                 uploads.drop_project(project_id)
             if purge and folder.exists():
@@ -687,13 +692,16 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
                         raise JobFailed(
                             (down_result.stderr or down_result.stdout).strip()
                             or "compose down failed")
-                write.phase("starting")
+                # Recorded before compose runs, not after a successful start:
+                # delete must be able to find these containers by name even
+                # when `up` never reaches STARTED_OK.
+                state.set_compose_name(project_id, name)
                 write(f"compose up {project_id}\n")
                 status, detail = lifecycle.compose_up(
-                    runner, project, directory, domain)
+                    runner, project, directory, domain, on_phase=write.phase)
                 diagnosis = None
                 if status == STARTED_OK:
-                    state.mark_started(project_id, name, time.time())
+                    state.mark_started(project_id, time.time())
                     write.phase("checking")
                     write("waiting for the project to answer through Traefik\n")
                     diagnosis = diagnose(
@@ -742,6 +750,7 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
 
         def work(write):
             try:
+                write.phase("stopping")
                 write(f"compose down {project_id}\n")
                 result = lifecycle.compose_down(runner,
                                                 project_dir(project_id))

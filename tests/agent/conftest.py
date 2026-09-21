@@ -49,6 +49,9 @@ class FakeRunner:
         self.stream_lines = ["web-1 | one\n", "web-1 | two\n"]
         self.container_id = Completed(0, "c0ffee1234\n", "")
         self.proc_net = Completed(0, PROC_NET_LOOPBACK, "")
+        # Empty by default: delete falls back to the stored/id name, same as
+        # before this lookup existed, unless a test scripts a real answer.
+        self.compose_name_lookup = Completed(0, "", "")
         self.up_gate = None
 
     def exec(self, argv, *, root=False):
@@ -63,6 +66,8 @@ class FakeRunner:
             if self.up_gate is not None:
                 assert self.up_gate.wait(5), "the up job was never released"
             return self.up
+        if argv[1:3] == ["ps", "-a"] and any("working_dir" in a for a in argv):
+            return self.compose_name_lookup
         if "ps" in argv:
             return self.ps
         if "down" in argv:

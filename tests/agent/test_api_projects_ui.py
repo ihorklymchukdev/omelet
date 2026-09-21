@@ -1,4 +1,5 @@
 import threading
+import time
 
 from agent.core.exec import Completed
 from tests.agent.conftest import (COMPOSE_MALFORMED, _create,
@@ -44,11 +45,26 @@ def test_up_reports_its_phases_in_order(env):
     seen = []
     env.runner.up_gate = threading.Event()
     job_id = env.client.post("/projects/blog/up").json()["job_id"]
-    seen.append(env.client.get(f"/jobs/{job_id}").json()["phase"])
+    # The job's own thread does a bit of work -- recording compose_name --
+    # before it reaches "starting" and blocks in `up`, so poll for it rather
+    # than assuming it has already landed by the time this request returns.
+    deadline = time.monotonic() + 5
+    phase = env.client.get(f"/jobs/{job_id}").json()["phase"]
+    while phase == "preparing" and time.monotonic() < deadline:
+        phase = env.client.get(f"/jobs/{job_id}").json()["phase"]
+    seen.append(phase)
     env.runner.up_gate.set()
     final = env.jobs.wait(job_id, timeout=5)
     seen.append(final.phase)
     assert seen == ["starting", "checking"]
+
+
+def test_down_reports_a_stopping_phase(env):
+    _create(env, "blog")
+    _write_compose(env, "blog")
+    job_id = env.client.post("/projects/blog/down").json()["job_id"]
+    final = env.jobs.wait(job_id, timeout=5)
+    assert final.phase == "stopping"
 
 
 def test_first_run_holds_until_one_start_succeeds(env):
@@ -125,10 +141,36 @@ def test_purge_removes_folder_volumes_and_record(env):
 def test_delete_uses_the_recorded_compose_name(env):
     _create(env, "blog")
     _write_compose(env, "blog")
-    env.state.mark_started("blog", "fancy", 1.0)
+    env.state.set_compose_name("blog", "fancy")
     env.client.delete("/projects/blog")
     assert any("label=com.docker.compose.project=fancy" in a
                for a in env.runner.calls)
+
+
+def test_delete_prefers_the_name_running_containers_carry_over_the_stored_one(env):
+    # The stored compose_name can be stale (an edited `name:`, or a project
+    # that was never started under it); the containers' own label wins.
+    _create(env, "blog")
+    _write_compose(env, "blog")
+    env.state.set_compose_name("blog", "stale")
+    env.runner.compose_name_lookup = Completed(0, "fancy\n", "")
+    env.client.delete("/projects/blog")
+    assert any("label=com.docker.compose.project=fancy" in a
+               for a in env.runner.calls)
+    assert not any("label=com.docker.compose.project=stale" in a
+                   for a in env.runner.calls)
+
+
+def test_a_failed_up_still_records_the_compose_name(env):
+    # Delete has to find these containers even when the start itself failed.
+    _create(env, "blog")
+    _write_compose(env, "blog", "name: fancy\n" + (
+        "services:\n  web:\n    image: nginx\n    ports: ['8080:80']\n"))
+    env.runner.up = Completed(1, "", "boom")
+    _run_to_completion(env, env.client.post("/projects/blog/up"))
+    row = env.state.get_project("blog")
+    assert row["compose_name"] == "fancy"
+    assert row["last_started_at"] is None
 
 
 def test_delete_preview_counts_the_real_tree(env):
