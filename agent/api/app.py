@@ -16,7 +16,8 @@ from fastapi import APIRouter, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import (FileResponse, JSONResponse, PlainTextResponse,
                                Response, StreamingResponse)
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from ..core import constants, disk, files, lifecycle
@@ -30,6 +31,7 @@ from ..core.project import STARTED_OK, Project, _slug, load_project
 from ..core.reconcile import discover, examine
 from ..core.sessions import COOKIE, HANDOFF_TTL, SESSION_TTL, Sessions
 from ..core.state import State
+from ..core.uploads import CHUNK_SIZE, UploadError, UploadStore
 from .jobs import JobFailed, JobRegistry
 
 TEXT = "text/plain; charset=utf-8"
@@ -99,6 +101,13 @@ class CreateProject(BaseModel):
     domain: str | None = None
 
 
+class StartUpload(BaseModel):
+    path: str
+    size: int = Field(ge=0)
+    fingerprint: str = ""
+    replace: bool = False
+
+
 class Handoff(BaseModel):
     code: str
 
@@ -141,6 +150,10 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
     jobs = jobs or JobRegistry()
     locks = ProjectLocks()
     sessions = Sessions(state)
+    uploads = UploadStore(config.uploads_root,
+                          free_bytes=lambda: disk.usage(
+                              Path(config.projects_root))["free_bytes"])
+    uploads.sweep()
 
     app = FastAPI(title="omelet-agent", version=config.version)
     app.state.config = config
@@ -157,6 +170,11 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
     @app.exception_handler(RequestValidationError)
     async def _invalid_request(_request, exc: RequestValidationError):
         return _body("invalid_request", _validation_message(exc), 422)
+
+    @app.exception_handler(UploadError)
+    async def _upload_error(_request, exc: UploadError):
+        return JSONResponse({"error": {"code": exc.code, "message": exc.message,
+                                       **exc.extra}}, status_code=exc.status)
 
     @app.exception_handler(StarletteHTTPException)
     async def _http_error(_request, exc: StarletteHTTPException):
@@ -428,6 +446,69 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
         except files.PathTraversalError as e:
             raise ApiError("path_traversal", str(e), 400) from e
 
+    def finish_upload(upload_id: str) -> dict:
+        up = uploads.get(upload_id)
+        with locks.held(up.project_id):
+            try:
+                uploads.finish(upload_id, resolve_path(up.project_id, up.path))
+            except PermissionError as e:
+                raise ApiError("permission_denied",
+                               "Omelet can't write into that folder; a program "
+                               "in the project owns it. Pick another folder.",
+                               409) from e
+        return {"upload_id": upload_id, "offset": up.size, "size": up.size,
+                "done": True}
+
+    @router.post("/projects/{project_id}/uploads", status_code=201)
+    def start_upload(project_id: str, body: StartUpload) -> dict:
+        require_row(project_id)
+        target = resolve_path(project_id, body.path)
+        if target.exists() and not body.replace:
+            raise ApiError("file_exists",
+                           f"'{body.path}' is already in the project", 409)
+        up = uploads.start(project_id, body.path, body.size, body.fingerprint,
+                           body.replace)
+        if up.size == 0:
+            return finish_upload(up.id)
+        return {"upload_id": up.id, "offset": 0, "size": up.size,
+                "chunk_size": CHUNK_SIZE, "done": False}
+
+    @router.get("/projects/{project_id}/uploads")
+    def pending_uploads(project_id: str) -> dict:
+        require_row(project_id)
+        uploads.sweep()
+        return {"uploads": [u.as_dict() for u in uploads.list_for(project_id)]}
+
+    @router.get("/uploads/{upload_id}")
+    def upload_status(upload_id: str) -> dict:
+        return uploads.get(upload_id).as_dict()
+
+    @router.patch("/uploads/{upload_id}")
+    async def upload_chunk(upload_id: str, request: Request) -> dict:
+        try:
+            offset = int(request.headers.get("upload-offset", ""))
+        except ValueError:
+            raise ApiError("invalid_request", "Upload-Offset must be a number",
+                           400) from None
+        body = bytearray()
+        async for piece in request.stream():
+            body += piece
+            if len(body) > 2 * CHUNK_SIZE:
+                raise ApiError("payload_too_large", "send chunks of at most "
+                               f"{CHUNK_SIZE} bytes", 413)
+        # Both append() and finish() do blocking file I/O; run them off the
+        # event loop so one slow upload can't stall every other request.
+        up = await run_in_threadpool(uploads.append, upload_id, offset, bytes(body))
+        if up.offset == up.size:
+            return await run_in_threadpool(finish_upload, upload_id)
+        return {"upload_id": upload_id, "offset": up.offset, "size": up.size,
+                "done": False}
+
+    @router.delete("/uploads/{upload_id}")
+    def cancel_upload(upload_id: str) -> dict:
+        uploads.cancel(upload_id)
+        return {"upload_id": upload_id, "cancelled": True}
+
     async def _stream_to_tempfile(request: Request, dir_: Path) -> Path:
         # Written next to its destination, never buffered whole in memory -
         # this route body is what removes the old ~24 KB command-line ceiling.
@@ -489,9 +570,19 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
         return {"id": project_id, "files": files.list_tree(d)}
 
     @router.get("/projects/{project_id}/files")
-    def list_files(project_id: str) -> dict:
+    def list_files(project_id: str, dir: str | None = None) -> dict:
         require_row(project_id)
-        return {"files": files.list_tree(project_dir(project_id))}
+        if dir is None:
+            return {"files": files.list_tree(project_dir(project_id))}
+        try:
+            return {"dir": dir,
+                    "entries": files.list_dir(project_dir(project_id), dir)}
+        except files.PathTraversalError as e:
+            raise ApiError("path_traversal", str(e), 400) from e
+        except FileNotFoundError:
+            raise ApiError("folder_not_found",
+                           f"no folder '{dir}' in project '{project_id}'",
+                           404) from None
 
     @router.put("/projects/{project_id}/files/{file_path:path}")
     async def write_file(project_id: str, file_path: str, request: Request) -> dict:
@@ -517,7 +608,7 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
             raise ApiError("file_not_found",
                            f"no file '{file_path}' in project '{project_id}'", 404)
         # Starlette streams this from disk; the file is never read whole.
-        return FileResponse(target)
+        return FileResponse(target, filename=target.name)
 
     @router.delete("/projects/{project_id}/files/{file_path:path}")
     def delete_file(project_id: str, file_path: str) -> dict:
@@ -549,6 +640,8 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
         with locks.held(project_id):
             result = lifecycle.remove_by_label(runner, compose_name_for(row),
                                                volumes=purge)
+            if purge:
+                uploads.drop_project(project_id)
             if purge and folder.exists():
                 shutil.rmtree(folder, ignore_errors=True)
                 if folder.exists():

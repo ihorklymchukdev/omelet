@@ -105,6 +105,34 @@ def tree_stats(root: Path) -> dict:
     return {"files": count, "bytes": size}
 
 
+_HIDDEN = {".omelet"}
+
+
+def list_dir(root: Path, rel: str) -> list[dict]:
+    """One level of `root`/`rel`: folders first, then files, both by name.
+    `.omelet` is the project's own bookkeeping and never shown."""
+    folder = resolve_within(root, rel) if rel else root.resolve()
+    if not folder.is_dir():
+        raise FileNotFoundError(rel)
+    entries = []
+    for entry in os.scandir(folder):
+        if entry.name in _HIDDEN:
+            continue
+        info = entry.stat(follow_symlinks=False)
+        if entry.is_dir(follow_symlinks=False):
+            try:
+                items = len(os.listdir(entry.path))
+            except OSError:
+                items = None
+            entries.append({"name": entry.name, "kind": "folder", "size": None,
+                            "items": items, "modified": info.st_mtime})
+        else:
+            entries.append({"name": entry.name, "kind": "file",
+                            "size": info.st_size, "items": None,
+                            "modified": info.st_mtime})
+    return sorted(entries, key=lambda e: (e["kind"] != "folder", e["name"].lower()))
+
+
 def list_tree(root: Path) -> list[dict]:
     """Relative paths and sizes of every file under `root`. `root` is always
     a project directory built by the caller, so nothing here re-validates it

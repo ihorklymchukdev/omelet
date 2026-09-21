@@ -114,6 +114,7 @@ def env(tmp_path):
         state_db=tmp_path / "state.db",
         version="9.9.9",
         token_path=token_path,
+        uploads_root=tmp_path / "uploads",
         # No retry window: these tests assert on the verdict, and the window
         # itself is covered against a fake clock in test_health.py.
         ready_timeout=0.0,
