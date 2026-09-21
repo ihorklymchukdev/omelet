@@ -6,6 +6,7 @@ import secrets
 import tempfile
 import threading
 from contextlib import contextmanager
+from dataclasses import asdict
 from pathlib import Path
 
 import yaml
@@ -24,6 +25,7 @@ from ..core.exec import LocalRunner
 from ..core.health import answers, default_probe, diagnose
 from ..core.overlay import host_for
 from ..core.project import STARTED_OK, Project, _slug, load_project
+from ..core.reconcile import discover, examine
 from ..core.sessions import COOKIE, HANDOFF_TTL, SESSION_TTL, Sessions
 from ..core.state import State
 from .jobs import JobFailed, JobRegistry
@@ -289,11 +291,16 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
         problem = None
         urls: list[str] = []
         project = None
-        try:
-            project = load(row["id"])
-            urls = urls_for(project, row["domain"])
-        except ApiError as e:
-            problem = {"code": e.code, "message": e.message}
+        folder = project_dir(row["id"])
+        if not folder.is_dir():
+            problem = {"code": "folder_missing",
+                       "message": "this project's folder is gone"}
+        else:
+            try:
+                project = load(row["id"])
+                urls = urls_for(project, row["domain"])
+            except ApiError as e:
+                problem = {"code": e.code, "message": e.message}
         if problem is None and row.get("problem_code"):
             # A file that will not parse outranks a routing fault: it is why
             # the project has no URLs to be unreachable on.
@@ -309,7 +316,8 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
                 state.set_problem(row["id"])
                 problem = None
         return {"id": row["id"], "status": row["status"], "domain": row["domain"],
-                "path": row["guest_path"], "urls": urls, "problem": problem}
+                "path": row["guest_path"], "urls": urls, "problem": problem,
+                "empty": folder.is_dir() and not (folder / constants.COMPOSE_FILE).exists()}
 
     def submit_locked(project_id: str, work) -> str:
         """The job releases the lock itself, in its own `finally`."""
@@ -362,14 +370,33 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
         state.add_project(project_id, str(d), body.domain or config.domain)
         return payload(state.get_project(project_id))
 
+    @router.post("/projects/{project_id}/adopt", status_code=201)
+    def adopt_project(project_id: str) -> dict:
+        if state.get_project(project_id) is not None:
+            raise ApiError("project_exists",
+                           f"project '{project_id}' already exists", 409)
+        folder = project_dir(project_id)
+        if not folder.is_dir():
+            raise ApiError("folder_not_found",
+                           f"no folder '{project_id}' in the projects folder", 404)
+        found = examine(folder)
+        if not found.adoptable:
+            raise ApiError("not_adoptable",
+                           f"'{project_id}' cannot be adopted: {found.reason}", 409)
+        state.add_project(project_id, str(folder), config.domain)
+        return payload(state.get_project(project_id))
+
     @router.get("/projects")
     def list_projects() -> dict:
         # `omelet status` is the surface users actually read, so a stale
         # diagnosis has to clear here too. payload() only probes a row that
         # carries a stored problem -- normally none -- so an ordinary listing
         # still pays no round trips at all.
-        return {"projects": [payload(row, recheck=True)
-                             for row in state.list_projects()]}
+        rows = state.list_projects()
+        known = {row["id"] for row in rows}
+        return {"projects": [payload(row, recheck=True) for row in rows],
+                "discovered": [asdict(d) for d in
+                               discover(Path(config.projects_root), known)]}
 
     @router.get("/projects/{project_id}")
     def get_project(project_id: str) -> dict:
