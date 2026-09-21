@@ -45,6 +45,9 @@ class DesktopApi:
             "app_version": constants.APP_VERSION,
             "engine_version": readiness.engine_version or "",
             "problem": readiness.problem,
+            # Set by __main__.run() when RunOnce reopened the window after a
+            # restart, so the install screen can explain why it appeared.
+            "resumed": getattr(self, "resumed", False),
         }
 
     # --- actions ------------------------------------------------------
@@ -82,4 +85,9 @@ class DesktopApi:
         # before RunOnce is written never comes back to setup.
         self._provider.register_resume(sys.executable)
         self._provider.reboot()
+        return {"ok": True}
+
+    def reset_install(self) -> dict:
+        """Forget every recorded step so the next run starts from preflight."""
+        self._state.clear()
         return {"ok": True}

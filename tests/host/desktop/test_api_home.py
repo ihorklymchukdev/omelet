@@ -61,6 +61,18 @@ def test_home_passes_the_probe_problem_through_for_the_log(tmp_path):
     assert home["problem"] == "connection refused"
 
 
+def test_home_reports_resumed_false_by_default(tmp_path):
+    assert _api(tmp_path, READY).home()["resumed"] is False
+
+
+def test_home_reports_resumed_when_the_bridge_was_relaunched(tmp_path):
+    # __main__.run() sets this attribute after a RunOnce relaunch; home()
+    # only needs to read it back.
+    api = _api(tmp_path, READY)
+    api.resumed = True
+    assert api.home()["resumed"] is True
+
+
 def test_open_omelet_opens_the_edge_port_not_the_agent_port(tmp_path):
     from host.core import constants
     opened = []

@@ -182,3 +182,86 @@ body {
 .tile-note {
   font:400 13px 'IBM Plex Mono', monospace; color:var(--ink-3); margin-left:auto;
 }
+
+/* Install screens: a fixed 300px left column (pan, copy, buttons) beside a
+   row panel that grows to hold however many steps the factory returned --
+   seven on Lima, nine on WSL2. Padding here is tighter than .pad so nine
+   rows plus the left column both hold at the 800x560 floor. */
+.install {
+  display:flex; gap:24px; padding:36px 40px 30px; flex:1; min-height:0;
+}
+.install-left {
+  flex:0 0 300px; width:300px;
+  display:flex; flex-direction:column; align-items:flex-start; gap:12px;
+}
+.install-left .btn-primary, .install-left .btn-secondary { align-self:stretch; text-align:center; }
+
+/* The pan is the screen's one animated loop; row marks change color instead
+   of animating, so only one thing ever moves at a time. */
+.pan {
+  width:76px; height:76px; border-radius:var(--r-lg);
+  background:var(--surface-2); border:1px solid var(--line); flex:none;
+  position:relative;
+}
+.pan-hot {
+  background:var(--yolk-soft); border-color:transparent;
+}
+.pan-hot::after {
+  content:''; position:absolute; top:-8px; left:50%; width:5px; height:14px;
+  margin-left:-2.5px; border-radius:999px; background:var(--yolk-deep);
+  animation:om-sizzle 1.3s var(--ease) infinite;
+}
+.pan-asleep {
+  background:var(--cold-soft); border-color:transparent;
+}
+.pan-asleep::after {
+  content:'z'; position:absolute; top:-6px; right:6px; color:var(--ink-3);
+  font:700 16px 'Bricolage Grotesque', sans-serif;
+  animation:om-zzz 1.8s var(--ease) infinite;
+}
+.pan-burnt { background:var(--paprika-soft); border-color:transparent; }
+
+.bar {
+  position:relative; width:100%; height:8px; border-radius:999px;
+  background:var(--surface-2); border:1px solid var(--line); overflow:hidden;
+}
+.bar span {
+  position:absolute; inset:0 auto 0 0; width:0; background:var(--yolk-deep);
+  transition:width 300ms var(--ease);
+}
+
+.rows {
+  flex:1; min-width:0; margin:0; padding:10px; list-style:none;
+  display:flex; flex-direction:column; gap:5px; overflow-y:auto;
+  background:var(--surface); border:1px solid var(--line); border-radius:var(--r-xl);
+}
+.row-step {
+  display:flex; align-items:center; gap:10px;
+  padding:11px 12px; border-radius:var(--r-md);
+}
+/* The failed variant packs one more line of copy into the same 300px column,
+   so its row panel trims 1px of vertical padding per row -- the difference
+   that keeps nine rows from clipping at the 560px floor. */
+.install-failed .row-step { padding:10px 12px; }
+
+.row-step .mark {
+  flex:0 0 20px; width:20px; height:20px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  font:700 12px 'Hanken Grotesk', sans-serif; line-height:1;
+}
+.row-step .label { flex:1; font:600 14.5px 'Hanken Grotesk', sans-serif; color:var(--ink); }
+.row-step .state { font:400 13px 'Hanken Grotesk', sans-serif; color:var(--ink-3); }
+
+.row-step[data-status="waiting"] .mark { border:2px dashed var(--line-2); }
+.row-step[data-status="running"] { background:var(--yolk-soft); }
+.row-step[data-status="running"] .mark { background:var(--yolk-deep); }
+.row-step[data-status="done"] .mark,
+.row-step[data-status="skipped"] .mark { background:var(--basil-soft); color:var(--basil); }
+.row-step[data-status="done"] .mark::after,
+.row-step[data-status="skipped"] .mark::after { content:'\2713'; }
+.row-step[data-status="done"] .state,
+.row-step[data-status="skipped"] .state { color:var(--basil); }
+.row-step[data-status="failed"] { background:var(--paprika-soft); }
+.row-step[data-status="failed"] .mark { background:var(--paprika); color:var(--surface); }
+.row-step[data-status="failed"] .mark::after { content:'!'; }
+.row-step[data-status="failed"] .state { color:var(--paprika); }

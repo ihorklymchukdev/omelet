@@ -104,3 +104,33 @@ def test_no_user_facing_copy_names_one_platform():
     markup = (UI / "index.html").read_text()
     assert not re.search(r"\b(Mac|macOS|Windows|PC)\b", markup), \
         "platform-specific copy in a cross-platform UI"
+
+
+def test_every_install_state_has_a_template():
+    markup = (UI / "index.html").read_text()
+    for screen in ("install:running", "install:reboot", "install:failed"):
+        assert f'data-screen="{screen}"' in markup, f"no template for {screen}"
+
+
+def test_the_install_panel_has_no_hard_coded_step_count():
+    # "Step 4 of 7" is a macOS fact. Windows runs nine.
+    markup = (UI / "index.html").read_text()
+    assert "of 7" not in markup
+
+
+def test_the_resume_notice_is_the_exact_sentence_from_install_py():
+    """The old tkinter UI's RESUME_NOTICE is copied character for character
+    into the HTML, gated so it only shows on a resumed launch."""
+    install_py = (Path(__file__).resolve().parents[3] / "host" / "core"
+                  / "install.py").read_text()
+    match = re.search(r'RESUME_NOTICE = "(.+)"', install_py)
+    assert match, "RESUME_NOTICE not found in host/core/install.py"
+    notice = match.group(1)
+
+    markup = (UI / "index.html").read_text()
+    start = markup.index('data-screen="install:running"')
+    end = markup.index("</template>", start)
+    screen = markup[start:end]
+    assert notice in screen
+    notice_line = next(line for line in screen.splitlines() if notice in line)
+    assert 'data-when="resumed"' in notice_line
