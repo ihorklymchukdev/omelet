@@ -1,0 +1,68 @@
+"""The bridge's answer to "what should I draw".
+
+The first-run rule is carried over from host/setup_app/app.py and is the one
+piece of routing that is not a function of Readiness alone.
+"""
+from __future__ import annotations
+
+from host.core.install import InstallState
+from host.core.status import Readiness
+from host.desktop.api import DesktopApi
+
+READY = Readiness(vm_exists=True, vm_reachable=True,
+                  engine_version="engine-v0.1.0", agent_api=1)
+
+
+class FakeProvider:
+    pass
+
+
+def _api(tmp_path, readiness, *, opened=None):
+    state = InstallState(tmp_path / "install-state.json")
+    return DesktopApi(FakeProvider(), state, push=lambda event: None,
+                      probe_fn=lambda provider: readiness,
+                      browser_open=(opened.append if opened is not None else lambda url: None))
+
+
+def test_a_virgin_machine_is_first_run(tmp_path):
+    assert _api(tmp_path, Readiness()).home()["first_run"] is True
+
+
+def test_a_machine_that_got_partway_is_not_first_run(tmp_path):
+    # The loop this guards: create_vm failing forever leaves vm_exists False
+    # on every relaunch. Without the state check the app would re-enter the
+    # wizard every time and the user could never reach Home's Doctor button.
+    state = InstallState(tmp_path / "install-state.json")
+    state.mark("preflight")
+    api = DesktopApi(FakeProvider(), state, push=lambda event: None,
+                     probe_fn=lambda provider: Readiness())
+    home = api.home()
+    assert home["first_run"] is False
+    assert (home["route"], home["state"]) == ("home", "not_installed")
+
+
+def test_a_ready_machine_is_never_first_run(tmp_path):
+    assert _api(tmp_path, READY).home()["first_run"] is False
+
+
+def test_home_carries_the_versions_the_odds_and_ends_row_shows(tmp_path):
+    from host.core import constants
+    home = _api(tmp_path, READY).home()
+    assert home["app_version"] == constants.APP_VERSION
+    assert home["engine_version"] == "engine-v0.1.0"
+
+
+def test_home_passes_the_probe_problem_through_for_the_log(tmp_path):
+    readiness = Readiness(vm_exists=True, vm_reachable=True,
+                          engine_version="engine-v0.1.0",
+                          problem="connection refused")
+    home = _api(tmp_path, readiness).home()
+    assert home["route"] == "unreachable"
+    assert home["problem"] == "connection refused"
+
+
+def test_open_omelet_opens_the_edge_port_not_the_agent_port(tmp_path):
+    from host.core import constants
+    opened = []
+    _api(tmp_path, READY, opened=opened).open_omelet()
+    assert opened == [f"http://localhost:{constants.EDGE_PORT}"]
