@@ -455,13 +455,15 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
 
     def finish_upload(upload_id: str) -> dict:
         up = uploads.get(upload_id)
-        if state.get_project(up.project_id) is None:
-            # The project was deleted mid-upload: writing the file now would
-            # resurrect a folder the user already asked Omelet to remove.
-            uploads.cancel(upload_id)
-            raise ApiError("project_not_found",
-                           f"no project with id '{up.project_id}'", 404)
+        # The existence check has to happen inside the lock too, not just the
+        # write: checked first and locked after, delete could still finish in
+        # the gap between the two and this would resurrect the folder it
+        # just removed.
         with locks.held(up.project_id):
+            if state.get_project(up.project_id) is None:
+                uploads.cancel(upload_id)
+                raise ApiError("project_not_found",
+                               f"no project with id '{up.project_id}'", 404)
             try:
                 uploads.finish(upload_id, resolve_path(up.project_id, up.path))
             except PermissionError as e:
@@ -476,6 +478,11 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
     def start_upload(project_id: str, body: StartUpload) -> dict:
         require_row(project_id)
         target = resolve_path(project_id, body.path)
+        if target.is_dir():
+            # `replace` means "overwrite this file", never "delete this
+            # folder and put a file where it was" -- that has no undo.
+            raise ApiError("path_is_folder",
+                           f"'{body.path}' is a folder in the project", 409)
         if target.exists() and not body.replace:
             raise ApiError("file_exists",
                            f"'{body.path}' is already in the project", 409)

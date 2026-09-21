@@ -1,3 +1,5 @@
+import threading
+
 import pytest
 
 from agent.core.uploads import RESERVE
@@ -56,6 +58,13 @@ def test_an_existing_file_is_not_replaced_unless_asked(blog):
     assert _start(blog, path="a.bin", replace=True).status_code == 201
 
 
+def test_uploading_onto_an_existing_folder_is_refused_even_with_replace(blog):
+    (blog.config.projects_root / "blog" / "data").mkdir(parents=True)
+    resp = _start(blog, path="data", replace=True)
+    assert resp.status_code == 409
+    assert resp.json()["error"]["code"] == "path_is_folder"
+
+
 def test_the_offset_mismatch_body_carries_the_real_offset(blog):
     uid = _start(blog).json()["upload_id"]
     _patch(blog, uid, 0, b"abc")
@@ -90,6 +99,48 @@ def test_finishing_an_upload_for_a_deleted_project_is_refused(blog):
     assert resp.json()["error"]["code"] == "project_not_found"
     assert not (blog.config.projects_root / "blog" / "data" / "a.bin").exists()
     assert blog.client.get(f"/uploads/{uid}").status_code == 404
+
+
+def test_finish_upload_holds_the_project_lock_across_the_existence_check(blog):
+    # Checking "does the project still exist" before taking the lock leaves a
+    # window where a concurrent delete finishes in the gap; the check has to
+    # happen only once the lock is already held, so a delete attempted then
+    # is refused as busy rather than racing ahead of it.
+    uid = _start(blog).json()["upload_id"]
+    checking = threading.Event()
+    release = threading.Event()
+    real_get_project = blog.state.get_project
+    calls = {"n": 0}
+
+    def blocking_get_project(project_id):
+        result = real_get_project(project_id)
+        calls["n"] += 1
+        if calls["n"] == 1:
+            # Only finish_upload's own check blocks -- the DELETE request's
+            # unrelated require_row() lookup, made below, must go straight
+            # through so it can test the lock, not deadlock behind it.
+            checking.set()
+            assert release.wait(5), "finish_upload's check never resumed"
+        return result
+
+    blog.state.get_project = blocking_get_project
+    outcome = {}
+
+    def do_finish():
+        outcome["resp"] = _patch(blog, uid, 0, b"abcdef")
+
+    t = threading.Thread(target=do_finish)
+    t.start()
+    try:
+        assert checking.wait(5), "finish_upload never reached its existence check"
+        delete_resp = blog.client.delete("/projects/blog")
+    finally:
+        release.set()
+        t.join(5)
+
+    assert delete_resp.status_code == 409
+    assert delete_resp.json()["error"]["code"] == "project_busy"
+    assert outcome["resp"].json()["done"] is True
 
 
 def test_a_download_is_offered_as_an_attachment(blog):
