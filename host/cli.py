@@ -387,29 +387,42 @@ def selfcheck():
         ("host/providers/omelet.yaml", Path(_providers.__file__).parent / "omelet.yaml"),
     ]
 
+    try:
+        from host.desktop.__main__ import ui_dir
+        checks.append(("host/desktop/ui", ui_dir() / "index.html"))
+    except ImportError as e:
+        # host.desktop.__main__ is itself one of the hidden-import modules
+        # checked below -- if it can't even be imported, there is no ui_dir()
+        # to call. Reported here in the same "->" shape as a real miss so
+        # this loop never crashes instead of reporting; the module import
+        # itself is still reported separately by the loop below.
+        checks.append(("host/desktop/ui", Path(f"<{e}>")))
+
     all_ok = True
     for label, path in checks:
         ok = path.is_file()
         all_ok = all_ok and ok
         typer.echo(f"{'OK' if ok else 'MISSING':<7} {label} -> {path}")
 
-    # The setup window is five modules PyInstaller can only find through the
-    # spec's hiddenimports. A bundle missing one launches, shows a Dock icon
-    # and dies on the first draw -- which is exactly what this command exists
-    # to catch before a user does. Reported the same way as the asset checks
-    # above (an OK/MISSING line per item) rather than as an uncaught
-    # traceback, so the two failure classes this command guards against read
-    # the same way. Caught as ImportError, not the narrower
-    # ModuleNotFoundError: `app` does `from . import status`, so a missing
-    # `status` fails `app`'s own import too, but as a plain ImportError
-    # ("cannot import name 'status'"), not a ModuleNotFoundError -- both mean
-    # "not found in this bundle". A real bug inside one of these modules
-    # (a RuntimeError, an AttributeError, anything raised by the module's own
-    # code rather than by the import machinery) is a different failure and
-    # still surfaces as a full traceback, not as MISSING.
+    # The desktop window is four modules PyInstaller can only find through
+    # the spec's hiddenimports: cli.setup() reaches host.desktop.__main__
+    # through a function-local import, and it imports api/view/jobs in turn.
+    # A bundle missing one launches, shows a Dock icon and dies on the first
+    # draw -- which is exactly what this command exists to catch before a
+    # user does. Reported the same way as the asset checks above (an
+    # OK/MISSING line per item) rather than as an uncaught traceback, so the
+    # two failure classes this command guards against read the same way.
+    # Caught as ImportError, not the narrower ModuleNotFoundError: `api` does
+    # `from .jobs import JobRegistry`, so a missing `jobs` fails `api`'s own
+    # import too, but as a plain ImportError ("cannot import name..."), not a
+    # ModuleNotFoundError -- both mean "not found in this bundle". A real bug
+    # inside one of these modules (a RuntimeError, an AttributeError,
+    # anything raised by the module's own code rather than by the import
+    # machinery) is a different failure and still surfaces as a full
+    # traceback, not as MISSING.
     import importlib
-    for name in ("theme", "widgets", "wizard", "status", "app"):
-        label = f"host.setup_app.{name}"
+    for name in ("__main__", "api", "view", "jobs"):
+        label = f"host.desktop.{name}"
         try:
             importlib.import_module(label)
         except ImportError as e:

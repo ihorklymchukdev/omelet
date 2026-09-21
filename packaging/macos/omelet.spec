@@ -12,17 +12,24 @@ DATAS = [
     ("../../host/provision/nginx-hello/docker-compose.yml",
      "host/provision/nginx-hello"),
     ("../../host/providers/omelet.yaml", "host/providers"),
+    ("../../host/desktop/ui", "host/desktop/ui"),
 ]
 # Nothing from agent/ or engine/ is bundled: the VM pulls the image and fetches
 # the engine itself, and tests/host/test_frozen_bundle.py fails if an entry
 # reappears. Every dest mirrors the repo path its reader resolves from __file__,
 # so the bundle and a source checkout look identical.
 
-# setup_app is reached only through cli.setup()'s function-local import, so
-# PyInstaller's static analysis never sees it -- a bundle missing one of these
-# launches, shows a Dock icon, and dies on the first draw.
-HIDDEN = ["host.setup_app.app", "host.setup_app.wizard", "host.setup_app.status",
-          "host.setup_app.theme", "host.setup_app.widgets"]
+# host.desktop is reached only through cli.setup()'s function-local import,
+# so PyInstaller's static analysis never sees it -- a bundle missing one of
+# these launches, shows a Dock icon, and dies on the first draw. webview and
+# its platform backend are the same problem one layer down: pywebview picks
+# its backend at runtime (`import webview.platforms.cocoa` inside the
+# library, not a top-level import of ours), so PyInstaller's analysis never
+# sees that either. cocoa is pywebview's macOS backend (WKWebView via pyobjc)
+# -- unverified against an installed pywebview, since none is installed in
+# this environment; confirm against the real package before a frozen build.
+HIDDEN = ["host.desktop.__main__", "host.desktop.api", "host.desktop.view",
+          "host.desktop.jobs", "webview", "webview.platforms.cocoa"]
 
 cli = Analysis(["../../host/cli.py"], pathex=["../.."], datas=DATAS,
                hiddenimports=HIDDEN)

@@ -12,6 +12,8 @@ $cliExe     = Join-Path $repo 'dist\Omelet\omelet.exe'
 $setupExe   = Join-Path $repo 'dist\Omelet\setup.exe'
 $specFile   = Join-Path $repo 'packaging\windows\omelet.spec'
 $issFile    = Join-Path $repo 'packaging\windows\installer.iss'
+$webview2   = Join-Path $repo 'packaging\windows\MicrosoftEdgeWebView2Setup.exe'
+$webview2Url = 'https://go.microsoft.com/fwlink/p/?LinkId=2124703'
 
 function Resolve-Iscc {
     # Inno's install location moves between versions and install modes: 6.3+
@@ -63,11 +65,19 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Smoke test failed: omelet.exe version." }
     # version never touches disk, so it can pass on a bundle that's missing a
     # datas entry or a hiddenimport; selfcheck resolves each bundled asset the
-    # way the real code does, and also imports the five setup_app modules the
+    # way the real code does, and also imports the four desktop modules the
     # spec's hiddenimports name, and catches either class of failure before
     # it reaches a user.
     & $cliExe selfcheck
-    if ($LASTEXITCODE -ne 0) { throw "Smoke test failed: omelet.exe selfcheck reported a missing bundled asset or setup-window module." }
+    if ($LASTEXITCODE -ne 0) { throw "Smoke test failed: omelet.exe selfcheck reported a missing bundled asset or desktop-window module." }
+
+    # Evergreen bootstrapper (~1.5MB), not the runtime itself: it detects
+    # what's already on the machine and fetches only what's missing when the
+    # installer runs it. Downloaded fresh each build rather than vendored so
+    # the installer always ships Microsoft's current bootstrapper.
+    Write-Host "==> Downloading Microsoft Edge WebView2 bootstrapper"
+    Invoke-WebRequest -Uri $webview2Url -OutFile $webview2
+    if (-not (Test-Path $webview2)) { throw "WebView2 bootstrapper download failed." }
 
     if (-not $InnoSetup) { $InnoSetup = Resolve-Iscc }
     if (-not $InnoSetup -or -not (Test-Path $InnoSetup)) {

@@ -21,13 +21,6 @@ pkg="$repo/dist/OmeletSetup-$version.pkg"
     echo "No virtualenv at $venv_python. Run: python3.12 -m venv .venv" >&2; exit 1; }
 "$venv_python" -c "import PyInstaller" 2>/dev/null || {
     echo "PyInstaller missing. Run: $venv_python -m pip install -e \".[dev]\"" >&2; exit 1; }
-# The setup window is tkinter, and a Python built without it freezes into a
-# bundle whose CLI works and whose app icon dies on launch. Homebrew splits it
-# into its own formula, so this is the normal state of a fresh machine.
-"$venv_python" -c "import tkinter" 2>/dev/null || {
-    echo "This Python has no tkinter, so the setup window cannot be frozen." >&2
-    echo "Install it (Homebrew: brew install python-tk@3.13) and rebuild the venv." >&2
-    exit 1; }
 
 echo "==> Building Omelet $version for $(uname -m)"
 cd "$repo"
@@ -48,19 +41,20 @@ count="$(ls -1 "$app/Contents/MacOS" | wc -l | tr -d ' ')"
 
 # `version` never touches disk, so it passes on a bundle missing a datas entry;
 # selfcheck resolves each bundled asset the way its real caller does, and now
-# also imports the five setup_app modules the spec's hiddenimports names above
-# -- `set -e` turns either failure into a build failure, not a user's.
+# also imports the four desktop modules and the webview backend the spec's
+# hiddenimports names above -- `set -e` turns either failure into a build
+# failure, not a user's.
 "$cli" version
 "$cli" selfcheck
 # The spec builds two Analysis objects with two separate PYZs (see omelet.spec)
-# because the CLI and the GUI differ in more than a console flag -- tkinter and
-# the setup_app modules only need to resolve into the GUI's own bundle. Running
-# selfcheck against "$cli" alone proved the wrong binary: a HIDDEN entry
-# dropped from (or diverging on) the `gui = Analysis(...)` line, or tkinter
-# failing to collect into gui.binaries, would still leave the CLI's selfcheck
-# printing five OK lines and this script exiting 0, while Omelet.app -- what a
-# double-click actually launches -- showed a Dock icon and died on its first
-# draw. That is the exact failure selfcheck exists to catch.
+# because the CLI and the GUI differ in more than a console flag -- the desktop
+# modules and the webview backend only need to resolve into the GUI's own
+# bundle. Running selfcheck against "$cli" alone proved the wrong binary: a
+# HIDDEN entry dropped from (or diverging on) the `gui = Analysis(...)` line
+# would still leave the CLI's selfcheck printing OK lines and this script
+# exiting 0, while Omelet.app -- what a double-click actually launches --
+# showed a Dock icon and died on its first draw. That is the exact failure
+# selfcheck exists to catch.
 "$gui" selfcheck
 
 # The bundle is only an app if its plist points at the windowed executable and

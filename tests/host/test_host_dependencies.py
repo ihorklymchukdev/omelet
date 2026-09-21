@@ -38,6 +38,31 @@ def test_host_declares_no_yaml_parser():
     assert "pyyaml" not in _dependency_names()
 
 
+def test_webview_backends_are_platform_scoped():
+    # pythonnet and pyobjc are native bindings for the *other* platform's
+    # backend when installed on the wrong OS -- either a hard install failure
+    # or a wasted native toolchain in a bundle that will never load it.
+    data = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())
+    deps = data["project"]["dependencies"]
+
+    def find(name: str) -> str:
+        dep = next((d for d in deps if d.startswith(name)), None)
+        assert dep, f"{name} is not declared"
+        return dep
+
+    assert "sys_platform == 'win32'" in find("pythonnet")
+    for name in ("pyobjc-core", "pyobjc-framework-Cocoa", "pyobjc-framework-WebKit"):
+        assert "sys_platform == 'darwin'" in find(name)
+
+
+def test_packaging_specs_bundle_the_desktop_ui():
+    # host.desktop.__main__.ui_dir() reads host/desktop/ui at runtime; a spec
+    # that forgets it ships a window with no HTML to load.
+    for spec_path in ("packaging/windows/omelet.spec", "packaging/macos/omelet.spec"):
+        spec = (REPO_ROOT / spec_path).read_text()
+        assert '"../../host/desktop/ui"' in spec, f"{spec_path} does not bundle host/desktop/ui"
+
+
 def test_no_host_module_imports_yaml():
     # The dependency assertion above is only half of it: an import that is not
     # declared still works in a dev checkout (the agent package installs

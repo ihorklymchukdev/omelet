@@ -52,7 +52,9 @@ def test_every_bundled_source_exists_and_lands_where_its_reader_looks(spec):
 
     entries = _datas(spec)
     for source, _dest in entries:
-        assert (spec.parent / source).resolve().is_file(), f"{source} does not exist"
+        # A datas source may name a whole directory (PyInstaller copies it
+        # recursively, e.g. host/desktop/ui), not only a single file.
+        assert (spec.parent / source).resolve().exists(), f"{source} does not exist"
 
     dests = {dest for _src, dest in entries}
     expected = {VERIFY_TEMPLATE.relative_to(ROOT).as_posix()}
