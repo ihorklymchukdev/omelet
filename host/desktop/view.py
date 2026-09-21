@@ -110,3 +110,39 @@ def terminal_event(exc: BaseException | None) -> dict:
     if isinstance(exc, InstallError):
         return {"type": "failed", "message": exc.message, "action": exc.action}
     return {"type": "failed", "message": f"{exc}", "action": ""}
+
+
+from pathlib import Path
+
+from host.client import EXCLUDED_DIRS, EXCLUDED_FILES
+
+
+def inspect_folder(path) -> dict:
+    """Count what an import would actually send.
+
+    Walks with the same two exclusion sets client._uploadable applies, so the
+    "412 files · 38 MB" line describes the transfer rather than the disk.
+    Symlinks are skipped rather than followed: following one could leave the
+    tree or loop.
+    """
+    root = Path(path)
+    files = 0
+    total = 0
+    stack = [root]
+    while stack:
+        current = stack.pop()
+        for entry in current.iterdir():
+            if entry.is_symlink():
+                continue
+            if entry.is_dir():
+                if entry.name not in EXCLUDED_DIRS:
+                    stack.append(entry)
+                continue
+            # EXCLUDED_FILES holds paths relative to the project root
+            # (".omelet/overlay.yml"), so compare the same way the tar filter
+            # sees them -- posix separators, relative to root.
+            if entry.relative_to(root).as_posix() in EXCLUDED_FILES:
+                continue
+            files += 1
+            total += entry.stat().st_size
+    return {"name": root.name, "files": files, "bytes": total}

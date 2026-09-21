@@ -16,7 +16,7 @@ from host.core import constants
 from host.core.status import probe
 
 from .jobs import JobRegistry
-from .view import progress_event, route_for, rows_for, terminal_event
+from .view import inspect_folder, progress_event, route_for, rows_for, terminal_event
 
 
 class DesktopApi:
@@ -91,3 +91,28 @@ class DesktopApi:
         """Forget every recorded step so the next run starts from preflight."""
         self._state.clear()
         return {"ok": True}
+
+    def choose_folder(self) -> dict:
+        """Native folder picker. pywebview supplies it on both platforms."""
+        import webview
+        window = webview.windows[0]
+        chosen = window.create_file_dialog(webview.FOLDER_DIALOG)
+        if not chosen:
+            return {"cancelled": True}
+        return self.inspect_folder(chosen[0])
+
+    def inspect_folder(self, path: str) -> dict:
+        from host.client import AgentClient, project_id_for
+
+        summary = inspect_folder(path)
+        project_id = project_id_for(summary["name"])
+        try:
+            AgentClient.for_provider(self._provider).get_project(project_id)
+            conflict = True
+        except Exception:
+            # Any refusal means "no project by that name to merge into". A
+            # conflict banner shown because the agent was briefly unreachable
+            # would offer Replace -- which deletes -- over nothing.
+            conflict = False
+        return {**summary, "path": path, "project_id": project_id,
+                "conflict": conflict}
