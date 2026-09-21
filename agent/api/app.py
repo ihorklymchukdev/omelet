@@ -596,6 +596,10 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
             raise ApiError("folder_not_found",
                            f"no folder '{dir}' in project '{project_id}'",
                            404) from None
+        except PermissionError as e:
+            raise ApiError("permission_denied",
+                           "Omelet can't look inside that folder; a program "
+                           "in the project owns it.", 409) from e
 
     @router.put("/projects/{project_id}/files/{file_path:path}")
     async def write_file(project_id: str, file_path: str, request: Request) -> dict:

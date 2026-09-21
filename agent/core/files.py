@@ -118,8 +118,15 @@ def list_dir(root: Path, rel: str) -> list[dict]:
     for entry in os.scandir(folder):
         if entry.name in _HIDDEN:
             continue
-        info = entry.stat(follow_symlinks=False)
-        if entry.is_dir(follow_symlinks=False):
+        try:
+            info = entry.stat(follow_symlinks=False)
+            is_dir = entry.is_dir(follow_symlinks=False)
+        except OSError:
+            # Removed between the scandir above and this stat, or owned by a
+            # program in the project that leaves it unreadable -- either way
+            # one bad entry must not fail the whole listing.
+            continue
+        if is_dir:
             try:
                 items = len(os.listdir(entry.path))
             except OSError:

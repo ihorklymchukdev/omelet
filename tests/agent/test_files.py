@@ -1,5 +1,6 @@
 import errno
 import io
+import os
 import tarfile
 from pathlib import Path
 
@@ -148,6 +149,27 @@ def test_resolve_within_allows_a_nested_relative_path(tmp_path):
     root.mkdir()
     resolved = files.resolve_within(root, ".omelet/project.yml")
     assert resolved == (root / ".omelet" / "project.yml").resolve()
+
+
+def test_list_dir_skips_an_entry_whose_stat_raises(tmp_path, monkeypatch):
+    # A file removed between scandir and stat -- or one a container in the
+    # project owns and this process can't read -- must not fail the whole
+    # listing, the way test_reconcile.py's discover() already tolerates it.
+    root = tmp_path / "project"
+    root.mkdir()
+    (root / "ok.txt").write_text("hi")
+    (root / "bad.txt").write_text("nope")
+
+    real_stat = os.DirEntry.stat
+
+    def flaky_stat(entry, *a, **kw):
+        if entry.name == "bad.txt":
+            raise OSError("permission denied")
+        return real_stat(entry, *a, **kw)
+
+    monkeypatch.setattr(os.DirEntry, "stat", flaky_stat)
+    entries = files.list_dir(root, "")
+    assert [e["name"] for e in entries] == ["ok.txt"]
 
 
 # ---------------------------------------------------------------------------
@@ -371,6 +393,22 @@ def test_the_upload_cap_is_reported_in_a_size_a_person_can_read(tmp_path):
 
     assert "1 MB" in message
     assert str(config.max_upload_bytes) not in message
+
+
+def test_browsing_a_permission_denied_folder_is_409_not_a_500(env):
+    if os.geteuid() == 0:
+        pytest.skip("root ignores a folder's permission bits")
+    client, config = env
+    _create(client)
+    locked = config.projects_root / "blog" / "locked"
+    locked.mkdir(parents=True)
+    locked.chmod(0)
+    try:
+        resp = client.get("/projects/blog/files", params={"dir": "locked"})
+        assert resp.status_code == 409
+        assert resp.json()["error"]["code"] == "permission_denied"
+    finally:
+        locked.chmod(0o755)
 
 
 def test_remove_tree_falls_back_to_root_for_files_a_container_owns(tmp_path):
