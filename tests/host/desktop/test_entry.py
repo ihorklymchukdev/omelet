@@ -49,6 +49,22 @@ def test_a_working_window_starts_the_loop_and_returns_zero(tmp_path):
     assert started[0]["debug"] is False
 
 
+def test_the_real_failure_reaches_stderr_under_the_runtime_message(tmp_path, capsys):
+    """The same handler catches missing-runtime AND ordinary bugs, so the
+    cause has to be recoverable -- otherwise a typo reads as "install
+    WebView2" and the user chases a runtime they already have."""
+    def create(**kwargs):
+        raise TypeError("create_window() got an unexpected keyword argument 'widht'")
+
+    code = run(FakeProvider(), InstallState(tmp_path / "s.json"),
+               create=create, start=lambda **kwargs: None)
+
+    err = capsys.readouterr().err
+    assert code == 3
+    assert WEBVIEW_MISSING in err
+    assert "widht" in err
+
+
 def test_a_resumed_launch_is_recorded_for_the_install_screen(tmp_path):
     """RunOnce relaunches with --resume after a restart; the screen has to
     be able to say why it opened by itself."""

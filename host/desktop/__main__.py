@@ -73,8 +73,14 @@ def run(provider, state, *, create=_default_create, start=_default_start,
         window = create(title=WINDOW_TITLE, url=str(ui_dir() / "index.html"),
                         js_api=api, width=WINDOW_SIZE[0], height=WINDOW_SIZE[1],
                         min_size=MIN_SIZE)
-    except Exception:
+    except Exception as e:
+        # Deliberately broad: a missing runtime surfaces differently on each
+        # backend, and pywebview cannot be imported here to catch its own
+        # type. The repr goes out too because this same handler catches
+        # ordinary bugs -- without it, a typo'd kwarg reads to the user as
+        # "install WebView2", which would not help and would not be true.
         print(WEBVIEW_MISSING, file=sys.stderr)
+        print(f"(technical detail: {e!r})", file=sys.stderr)
         return 3
 
     holder["window"] = window
