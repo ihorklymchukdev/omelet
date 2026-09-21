@@ -138,11 +138,15 @@ polling phase and `started_at`, never from log output.
 - `GET /projects/{id}/delete-preview` →
   `{files, bytes, containers: [...], volumes: [...]}`, exactly what the
   confirmation lists.
-- `DELETE /projects/{id}` becomes a job (202; removing a large tree is slow).
-  It never reads the compose file: containers, then networks, then volumes are
-  found by `label=com.docker.compose.project=<name>` and removed. Then the
-  folder and the row go. Today's delete keeps the folder and fails on a broken
-  compose file; both change.
+- `DELETE /projects/{id}` stays synchronous with today's response shape
+  (`{id, stopped, detail}`): the host CLI's `destroy`, install verification and
+  the desktop's replace-import all call it and wait. It never reads the compose
+  file any more: containers, then networks, are found by
+  `label=com.docker.compose.project=<name>` and removed, so a broken
+  `docker-compose.yml` no longer blocks it.
+- `?purge=true` also removes the project's volumes and its folder. The web UI
+  always sends it; existing callers do not, so their behaviour (forget the
+  project, keep its files and volumes) is unchanged.
 - `<name>` is the compose project name recorded at the last `up` (new
   `compose_name` column): the directory name unless the file sets a top-level
   `name:`. A project never started falls back to its id.
@@ -205,7 +209,8 @@ Each test names the bug it catches.
 | Folder without compose → `adoptable: false, reason: compose_missing` | Adopting something that cannot run |
 | Row whose folder was removed → `folder_missing` | Listing crashes or hides the project |
 | Delete with unparseable compose builds label argv, never `-f` | Broken project cannot be deleted |
-| Delete removes folder and row; preview counts match a fixture tree | Files left behind; confirmation lies |
+| `purge=true` removes folder, volumes and row; without it the folder stays | Files left behind; existing callers lose data |
+| Preview counts match a fixture tree | The confirmation lies |
 | Offset mismatch returns the real offset | Client corrupts the file on resume |
 | Injected ENOSPC truncates to the pre-chunk offset | Resume appends after a torn chunk |
 | Completed upload lands atomically; partial never in listing | Coding agent reads a half-written file |
