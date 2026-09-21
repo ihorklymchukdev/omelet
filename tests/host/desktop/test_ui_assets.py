@@ -142,15 +142,23 @@ def test_the_step_counter_is_clamped_to_the_total():
     assert "Math.min(" in js, "step counter must be clamped to the total"
 
 
-def test_a_crashed_job_reaches_the_failed_screen():
-    """jobs.py emits {"type":"crashed"} when a worker raises; unhandled, the
-    install screen spins forever with no way out."""
+def test_the_progress_bar_tracks_completed_steps_not_the_download():
+    """The old code bound the bar to event.fraction, which is non-null only on
+    the download step, so the bar sat full through the several minutes after
+    it. Assert the specific expression, not tokens that predate the fix."""
     js = (UI / "app.js").read_text()
-    assert "'crashed'" in js or '"crashed"' in js
+    assert "window.omelet.done / window.omelet.total" in js, \
+        "the overall bar must be driven by completed steps"
 
 
-def test_the_progress_bar_is_not_driven_by_the_download_fraction_alone():
-    """fraction is non-null only on the download step, so binding the bar to
-    it leaves the bar full through the several minutes that follow."""
+def test_only_a_dead_end_removes_the_retry_button():
+    """crashed and failed are both retryable; dead_end is not (a blocking
+    check no code can fix would loop the user forever). Stripping retry for
+    all three, or for none, are both regressions."""
     js = (UI / "app.js").read_text()
-    assert "omelet.total" in js and "style.width" in js
+    retry = js.index("[data-retry]")
+    guard = js.rindex("dead_end", 0, retry)
+    # The retry removal must sit inside a branch testing dead_end specifically,
+    # not inside the shared failed/crashed branch.
+    assert "crashed" not in js[guard:retry], \
+        "retry removal must be guarded by dead_end alone"
