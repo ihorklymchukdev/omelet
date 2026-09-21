@@ -89,3 +89,39 @@ def test_open_omelet_opens_the_edge_port_not_the_agent_port(tmp_path):
     opened = []
     _api(tmp_path, READY, opened=opened).open_omelet()
     assert opened == [f"http://localhost:{constants.EDGE_PORT}"]
+
+
+class _HandoffClient:
+    def __init__(self, code=None, error=None):
+        self._code, self._error = code, error
+
+    def handoff_code(self):
+        if self._error:
+            raise self._error
+        return self._code
+
+
+def _api_with_client(tmp_path, client, opened):
+    state = InstallState(tmp_path / "install-state.json")
+    return DesktopApi(FakeProvider(), state, push=lambda event: None,
+                      probe_fn=lambda provider: READY,
+                      browser_open=opened.append,
+                      client_factory=lambda provider: client)
+
+
+def test_open_omelet_carries_a_handoff_code_in_the_fragment(tmp_path):
+    from host.core import constants
+    opened = []
+    _api_with_client(tmp_path, _HandoffClient(code="abc"), opened).open_omelet()
+    assert opened == [f"http://localhost:{constants.EDGE_PORT}/#handoff=abc"]
+
+
+def test_open_omelet_still_opens_the_page_on_an_agent_without_handoff(tmp_path):
+    # An agent older than the route answers 404; the page must still open and
+    # show its own sign-in screen.
+    from host.client import AgentError
+    from host.core import constants
+    opened = []
+    client = _HandoffClient(error=AgentError("not_found", "no route", 404))
+    _api_with_client(tmp_path, client, opened).open_omelet()
+    assert opened == [f"http://localhost:{constants.EDGE_PORT}"]

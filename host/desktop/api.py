@@ -80,9 +80,17 @@ class DesktopApi:
     # --- actions ------------------------------------------------------
 
     def open_omelet(self) -> dict:
-        # The edge port, never the agent port: this is whatever Traefik is
-        # routing, and becomes the web app for free when that ships.
-        self._open(f"http://localhost:{constants.EDGE_PORT}")
+        # The edge port, never the agent port: the page and its /api live
+        # behind Traefik.
+        url = f"http://localhost:{constants.EDGE_PORT}"
+        try:
+            code = self._client_factory(self._provider).handoff_code()
+        except Exception:
+            # An older agent, a stopped VM, an unreadable token: the bare page
+            # shows its own "open from the desktop app" screen, so opening it
+            # is always better than an error here.
+            code = None
+        self._open(f"{url}/#handoff={code}" if code else url)
         return {"ok": True}
 
     def start_install(self) -> dict:
