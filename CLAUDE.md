@@ -5,21 +5,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 A PoC CLI (`omelet`) that creates a managed Linux VM, installs Docker inside it, runs any
-`docker-compose` project in the guest, and hands back a working URL on the host.
-Windows/WSL2 is the primary platform; macOS/Lima exists for parity and is **confirmed once, still
-mostly unverified below the installer** (`host/providers/lima.py`, `host/providers/omelet.yaml` —
-both carry a banner saying exactly what is and is not confirmed). A VM created from this project's
-own config has booted under `vz` on an Apple Silicon Mac, finished the engine install, and answered
-a health check over both declared port forwards — found and inspected after the fact, not produced
-by a recorded, repeatable session, and not shown to have reached `verify` (a real HTTP 200 that
-leaves no trace of its own) or `finish`. A controlled, recorded run of `create_vm` through `verify`
-is still the gap. Both platforms have a packaged installer; on macOS, `lima_install.install()` —
-the function `omelet setup`'s `install_runtime` step wraps, not `setup` as a whole — has separately
-been run for real and installs Lima itself. `docs/lima-verification-report.md` records exactly
-what has and has not run there.
+`docker-compose` project in the guest, and hands back a working URL on the host. Windows/WSL2 is
+the primary platform. macOS/Lima is **confirmed once, still mostly unverified**: a VM from this
+project's own config booted and finished the engine install on Apple Silicon, but nobody has
+recorded a run of `create_vm` through `verify`. `host/providers/lima.py` and `omelet.yaml` carry
+banners saying what is and is not confirmed; `docs/lima-verification-report.md` has the detail.
 
-`task.md` and `docs/superpowers/plans/2026-08-14-local-runtime-poc.md` hold the original blueprint
-and task plan; `.superpowers/sdd/` holds the per-task execution ledger.
+`docs/architecture.md` is the current high-level architecture, including the gotchas list;
+`docs/roadmap.md` is the phased plan: Phase 1 (MVP) fixes what exists (repo split, no host CLI,
+SSH-only access, autostart, self-update, signing) and adds accounts, a web app, secrets and
+public URLs; Phases 2 and 3 are VPS deploys, paid plans and an own cloud. Check it before adding a host CLI command or a
+host-side guest asset.
+`docs/superpowers/` holds the original blueprint plus every design spec and plan;
+`.superpowers/sdd/` holds the per-task execution ledger.
 
 ## Architecture shape: the host is a VM shell, the engine is everything inside
 
@@ -64,13 +62,15 @@ calls changes incompatibly — that one needs a host release.
 ```bash
 pip install -e ".[dev]"
 
-python3 -m pytest -q                                    # full suite (444 tests, ~8s)
+python3 -m pytest -q                                    # full suite (~530 tests, ~7s)
 python3 -m pytest tests/agent/test_project.py -q        # one file
 python3 -m pytest -k classify -q                        # one test by name
 ```
 
-In this WSL sandbox `/tmp/pytest-of-$USER` is root-owned, which breaks `tmp_path` fixtures.
-Prefix with `TMPDIR=<writable dir>` if `tmp_path`-based tests error. Sandbox artifact, not a code bug.
+In this WSL sandbox `/tmp/pytest-of-$USER` is root-owned, which breaks `tmp_path` fixtures, and
+`tkinter` is absent, so `tests/host/test_setup_app_logic.py` and the two `selfcheck` tests in
+`tests/test_setup_cli.py` fail. Prefix with `TMPDIR=<writable dir>` and ignore those; sandbox
+artifacts, not code bugs.
 
 There is no linter or formatter configured.
 
@@ -170,117 +170,9 @@ Do not add an `if windows` anywhere else — push the difference into a provider
 
 ### Things that will bite you
 
-- **Project files travel over HTTP, not the command line.** `AgentClient.upload_directory` tars the
-  local directory into a temp file and POSTs it as a raw `application/gzip` body, skipping
-  `EXCLUDED_DIRS` (`.git`, `node_modules`, `.venv`, `__pycache__`, at any depth) and the generated
-  `.omelet/overlay.yml` — but never `.omelet/project.yml`, which is the user's own configuration. The old
-  `lifecycle.push_project` (base64 through `bash -lc`, and its ~24 KB command-line ceiling) is gone.
-- **`omelet port add/remove/list` is the only caller of `forward()`.** Without it the
-  distinct-port machinery would be dead code the Protocol still advertises. Ports the VM publishes
-  itself (the edge port) need no entry here.
-- **The host CLI holds no project logic.** Compose parsing, web detection, URLs and project state
-  are all agent-side; `host/cli.py` creates the project, uploads it, starts a job, polls, and prints
-  what comes back. Its error messages are the agent's own sentences — never a status code.
-- **The user's `docker-compose.yml` is never modified.** A generated `.omelet/overlay.yml` adds the
-  Traefik labels and the external `edge` network, and compose is invoked with both `-f` files.
-  `compose ps` is invoked with only the base file.
-- **`wsl.exe` output encoding is split**: meta commands (`-l`, `--version`, `--import`) emit UTF-16LE,
-  command passthrough emits UTF-8. `decode_wsl()` sniffs NUL bytes to pick. Use `_meta()` for meta
-  commands and `exec()` for passthrough — mixing them corrupts output.
-- **Existing VMs update only when the engine is installed again.** Setup skips an installed engine;
-  the connect step's token repair and a fresh VM are the only reinstall paths today (self-update is
-  deferred — `docs/future/engine-self-update.md`). Accounts created after install get no skills
-  until then.
-- **`npx` inside `install.sh`'s account loop must read `</dev/null`**: the loop reads accounts from
-  stdin, and anything else reading it eats the remaining accounts.
-- **Nothing under `agent/` or `engine/` is bundled into the frozen host binary**, and
-  `tests/host/test_frozen_bundle.py` fails if a `datas` entry reappears — for *every* spec under
-  `packaging/`, not just the platform you are on. The VM pulls the image and fetches the engine
-  itself; only the `nginx-hello` smoke test and `omelet.yaml` ship with the host.
-- **The install step list is built from the provider, not from the platform.** Beyond the
-  `VmProvider` Protocol, `default_steps` reads six members off whichever provider it was handed:
-  `image()`, `register_resume()`, `location`, `terminal`, `remediable` and `runtime()`.
-  Three of them **remove steps**: `image()` returning None means the VM platform fetches its own
-  guest image (Lima does, from `omelet.yaml`) and `fetch_image` disappears; `remediable = False`
-  means the host OS has nothing to turn on and `remediate`/`reboot_gate` disappear with it;
-  `runtime()` returning None means the VM platform ships with the host OS and `install_runtime`
-  disappears — a value names the step and installs what the platform needs (Lima, on macOS). A
-  step that would be shown and skipped is a step describing the other platform — the mac setup
-  window listed "Turning on Windows features". `access()` is how the status screen shows a user
-  the way into the VM without knowing what SSH is. `tests/host/test_provider_surface.py::test_
-  every_provider_answers_what_the_install_list_asks_of_it` holds both providers to the surface;
-  LimaProvider was missing two of these, so `omelet setup` on macOS died with an `AttributeError`
-  before its first step.
-- **A Mac app gets no shell PATH.** LaunchServices starts one with
-  `/usr/bin:/bin:/usr/sbin:/sbin`, so Homebrew's prefix is absent and `shutil.which("limactl")`
-  answers no inside `Omelet.app` on a machine where `brew install lima` just succeeded. Setup now
-  installs its own pinned Lima into `~/.local/share/omelet/lima` (`host/providers/lima_install.py`),
-  and `find_limactl()` prefers that managed copy over anything on the PATH or in a Homebrew prefix
-  — a user's own Lima is never touched, and every assumption the provider makes about Lima's
-  on-disk layout is an assumption about the version setup put there. The Homebrew-prefix fallback
-  stays for a source checkout that has never run setup. The PATH finding still holds for anything
-  else the host ever shells out to by name on macOS; `ssh` is safe only because it lives in
-  `/usr/bin`.
-- **The two mac executables must not differ only in case.** `Omelet` and `omelet` are one file on a
-  default macOS filesystem: COLLECT wrote both into `Contents/MacOS`, the second replaced the first,
-  and the app launched the CLI windowlessly. The GUI binary is `omelet-setup` for that reason, and
-  `build.sh` counts the binaries rather than trusting the build. `BUNDLE` also infers
-  `CFBundleExecutable` (from COLLECT's sorted table) and `LSBackgroundOnly` (from the console flag)
-  wrongly here — both are set explicitly in `info_plist` and asserted after the build.
-- **The host and the agent each own a `constants.py`**, because nothing under `host/` may import
-  `agent/`. `tests/test_constants_agree.py` holds every name declared in both modules equal — add
-  a shared constant to one and it must go into the other with the same value.
-- **The agent container runs as a non-root user** whose only shared credential with the VM is the
-  `docker` group (`stack.yml`'s `group_add`). `engine/install.sh` therefore `chgrp`s `/opt/omelet` to
-  `docker` and sets setgid on its directories *before* `compose up`; skip that and the agent
-  cannot open `/opt/omelet/state.db` and `restart: always` crash-loops it.
-- **The agent holds no project paths of its own.** `agent/core/lifecycle.py` builds every compose
-  `-f` path from the directory the API hands it (`Path(config.projects_root) / project_id`), never
-  from `constants.GUEST_PROJECTS` — the two used to disagree, so `OMELET_PROJECTS_ROOT` uploaded
-  into one directory and ran compose against another. `compose_up` returns `(status, detail)`;
-  URLs are built in `app.py`, the only place holding the configured edge port.
-- **Guest failures must stay loud.** `provider.exec()` returns a `Completed` and never raises, so
-  every caller has to check `.ok` itself. `bootstrap.py` routes its calls through `_run()`, which
-  raises `BootstrapError` carrying the guest's stderr, and re-checks `engine.version` afterwards to catch a
-  script that exited 0 without finishing. Dropping an `exec` result turns a multi-minute provisioning
-  failure into a silent `VM ready.` — that bug already happened once.
-- **`forward(guest, host)` is a no-op when the ports are equal**, on both platforms: WSL2
-  localhostForwarding and Lima's `portForwards` already cover the edge port, and a proxy on top
-  would add a hop and, on Windows, a UAC prompt. Distinct ports are real forwards — WSL2 writes a
-  `netsh interface portproxy` rule between two loopback ports through the installer's existing
-  elevator (never a second UAC pathway), Lima asks its ssh control master for a tunnel. Both
-  delete-then-add, so a repeat is idempotent without parsing a localized error. `forwards()` is
-  netsh's registry table on Windows and always empty on Lima, where the tunnels die with the VM —
-  the asymmetry is the mechanism, not a gap.
-- **URLs** are `http://<project-id>.127-0-0-1.sslip.io:39080`. With multiple web services, the first
-  keeps the bare project host and the rest get a `<service>.` subdomain prefix — see
-  `project.load_project` / `overlay.host_for`.
-- **`classify()` tolerates both JSON-array and NDJSON `docker compose ps --format json` output** —
-  the format differs across compose versions.
-- **`ProjectLocks` covers every write to a project**, lifecycle *and* files: an upload landing
-  between the overlay being written and compose reading `docker-compose.yml` starts a project from
-  two versions of itself. A held project answers 409 `project_busy`; the host client retries that
-  itself (`_while_busy`), rewinding the archive per attempt. Reads are never locked.
-- **`install.verify_step` is the installer's smoke test and a real HTTP 200**, not "the job
-  succeeded": it drives `host/provision/nginx-hello` through `AgentClient` under the reserved id
-  `omelet-selftest` (never derived from the template's folder name, or a re-run could tear down a
-  user project), polls the URL for `READY_TIMEOUT` seconds because Traefik publishes a router a beat
-  after the container starts, and deletes the project in a `finally`. `connect_step` runs just before it: an agent whose `/health` `api` is not in
-  `constants.SUPPORTED_API` is reported in one sentence and never repaired, and an agent answering
-  `agent_unconfigured` or `unauthorized` gets one `bootstrap(repair=True)` — `/health` is exempt from
-  the token check, so `restart: always` never restarts a container refusing every other route, and
-  the agent reads its token **once, at startup**, which is why repair recreates the container — then
-  the host re-reads the token and dials again.
-- **The setup window is two screens, and the app opens on the status one.** `host/setup_app/app.py`
-  routes on `host/core/status.py::probe` — VM exists, guest reachable, `engine.version` present,
-  agent API supported — and starts the wizard by itself only when nothing is provisioned. `theme.py`
-  picks light or dark from the luminance of the ttk background rather than by asking which OS this
-  is, which is what keeps the no-platform-branching invariant true in the UI layer. Fonts are
-  tkinter's named system fonts; a hardcoded family name is how every label came to ask macOS for
-  "Segoe UI".
-- CLI command bodies use **function-local imports** deliberately (keeps `omelet --help` and the
-  smoke test fast, and avoids importing provider code on unsupported hosts). `cli._provider_factory`
-  is a module attribute so tests can monkeypatch the provider.
+Moved to `docs/architecture.md`, section 9. Read that section before touching the providers,
+the upload path, `install.sh`, the packaging specs or the agent's locking. Add a new entry there,
+not here.
 
 ## Testing conventions
 
