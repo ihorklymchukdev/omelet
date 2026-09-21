@@ -1,6 +1,14 @@
+import re
+
 from fastapi.testclient import TestClient
 
 from tests.agent.conftest import BROWSER
+
+ORIGIN = {"Origin": "http://localhost:41080"}
+
+# The only /api routes the auth middleware lets through with no session.
+OPEN_API_ROUTES = {("GET", "/api/health"), ("HEAD", "/api/health"),
+                   ("POST", "/api/session")}
 
 
 def _browser(env, **headers):
@@ -51,3 +59,26 @@ def test_the_bearer_mount_is_unchanged_by_a_browser_host(env):
     # allowlist must never apply to the bearer mount.
     resp = env.client.get("/projects", headers={"Host": "anything:1"})
     assert resp.status_code == 200
+
+
+def test_every_api_route_requires_a_session_except_the_open_ones(env):
+    # Hardcoding a handful of paths lets a future route slip onto the open
+    # list unnoticed with the suite still green -- modelled on the bearer
+    # sweep in test_api_auth.py, but over the /api mount and its session
+    # check instead of the bearer token.
+    client = _browser(env, **ORIGIN)
+    checked = 0
+    for route in env.app.routes:
+        path = getattr(route, "path", None)
+        methods = getattr(route, "methods", None) or set()
+        if not path or not path.startswith("/api/"):
+            continue
+        concrete = re.sub(r"\{[^}]+\}", "x", path)
+        for method in methods - {"OPTIONS"}:
+            if (method, concrete) in OPEN_API_ROUTES:
+                continue
+            checked += 1
+            resp = client.request(method, concrete)
+            assert resp.status_code == 401, (
+                f"{method} {concrete} answered {resp.status_code} without a session")
+    assert checked >= 15, "the sweep found fewer routes than this app actually has"

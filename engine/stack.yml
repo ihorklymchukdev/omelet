@@ -39,6 +39,10 @@ services:
   agent:
     image: ${OMELET_AGENT_IMAGE:-ghcr.io/ihorklymchukdev/omelet-agent:0.2.0}
     restart: always
+    # No `hostname:` here -- the agent looks itself up with
+    # `docker inspect $HOSTNAME` to remove root-owned project files, and
+    # that only resolves when $HOSTNAME is still the container id compose
+    # assigns by default.
     # 0.0.0.0, not 127.0.0.1: WSL2's localhostForwarding only surfaces guest
     # sockets bound to all interfaces. That also means every other container
     # in the VM can reach an agent that holds the Docker socket -- Task 8
