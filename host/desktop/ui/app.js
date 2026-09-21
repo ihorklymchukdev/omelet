@@ -54,6 +54,13 @@ function showNotice(message) {
   document.getElementById('notice').hidden = false;
 }
 
+// Every bridge call is a promise. A rejected one -- JobBusy from a double
+// click, or a provider that threw -- would otherwise make the button do
+// nothing at all, with nothing on screen to explain it.
+window.addEventListener('unhandledrejection', (event) => {
+  showNotice(event.reason && event.reason.message ? event.reason.message : event.reason);
+});
+
 const ACTIONS = {
   'open-omelet': () => api().open_omelet(),
   'go-home': () => refresh(),
@@ -180,12 +187,17 @@ ACTIONS['start-over'] = async () => { await api().reset_install(); refresh(); };
 
 // --- Import ---------------------------------------------------------
 
-// Set by choose-folder, read by do-import. Cleared by nothing else: leaving
-// the import screen without importing just abandons it, same as any other
-// unsaved form.
+// Set by choose-folder, read by do-import, cleared when Import is opened --
+// otherwise a user who opens Import and clicks "Bring it in" without
+// choosing a folder would re-import whatever they picked last time.
 let pending = null;
 
-ACTIONS['import'] = () => show('import', { path: '', name: '', summary: '' });
+ACTIONS['import'] = () => {
+  // Reopening Import must not re-import whatever was chosen last time:
+  // do-import reads pending, and the screen alone doesn't show a stale path.
+  pending = null;
+  show('import', { path: '', name: '', summary: '' });
+};
 
 ACTIONS['choose-folder'] = async () => {
   const chosen = await api().choose_folder();
@@ -314,6 +326,10 @@ window.omelet.handlers.vm = (event) => {
 };
 window.omelet.handlers.repair = (event) => {
   if (event.type === 'progress') return;
+  // 'stage' events (bootstrap, connect) mark progress mid-repair, not the
+  // end of the job -- refreshing on one re-renders the screen as though
+  // repair did nothing, and a second click then rejects on JobBusy.
+  if (event.type === 'stage') return;
   if (event.type === 'crashed') showNotice(event.message);
   refresh();
 };

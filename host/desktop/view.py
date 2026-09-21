@@ -1,8 +1,9 @@
 """Pure mappings from host/core values to what a screen needs.
 
-Everything here is a function of its arguments. No provider, no client, no
-clock, no I/O -- which is what makes this the only module in host/desktop
-worth testing, and why api.py stays thin enough to read in one sitting.
+No provider and no client -- `inspect_folder()` does walk the local
+filesystem, but nothing here ever reaches the VM or the network. That is
+what makes this the only module in host/desktop worth testing, and why
+api.py stays thin enough to read in one sitting.
 
 No user-facing copy lives here. These functions return state identifiers;
 ui/index.html holds the words, so the design board stays the single source

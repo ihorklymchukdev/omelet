@@ -49,8 +49,18 @@ class DesktopApi:
     # --- what to draw -------------------------------------------------
 
     def home(self) -> dict:
+        """Not idempotent: the first call after a resume consumes the flag.
+
+        `resumed` is one-shot. RunOnce relaunches the app with `--resume`
+        after a restart, and the first screen consumes that to continue the
+        install. Left set, every later refresh() would start the install
+        again -- and since most steps are always_run, that is a full
+        re-install loop with no way back to Home.
+        """
         readiness = self._probe(self._provider)
         route, state = route_for(readiness)
+        resumed = getattr(self, "resumed", False)
+        self.resumed = False
         return {
             "route": route,
             "state": state,
@@ -64,7 +74,7 @@ class DesktopApi:
             "problem": readiness.problem,
             # Set by __main__.run() when RunOnce reopened the window after a
             # restart, so the install screen can explain why it appeared.
-            "resumed": getattr(self, "resumed", False),
+            "resumed": resumed,
         }
 
     # --- actions ------------------------------------------------------

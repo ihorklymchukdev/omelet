@@ -130,7 +130,8 @@ Do not add an `if windows` anywhere else — push the difference into a provider
   `nginx-hello` smoke-test project (`tests/host/test_no_guest_assets.py`).
 - `host/desktop/` — the GUI, a native window over the system webview (WebView2 on Windows,
   WKWebView on macOS) that replaced the old tkinter wizard. `view.py` is pure mappings from
-  `host/core` values to what a screen needs — no provider, no client, no I/O — which is what makes
+  `host/core` values to what a screen needs — no provider, no client, nothing reaching the VM or
+  the network (it does walk the local filesystem in `inspect_folder()`) — which is what makes
   it the only module here worth unit-testing. `api.py` is the only object JavaScript can reach, so
   it stays a thin, fixed list of methods taking scalars, with every real decision pushed into
   `view.py`. `jobs.py` runs one slow job at a time on a worker thread: `InstallState` is a JSON

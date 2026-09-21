@@ -73,6 +73,17 @@ def test_home_reports_resumed_when_the_bridge_was_relaunched(tmp_path):
     assert api.home()["resumed"] is True
 
 
+def test_the_resume_flag_is_consumed_by_the_first_home_call(tmp_path):
+    """RunOnce relaunches with --resume after a restart and the first screen
+    starts the install. If the flag survived, every later refresh would start
+    it again -- and most steps are always_run, so that is an endless
+    re-install the user cannot escape."""
+    api = _api(tmp_path, READY)
+    api.resumed = True
+    assert api.home()["resumed"] is True
+    assert api.home()["resumed"] is False
+
+
 def test_open_omelet_opens_the_edge_port_not_the_agent_port(tmp_path):
     from host.core import constants
     opened = []
