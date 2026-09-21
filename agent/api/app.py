@@ -448,6 +448,12 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
 
     def finish_upload(upload_id: str) -> dict:
         up = uploads.get(upload_id)
+        if state.get_project(up.project_id) is None:
+            # The project was deleted mid-upload: writing the file now would
+            # resurrect a folder the user already asked Omelet to remove.
+            uploads.cancel(upload_id)
+            raise ApiError("project_not_found",
+                           f"no project with id '{up.project_id}'", 404)
         with locks.held(up.project_id):
             try:
                 uploads.finish(upload_id, resolve_path(up.project_id, up.path))

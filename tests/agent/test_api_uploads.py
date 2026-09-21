@@ -81,6 +81,17 @@ def test_one_folder_level_is_listed_with_counts(blog):
         ("data", "folder", 1, None), ("README.md", "file", None, 2)]
 
 
+def test_finishing_an_upload_for_a_deleted_project_is_refused(blog):
+    uid = _start(blog).json()["upload_id"]
+    _patch(blog, uid, 0, b"abc")
+    assert blog.client.delete("/projects/blog").status_code == 200
+    resp = _patch(blog, uid, 3, b"def")
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "project_not_found"
+    assert not (blog.config.projects_root / "blog" / "data" / "a.bin").exists()
+    assert blog.client.get(f"/uploads/{uid}").status_code == 404
+
+
 def test_a_download_is_offered_as_an_attachment(blog):
     root = blog.config.projects_root / "blog"
     root.mkdir(parents=True, exist_ok=True)
