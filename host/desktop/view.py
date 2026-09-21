@@ -10,6 +10,9 @@ for them.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
+from host.client import EXCLUDED_DIRS, EXCLUDED_FILES
 from host.core import constants
 from host.core.status import Readiness
 
@@ -110,11 +113,6 @@ def terminal_event(exc: BaseException | None) -> dict:
     if isinstance(exc, InstallError):
         return {"type": "failed", "message": exc.message, "action": exc.action}
     return {"type": "failed", "message": f"{exc}", "action": ""}
-
-
-from pathlib import Path
-
-from host.client import EXCLUDED_DIRS, EXCLUDED_FILES
 
 
 def inspect_folder(path) -> dict:
