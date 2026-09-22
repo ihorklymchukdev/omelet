@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes } from "react-router";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router";
 import { createQueryClient } from "./api/queryClient";
 import { boot, type BootResult } from "./boot/boot";
 import { Kit } from "./screens/Kit";
 import { NeedsUpdate } from "./screens/NeedsUpdate";
 import { NotAnswering } from "./screens/NotAnswering";
-import { Projects } from "./screens/Projects";
+import { ProjectList } from "./screens/list/ProjectList";
+import { ProjectPage } from "./screens/project/ProjectPage";
 import { SignedOut } from "./screens/SignedOut";
+import { WrongHost } from "./screens/WrongHost";
 import { Shell } from "./shell/Shell";
 
 export function App({ handoff }: { handoff: string | null }) {
@@ -46,8 +48,10 @@ export function App({ handoff }: { handoff: string | null }) {
           <BrowserRouter>
             <Shell>
               <Routes>
+                <Route path="/" element={<ProjectList />} />
+                <Route path="/p/:id" element={<ProjectPage />} />
                 <Route path="/kit" element={<Kit />} />
-                <Route path="*" element={<Projects />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </Shell>
           </BrowserRouter>
@@ -59,5 +63,7 @@ export function App({ handoff }: { handoff: string | null }) {
       return <NeedsUpdate agentApi={result.agentApi} onRetry={run} />;
     case "notAnswering":
       return <NotAnswering onRetry={run} />;
+    case "wrongHost":
+      return <WrongHost onRetry={run} />;
   }
 }

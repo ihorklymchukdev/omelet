@@ -9,3 +9,4 @@ export { PromptCard } from "./components/PromptCard";
 export { RowCard } from "./components/RowCard";
 export { StateBadge, type ProjectState } from "./components/StateBadge";
 export { SyncMarker, type SyncState } from "./components/SyncMarker";
+export { TextField } from "./components/TextField";

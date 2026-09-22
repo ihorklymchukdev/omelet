@@ -77,8 +77,23 @@ describe("boot", () => {
   });
 
   it("is notAnswering for any other refusal of the session check", async () => {
-    const { fetch } = agent({ "GET /api/health": HEALTHY, "GET /api/session": refusal(403, "forbidden_host") });
+    const { fetch } = agent({ "GET /api/health": HEALTHY, "GET /api/session": refusal(500, "internal_error") });
     expect(await boot({ fetch, handoff: null })).toEqual({ kind: "notAnswering" });
+  });
+
+  it("is wrongHost when the agent refuses the page's address", async () => {
+    const { fetch } = agent({ "GET /api/health": refusal(403, "forbidden_host") });
+    expect(await boot({ fetch, handoff: null })).toEqual({ kind: "wrongHost" });
+  });
+
+  it("is wrongHost when the agent refuses the page's origin on sign-in", async () => {
+    const { fetch } = agent({ "GET /api/health": HEALTHY, "POST /api/session": refusal(403, "forbidden_origin") });
+    expect(await boot({ fetch, handoff: "code" })).toEqual({ kind: "wrongHost" });
+  });
+
+  it("is wrongHost when the session check is refused for the address", async () => {
+    const { fetch } = agent({ "GET /api/health": HEALTHY, "GET /api/session": refusal(403, "forbidden_host") });
+    expect(await boot({ fetch, handoff: null })).toEqual({ kind: "wrongHost" });
   });
 
   it("is notAnswering when the handoff fails for a reason other than a spent code", async () => {

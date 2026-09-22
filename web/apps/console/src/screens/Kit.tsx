@@ -10,6 +10,7 @@ import {
   RowCard,
   StateBadge,
   SyncMarker,
+  TextField,
   cx,
 } from "@omelet/ui";
 import s from "./Kit.module.css";
@@ -40,6 +41,14 @@ function Column({ theme }: { theme: "light" | "dark" }) {
         <Button variant="quiet">Stop</Button>
         <Button variant="danger">Take a look</Button>
         <Button disabled>Not yet</Button>
+      </Section>
+      <Section title="Text field">
+        <div className={s.wide}>
+          <TextField label="Name" value="weekend shop" onChange={() => {}} hint={<>It'll be called <strong>weekend-shop</strong></>} />
+        </div>
+        <div className={s.wide}>
+          <TextField label="Name" value="recipe-box" onChange={() => {}} error="There's already a project called recipe-box." />
+        </div>
       </Section>
       <Section title="State badges">
         <StateBadge state="running" />

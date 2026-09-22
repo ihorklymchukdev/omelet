@@ -7,16 +7,18 @@ export function Collapsible({
   aside,
   boxed = false,
   defaultOpen = false,
+  onToggle,
   children,
 }: {
   summary: ReactNode;
   aside?: ReactNode;
   boxed?: boolean;
   defaultOpen?: boolean;
+  onToggle?: (open: boolean) => void;
   children: ReactNode;
 }) {
   return (
-    <details className={cx(s.details, boxed && s.boxed)} open={defaultOpen || undefined}>
+    <details className={cx(s.details, boxed && s.boxed)} open={defaultOpen || undefined} onToggle={onToggle && ((event) => onToggle(event.currentTarget.open))}>
       <summary className={s.summary}>
         {summary}
         <svg className={s.chevron} width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">

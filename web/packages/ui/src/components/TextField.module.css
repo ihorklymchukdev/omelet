@@ -1,0 +1,11 @@
+.field { display: flex; flex-direction: column; gap: 7px; }
+.label { font: 600 13.5px var(--font-body); color: var(--ink-2); }
+.input {
+  padding: 12px 14px; border-radius: 13px; border: 1px solid var(--line-2); background: var(--surface);
+  font: 500 16px var(--font-body); color: var(--ink);
+}
+.input:focus-visible { outline: 2px solid var(--yolk-deep); outline-offset: 1px; }
+.invalid { border-color: var(--paprika); }
+.hint { margin: 0; font-size: 14px; color: var(--ink-2); }
+.hint strong { font-family: var(--font-mono); font-weight: 500; color: var(--ink); }
+.error { margin: 0; font-size: 14px; color: var(--paprika); }

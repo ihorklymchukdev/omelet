@@ -76,7 +76,7 @@ The browser UI lives in `web/` (npm workspace, Node ≥ 22.22):
 
 ```bash
 cd web && npm install
-npm run dev          # Vite + an in-browser mock agent; ?scenario=expired|handoff-spent|old-agent|down|lost-mid-use
+npm run dev          # Vite + an in-browser mock agent; ?scenario=empty|expired|handoff-spent|old-agent|down|lost-mid-use|wrong-host
 npm test             # Vitest
 npm run typecheck
 npm run build && npm run check-offline
@@ -212,6 +212,9 @@ Do not add an `if windows` anywhere else — push the difference into a provider
   `tests/test_constants_agree.py`. Assets always ship as files — the CSP refuses `data:` fonts
   (`build.assetsInlineLimit: 0` in `apps/console/vite.config.ts`). The page must work offline —
   `scripts/check-offline.mjs` fails the image build on any load from another host.
+  `projects/view.ts` maps the agent's `status`/`problem`/`job`/`empty` to one screen state for both the
+  list and the project page; `projects/slugify.ts` mirrors the agent's `_slug`, held equal by
+  `tests/fixtures/slugify-cases.json` (read by Vitest and `tests/agent/test_slug_cases.py`).
 
 ### Things that will bite you
 

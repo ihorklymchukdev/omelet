@@ -23,6 +23,7 @@ export interface Api {
   get<T>(path: string): Promise<T>;
   post<T>(path: string, body?: unknown): Promise<T>;
   del<T>(path: string): Promise<T>;
+  text(path: string): Promise<string>;
 }
 
 function agentError(body: unknown): { code: string; message: string } | null {
@@ -43,7 +44,7 @@ function parse(text: string): { ok: true; value: unknown } | { ok: false } {
 }
 
 export function createApi(fetchImpl: typeof fetch, { timeoutMs = 10_000 }: { timeoutMs?: number } = {}): Api {
-  async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  async function send(method: string, path: string, body?: unknown): Promise<{ status: number; text: string }> {
     let response: Response;
     try {
       // Origin is left to the browser: the agent refuses a non-GET without it.
@@ -60,15 +61,20 @@ export function createApi(fetchImpl: typeof fetch, { timeoutMs = 10_000 }: { tim
     } catch {
       throw new ApiError("unreachable", "Omelet's service isn't answering", 0);
     }
-    const parsed = parse(await response.text());
+    const text = await response.text();
     if (!response.ok) {
+      const parsed = parse(text);
       const error = parsed.ok ? agentError(parsed.value) : null;
       if (error) throw new ApiError(error.code, error.message, response.status);
       throw new ApiError("unexpected", `unexpected answer (${response.status})`, response.status);
     }
-    if (!parsed.ok) {
-      throw new ApiError("unexpected", "the answer wasn't JSON", response.status);
-    }
+    return { status: response.status, text };
+  }
+
+  async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+    const { status, text } = await send(method, path, body);
+    const parsed = parse(text);
+    if (!parsed.ok) throw new ApiError("unexpected", "the answer wasn't JSON", status);
     return parsed.value as T;
   }
 
@@ -76,6 +82,7 @@ export function createApi(fetchImpl: typeof fetch, { timeoutMs = 10_000 }: { tim
     get: (path) => request("GET", path),
     post: (path, body) => request("POST", path, body),
     del: (path) => request("DELETE", path),
+    text: async (path) => (await send("GET", path)).text,
   };
 }
 

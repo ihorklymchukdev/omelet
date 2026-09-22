@@ -36,6 +36,7 @@ export function PromptCard({
   aside?: ReactNode;
 }) {
   const [copied, setCopied] = useState(false);
+  const [refused, setRefused] = useState(false);
   const body = useRef<HTMLPreElement>(null);
 
   useEffect(() => {
@@ -48,8 +49,10 @@ export function PromptCard({
     try {
       await navigator.clipboard.writeText(prompt);
       setCopied(true);
+      setRefused(false);
     } catch {
       // Clipboard access can be refused; leave the prompt selected for Ctrl+C.
+      setRefused(true);
       const node = body.current;
       const selection = window.getSelection();
       if (!node || !selection) return;
@@ -75,7 +78,9 @@ export function PromptCard({
           ) : (
             <Button variant="primary" size="lg" onClick={copy}>{COPY}Copy the prompt</Button>
           )}
-          <span className={s.hint}>{hint}</span>
+          <span className={s.hint} role={refused ? "alert" : undefined}>
+            {refused ? "Couldn't copy — the text is selected, press Ctrl+C (⌘C on a Mac)." : hint}
+          </span>
         </div>
       </div>
     </section>
