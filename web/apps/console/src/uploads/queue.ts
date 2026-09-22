@@ -59,6 +59,7 @@ export class UploadQueue {
   private readonly listeners = new Set<() => void>();
   private active: { key: string; controller: AbortController } | null = null;
   private running = false;
+  private disposed = false;
   private runPromise: Promise<void> | null = null;
   private counter = 0;
   private readonly api: UploadApi;
@@ -160,8 +161,12 @@ export class UploadQueue {
 
   adoptPending(projectId: string, uploads: readonly PendingUpload[]): void {
     const held = new Set(this.items.map((i) => i.uploadId));
+    // An upload whose start is still in flight has no id here yet, but the agent already lists it.
+    const starting = new Set(
+      this.items.filter((i) => i.state === "going" && i.uploadId === null).map((i) => `${joinPath(i.dir, i.name)}\0${i.fingerprint}`),
+    );
     const found: UploadItem[] = uploads
-      .filter((u) => !held.has(u.id))
+      .filter((u) => !held.has(u.id) && !starting.has(`${u.path}\0${u.fingerprint}`))
       .map((u) => ({
         key: u.id,
         projectId,
@@ -193,7 +198,7 @@ export class UploadQueue {
       const { uploads } = await this.api.pending(projectId);
       this.adoptPending(projectId, uploads);
     } catch (error) {
-      if (isSessionLost(error)) this.onSessionLost(error.code);
+      if (isSessionLost(error)) this.lost(error.code);
     }
   }
 
@@ -203,7 +208,7 @@ export class UploadQueue {
       ({ free_bytes: free } = await this.api.disk());
     } catch (error) {
       if (!isSessionLost(error)) throw error;
-      this.onSessionLost(error.code);
+      this.lost(error.code);
       return false;
     }
     let moved = false;
@@ -222,6 +227,16 @@ export class UploadQueue {
     return moved;
   }
 
+  get isDisposed(): boolean {
+    return this.disposed;
+  }
+
+  // Aborts the chunk in flight; a start or status already sent is left to finish unheard.
+  dispose(): void {
+    this.disposed = true;
+    this.active?.controller.abort();
+  }
+
   private abort(key: string): void {
     if (this.active?.key === key) this.active.controller.abort();
   }
@@ -233,7 +248,7 @@ export class UploadQueue {
   }
 
   private kick(): void {
-    if (this.running) return;
+    if (this.running || this.disposed) return;
     this.running = true;
     this.runPromise = this.run();
   }
@@ -243,7 +258,7 @@ export class UploadQueue {
     // so an add() arriving right after can never be missed.
     try {
       for (;;) {
-        if (this.held) return;
+        if (this.disposed || this.held) return;
         const next = this.items.find((i) => i.state === "waiting");
         if (!next) return;
         await this.send(next.key);
@@ -263,7 +278,7 @@ export class UploadQueue {
     try {
       for (;;) {
         const item = this.find(key);
-        if (!item || item.state !== "going") return;
+        if (this.disposed || !item || item.state !== "going") return;
         try {
           if (item.uploadId === null) {
             const answer = await this.api.start(item.projectId, {
@@ -326,7 +341,7 @@ export class UploadQueue {
             // A pause can't abort start/status, so the write must not undo it —
             // but the app still needs to hear about the lost session either way.
             if (this.find(key)?.state === "going") this.update(key, { state: "stalled" });
-            this.onSessionLost(error.code);
+            this.lost(error.code);
             return;
           }
           switch (error.code) {
@@ -370,6 +385,16 @@ export class UploadQueue {
               restarted = true;
               this.update(key, { uploadId: null, offset: 0, samples: [], finishing: false });
               continue;
+            case "permission_denied":
+              if (this.find(key)?.state !== "going") return;
+              // The finish was refused after every byte was staged; drop them so a
+              // reload doesn't bring the upload back as closed at 100%.
+              if (item.uploadId !== null) {
+                void this.api.cancel(item.uploadId).catch(() => {});
+                this.update(key, { uploadId: null });
+              }
+              this.fail(key, error);
+              return;
             default:
               if (this.find(key)?.state !== "going") return;
               this.fail(key, error);
@@ -380,6 +405,10 @@ export class UploadQueue {
     } finally {
       if (this.active?.controller === controller) this.active = null;
     }
+  }
+
+  private lost(reason: SessionLoss): void {
+    if (!this.disposed) this.onSessionLost(reason);
   }
 
   private land(key: string): void {

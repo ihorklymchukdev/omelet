@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../api/client";
 import { fakeAgent, file, until } from "./fakeAgent";
-import { UploadQueue, type UploadItem } from "./queue";
+import { fits, UploadQueue, type UploadItem } from "./queue";
 import type { PendingUpload } from "./uploadApi";
 
 function setup() {
@@ -55,6 +55,15 @@ describe("UploadQueue protocol", () => {
     expect(item(a)).toMatchObject({ state: "noRoom", offset: 4 });
     expect(item(b).state).toBe("waiting");
     expect(agent.calls.some((c) => c.startsWith("start b.txt"))).toBe(false);
+  });
+
+  it("marks a refused start noRoom with the agent's free space, and still runs the next file", async () => {
+    const { agent, queue, item } = setup();
+    agent.failOn("start", 1, new ApiError("not_enough_space", "too big", 507, { free_bytes: 5 }));
+    const [a, b] = queue.add("p", "", [file("a.txt", "abcdefghij"), file("b.txt", "xy")]);
+    await queue.settled();
+    expect(item(a)).toMatchObject({ state: "noRoom", freeBytes: 5, uploadId: null });
+    expect(item(b).state).toBe("done");
   });
 
   it("sends one file at a time, in the order they were added", async () => {
@@ -195,6 +204,16 @@ describe("UploadQueue controls", () => {
     expect(item(key).state).toBe("done");
   });
 
+  it("starts nothing more once disposed, so a signed-out page stops uploading", async () => {
+    const { agent, queue } = setup();
+    agent.state.hangAt = 1;
+    queue.add("p", "", [file("a.txt", "abcdefghij"), file("b.txt", "xy")]);
+    await until(() => agent.calls.length === 2);
+    queue.dispose();
+    await queue.settled();
+    expect(agent.calls.some((c) => c.startsWith("start b.txt"))).toBe(false);
+  });
+
   const pending = (over: Partial<PendingUpload> = {}): PendingUpload => ({
     id: "srv1", project_id: "p", path: "data/a.txt", size: 10, offset: 4,
     fingerprint: "a.txt:10:7", replace: false, updated_at: 0, ...over,
@@ -223,6 +242,26 @@ describe("UploadQueue controls", () => {
     const { queue } = setup();
     queue.adoptPending("p", [pending()]);
     queue.adoptPending("p", [pending()]);
+    expect(queue.snapshot()).toHaveLength(1);
+  });
+
+  it("doesn't add a reloaded row for the upload its own start is still creating", async () => {
+    let answerStart: ((answer: { upload_id: string; offset: number; size: number; done: boolean }) => void) | null = null;
+    const queue = new UploadQueue({
+      api: {
+        start: () => new Promise((resolve) => (answerStart = resolve)),
+        patch: () => new Promise(() => {}),
+        status: async () => {
+          throw new Error("not used by this test");
+        },
+        cancel: async () => ({}),
+        pending: async () => ({ uploads: [] }),
+        disk: async () => ({ free_bytes: 0, total_bytes: 0 }),
+      },
+    });
+    queue.add("p", "data", [file("a.txt", "abcdefghij", 7)]);
+    await until(() => answerStart !== null);
+    queue.adoptPending("p", [pending({ offset: 0 })]);
     expect(queue.snapshot()).toHaveLength(1);
   });
 
@@ -337,5 +376,12 @@ describe("UploadQueue controls", () => {
     await queue.settled();
     expect(lost).toEqual(["session_expired"]);
     expect(item(key).state).toBe("paused");
+  });
+});
+
+describe("fits", () => {
+  it("keeps a full 1 GiB free after the file, not a byte less", () => {
+    expect(fits(10, 10 + 1024 ** 3)).toBe(true);
+    expect(fits(11, 10 + 1024 ** 3)).toBe(false);
   });
 });
