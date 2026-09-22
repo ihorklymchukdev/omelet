@@ -1,6 +1,7 @@
 import { delay, http, HttpResponse } from "msw";
 import { slugify } from "../projects/slugify";
 import type { Discovered, Job, JobKind, Project } from "../projects/types";
+import { baseName, joinPath, parentOf } from "../uploads/paths";
 
 export const SCENARIOS = [
   "ok",
@@ -11,6 +12,11 @@ export const SCENARIOS = [
   "down",
   "lost-mid-use",
   "wrong-host",
+  "uploads",
+  "full",
+  "fills-up",
+  "busy",
+  "locked",
 ] as const;
 export type Scenario = (typeof SCENARIOS)[number];
 
@@ -60,7 +66,7 @@ const notFound = (id: string) => refuse("project_not_found", `no project called 
 const busy = () => refuse("project_busy", "this project is busy with another job", 409);
 
 export function handlersFor(scenario: Scenario) {
-  let signedIn = scenario === "ok" || scenario === "empty" || scenario === "old-agent" || scenario === "lost-mid-use";
+  let signedIn = !["expired", "handoff-spent", "down", "wrong-host"].includes(scenario);
   const projects = new Map<string, Project>();
   const discovered: Discovered[] = [];
   const jobs = new Map<string, Job>();
@@ -139,6 +145,66 @@ export function handlersFor(scenario: Scenario) {
       { name: "Tax Stuff", seen_at: minutesAgo(130), adoptable: false, reason: "bad_name" },
     );
   }
+
+  const GB = 1024 ** 3;
+  interface Node { kind: "file" | "folder"; size: number; modified: number }
+  const trees = new Map<string, Map<string, Node>>();
+  const hoursAgo = (n: number) => nowSec() - n * 3600;
+
+  function tree(id: string): Map<string, Node> {
+    let t = trees.get(id);
+    if (!t) {
+      t = new Map();
+      trees.set(id, t);
+    }
+    return t;
+  }
+
+  function put(id: string, path: string, node: Node): void {
+    const t = tree(id);
+    for (let dir = parentOf(path); dir !== ""; dir = parentOf(dir)) {
+      if (!t.has(dir)) t.set(dir, { kind: "folder", size: 0, modified: node.modified });
+    }
+    t.set(path, node);
+  }
+
+  const seedFile = (id: string, path: string, size: number, modified: number) => put(id, path, { kind: "file", size, modified });
+  if (projects.has("recipe-box")) {
+    seedFile("recipe-box", "recipes-seed.csv", 2.1 * 1024 ** 2, hoursAgo(26));
+    seedFile("recipe-box", "README.md", 4 * 1024, hoursAgo(72));
+    seedFile("recipe-box", "package.json", 2 * 1024, nowSec() - 11 * 60);
+    for (const name of ["orders.csv", "users.csv", "notes.txt"]) seedFile("recipe-box", `data/${name}`, 40 * 1024, hoursAgo(26));
+    for (let i = 1; i <= 48; i += 1) seedFile("recipe-box", `public/img-${i}.png`, 90 * 1024, hoursAgo(2));
+    for (let i = 1; i <= 112; i += 1) seedFile("recipe-box", `src/module-${i}.ts`, 3 * 1024, nowSec() - 11 * 60);
+  }
+  for (const p of projects.values()) {
+    if (p.id === "recipe-box" || p.empty) continue;
+    seedFile(p.id, "docker-compose.yml", 1024, hoursAgo(30));
+    seedFile(p.id, "README.md", 2048, hoursAgo(30));
+  }
+
+  const disk = { free: scenario === "full" ? 2.1 * GB : 40 * GB, total: 64 * GB };
+
+  interface MockUpload {
+    id: string; project_id: string; path: string; size: number; offset: number;
+    fingerprint: string; replace: boolean; updated_at: number; chunks: number; busyLeft: number;
+  }
+  const uploads = new Map<string, MockUpload>();
+  const newUpload = (over: Omit<MockUpload, "id" | "updated_at" | "chunks" | "busyLeft">): MockUpload => {
+    const id = Math.random().toString(16).slice(2).padEnd(32, "0").slice(0, 32);
+    const up = { id, updated_at: nowSec(), chunks: 0, busyLeft: scenario === "busy" ? 2 : 0, ...over };
+    uploads.set(id, up);
+    return up;
+  };
+  if (scenario === "uploads" && projects.has("recipe-box")) {
+    const media = Math.round(4.4 * GB);
+    const photos = Math.round(1.2 * GB);
+    newUpload({ project_id: "recipe-box", path: "data/media-library.zip", size: media, offset: Math.round(media * 0.38), fingerprint: `media-library.zip:${media}:0`, replace: false });
+    newUpload({ project_id: "recipe-box", path: "data/studio-photos.zip", size: photos, offset: Math.round(photos * 0.71), fingerprint: `studio-photos.zip:${photos}:0`, replace: false });
+  }
+  const shown = ({ chunks: _c, busyLeft: _b, ...rest }: MockUpload) => rest;
+  const noUpload = () => refuse("upload_not_found", "no such upload", 404);
+  const traversal = (path: string) => path.startsWith("/") || path.split("/").includes("..");
 
   const guard = () => (signedIn ? null : notSignedIn());
   const find = (id: string) => projects.get(id) ?? null;
@@ -258,9 +324,124 @@ export function handlersFor(scenario: Scenario) {
       if (!target) return notFound(String(params.id));
       if (target.job) return busy();
       projects.delete(target.id);
+      trees.delete(target.id);
+      for (const u of [...uploads.values()]) if (u.project_id === target.id) uploads.delete(u.id);
       // photo-sorter shows the "may still be running" outcome.
       const stopped = target.id !== "photo-sorter";
       return HttpResponse.json({ id: target.id, stopped, detail: stopped ? "" : "a container didn't stop in time" });
+    }),
+    http.get("/api/disk", () => {
+      const denied = guard();
+      if (denied) return denied;
+      return HttpResponse.json({ free_bytes: disk.free, total_bytes: disk.total });
+    }),
+    http.get("/api/projects/:id/files", async ({ params, request }) => {
+      const denied = guard();
+      if (denied) return denied;
+      const id = String(params.id);
+      if (!find(id)) return notFound(id);
+      const dir = joinPath(new URL(request.url).searchParams.get("dir") ?? "");
+      await delay(250);
+      if (scenario === "locked" && dir === "data") {
+        return refuse("permission_denied", "Omelet can't look inside that folder; a program in the project owns it.", 409);
+      }
+      const t = tree(id);
+      if (dir !== "" && t.get(dir)?.kind !== "folder") return refuse("folder_not_found", `no folder '${dir}' in project '${id}'`, 404);
+      const entries = [...t.entries()]
+        .filter(([path]) => parentOf(path) === dir)
+        .map(([path, node]) => ({
+          name: baseName(path),
+          kind: node.kind,
+          size: node.kind === "file" ? node.size : null,
+          items: node.kind === "folder" ? [...t.keys()].filter((p) => parentOf(p) === path).length : null,
+          modified: node.modified,
+        }))
+        .sort((a, b) => (a.kind === b.kind ? a.name.toLowerCase().localeCompare(b.name.toLowerCase()) : a.kind === "folder" ? -1 : 1));
+      return HttpResponse.json({ dir, entries });
+    }),
+    http.get("/api/projects/:id/files/*", ({ params, request }) => {
+      const denied = guard();
+      if (denied) return denied;
+      const id = String(params.id);
+      if (!find(id)) return notFound(id);
+      const path = decodeURIComponent(new URL(request.url).pathname.split("/files/")[1] ?? "");
+      if (tree(id).get(path)?.kind !== "file") return refuse("file_not_found", `no file '${path}' in project '${id}'`, 404);
+      return new HttpResponse(`mock contents of ${path}\n`, {
+        headers: { "Content-Type": "application/octet-stream", "Content-Disposition": `attachment; filename="${baseName(path)}"` },
+      });
+    }),
+    http.get("/api/projects/:id/uploads", ({ params }) => {
+      const denied = guard();
+      if (denied) return denied;
+      const id = String(params.id);
+      if (!find(id)) return notFound(id);
+      return HttpResponse.json({ uploads: [...uploads.values()].filter((u) => u.project_id === id).map(shown) });
+    }),
+    http.post("/api/projects/:id/uploads", async ({ params, request }) => {
+      const denied = guard();
+      if (denied) return denied;
+      const id = String(params.id);
+      if (!find(id)) return notFound(id);
+      const body = (await request.json()) as { path: string; size: number; fingerprint?: string; replace?: boolean };
+      if (traversal(body.path)) return refuse("path_traversal", `'${body.path}' escapes the project directory`, 400);
+      const existing = tree(id).get(joinPath(body.path));
+      if (existing?.kind === "folder") return refuse("path_is_folder", `'${body.path}' is a folder in the project`, 409);
+      if (existing && !body.replace) return refuse("file_exists", `'${body.path}' is already in the project`, 409);
+      if (body.size + GB > disk.free) {
+        return HttpResponse.json({ error: { code: "not_enough_space", message: "this file is bigger than the room Omelet has left", free_bytes: disk.free } }, { status: 507 });
+      }
+      if (body.size === 0) {
+        put(id, joinPath(body.path), { kind: "file", size: 0, modified: nowSec() });
+        return HttpResponse.json({ upload_id: "0".repeat(32), offset: 0, size: 0, done: true }, { status: 201 });
+      }
+      const up = newUpload({ project_id: id, path: joinPath(body.path), size: body.size, offset: 0, fingerprint: body.fingerprint ?? "", replace: body.replace ?? false });
+      return HttpResponse.json({ upload_id: up.id, offset: 0, size: up.size, chunk_size: 8 * 1024 * 1024, done: false }, { status: 201 });
+    }),
+    http.get("/api/uploads/:uploadId", ({ params }) => {
+      const denied = guard();
+      if (denied) return denied;
+      const up = uploads.get(String(params.uploadId));
+      return up ? HttpResponse.json(shown(up)) : noUpload();
+    }),
+    http.patch("/api/uploads/:uploadId", async ({ params, request }) => {
+      const denied = guard();
+      if (denied) return denied;
+      const up = uploads.get(String(params.uploadId));
+      if (!up) return noUpload();
+      const offset = Number(request.headers.get("Upload-Offset"));
+      // Only the length is kept; the bytes are dropped on the floor.
+      const length = (await request.arrayBuffer()).byteLength;
+      await delay(350);
+      if (offset !== up.offset) {
+        return HttpResponse.json({ error: { code: "offset_mismatch", message: "the upload is at a different offset", offset: up.offset } }, { status: 409 });
+      }
+      up.chunks += 1;
+      if (scenario === "fills-up" && up.size > 20 * 1024 ** 2 && up.chunks === 3 && disk.free > 0) {
+        disk.free = 0;
+        // One-shot: the next /disk read reports room again, as if the user freed some.
+        window.setTimeout(() => { disk.free = 40 * GB; }, 0);
+        return HttpResponse.json({ error: { code: "disk_full", message: "Omelet ran out of room", offset: up.offset } }, { status: 507 });
+      }
+      up.offset += length;
+      up.updated_at = nowSec();
+      if (up.offset < up.size) return HttpResponse.json({ upload_id: up.id, offset: up.offset, size: up.size, done: false });
+      if (up.busyLeft > 0) {
+        up.busyLeft -= 1;
+        return busy();
+      }
+      if (!find(up.project_id)) {
+        uploads.delete(up.id);
+        return notFound(up.project_id);
+      }
+      put(up.project_id, up.path, { kind: "file", size: up.size, modified: nowSec() });
+      uploads.delete(up.id);
+      return HttpResponse.json({ upload_id: up.id, offset: up.size, size: up.size, done: true });
+    }),
+    http.delete("/api/uploads/:uploadId", ({ params }) => {
+      const denied = guard();
+      if (denied) return denied;
+      if (!uploads.delete(String(params.uploadId))) return noUpload();
+      return HttpResponse.json({ upload_id: String(params.uploadId), cancelled: true });
     }),
   ];
 }
