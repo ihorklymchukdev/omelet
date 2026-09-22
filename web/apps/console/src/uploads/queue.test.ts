@@ -224,4 +224,32 @@ describe("UploadQueue controls", () => {
     await queue.settled();
     expect(item(key).state).toBe("paused");
   });
+
+  it("still reports a lost session when it was paused while start was in flight", async () => {
+    const lost: string[] = [];
+    let rejectStart: ((error: unknown) => void) | null = null;
+    const queue = new UploadQueue({
+      api: {
+        start: () => new Promise((_resolve, reject) => (rejectStart = reject)),
+        patch: async () => {
+          throw new Error("not used by this test");
+        },
+        status: async () => {
+          throw new Error("not used by this test");
+        },
+        cancel: async () => ({}),
+        pending: async () => ({ uploads: [] }),
+        disk: async () => ({ free_bytes: 0, total_bytes: 0 }),
+      },
+      onSessionLost: (reason) => lost.push(reason),
+    });
+    const item = (key: string) => queue.snapshot().find((i) => i.key === key)!;
+    const [key] = queue.add("p", "", [file("a.txt", "abcdefghij")]);
+    await until(() => rejectStart !== null);
+    queue.pause(key);
+    rejectStart!(new ApiError("session_expired", "gone", 401));
+    await queue.settled();
+    expect(lost).toEqual(["session_expired"]);
+    expect(item(key).state).toBe("paused");
+  });
 });

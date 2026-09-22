@@ -147,7 +147,8 @@ export class UploadQueue {
 
   relink(key: string, file: File): boolean {
     const item = this.find(key);
-    if (!item || fingerprintOf(file) !== item.fingerprint) return false;
+    if (!item || (item.state !== "stalled" && item.state !== "paused")) return false;
+    if (fingerprintOf(file) !== item.fingerprint) return false;
     this.update(key, { file, state: "waiting" });
     this.kick();
     return true;
@@ -303,9 +304,9 @@ export class UploadQueue {
           if (!(error instanceof ApiError)) throw error;
           if (error.code === "aborted") return;
           if (isSessionLost(error)) {
-            // A pause can't abort start/status; the wait that follows must not undo it.
-            if (this.find(key)?.state !== "going") return;
-            this.update(key, { state: "stalled" });
+            // A pause can't abort start/status, so the write must not undo it —
+            // but the app still needs to hear about the lost session either way.
+            if (this.find(key)?.state === "going") this.update(key, { state: "stalled" });
             this.onSessionLost(error.code);
             return;
           }
