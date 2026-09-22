@@ -41,7 +41,10 @@ Before the first shipped host can install anything:
 - The repository is public.
 - `engine/get.sh` exists on `main` — hosts fetch `ENGINE_URL` from `main`, not from a tag.
 - At least one `engine-vX.Y.Z` tag exists.
-- The ghcr image named by that tag's `engine/stack.yml` is published and public.
+- Both ghcr images named by that tag's `engine/stack.yml` — `omelet-agent` and `omelet-web` — are
+  published and public: ghcr makes a newly pushed package private, so each needs its visibility
+  flipped by hand. `omelet-web` must be pushed multi-arch (`linux/amd64` and `linux/arm64`) —
+  `install.sh` fails the whole install on any image it can't pull.
 - `agent/__init__.py`, the Dockerfile's `AGENT_VERSION` and `engine/stack.yml` are bumped together
   before the first tag — the agent gained `/health`'s `api` field after 0.1.0. The stack's
   `omelet-web` tag carries the same version.
