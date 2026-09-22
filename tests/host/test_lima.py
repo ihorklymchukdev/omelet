@@ -269,3 +269,13 @@ def test_runtime_rebinds_limactl_to_the_path_the_install_produced(monkeypatch):
 def test_the_wsl2_provider_has_nothing_to_install():
     from host.providers.wsl2 import Wsl2Provider
     assert Wsl2Provider(arch="amd64").runtime() is None
+
+
+def test_running_reads_the_status_column():
+    r = FakeRunner(stdout=b"Running\n")
+    assert make(r).running() is True
+    assert r.calls[-1] == ["limactl", "list", "--format", "{{.Status}}", "omelet-vm"]
+
+
+def test_running_false_for_a_stopped_vm():
+    assert make(FakeRunner(stdout=b"Stopped\n")).running() is False

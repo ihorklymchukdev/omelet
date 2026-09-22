@@ -63,6 +63,13 @@ def probe(provider, *, client_factory=None) -> Readiness:
         return Readiness()
 
     try:
+        # exec() boots a stopped WSL distro, which would undo Stop.
+        if not provider.running():
+            return Readiness(vm_exists=True)
+    except Exception as e:
+        return Readiness(vm_exists=True, problem=f"{e}")
+
+    try:
         reachable = provider.exec(["true"]).ok
     except Exception as e:
         return Readiness(vm_exists=True, problem=f"{e}")

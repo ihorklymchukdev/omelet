@@ -263,6 +263,10 @@ class LimaProvider:
         out = self._cmd(["list", "--quiet"]).stdout
         return self.name in [line.strip() for line in out.splitlines()]
 
+    def running(self) -> bool:
+        out = self._cmd(["list", "--format", "{{.Status}}", self.name])
+        return out.ok and out.stdout.strip() == "Running"
+
     def create(self) -> None:
         if self.config is None:
             raise ValueError("config path is required to create the VM")
