@@ -172,8 +172,10 @@
         its own sealed box.</p>
       <p class="hint">Good moment for a coffee.</p>
       <p class="hint" data-when="resumed">Continuing setup after the restart — you don't need to do anything.</p>
-      <div class="bar"><span data-field="progress"></span></div>
-      <span class="overline" data-field="counter"></span>
+      <div class="install-foot">
+        <div class="bar"><span data-field="progress"></span></div>
+        <span class="hint" data-field="counter"></span>
+      </div>
     </div>
     <div class="rows-col">
       <ol class="rows" data-rows></ol>
@@ -192,7 +194,7 @@
       <button class="btn-primary" data-action="reboot-now">Restart now</button>
       <button class="btn-secondary" data-action="go-home">I'll restart later</button>
     </div>
-    <ol class="rows" data-rows></ol>
+    <div class="rows-col"><ol class="rows" data-rows></ol></div>
   </section>
 </template>
 
@@ -205,7 +207,7 @@
       <button class="btn-primary" data-retry data-action="start-install">Try this step again</button>
       <button class="btn-secondary" data-action="start-over">Start over from scratch</button>
     </div>
-    <ol class="rows" data-rows></ol>
+    <div class="rows-col"><ol class="rows" data-rows></ol></div>
   </section>
 </template>
 

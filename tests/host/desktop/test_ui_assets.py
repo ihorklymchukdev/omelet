@@ -219,3 +219,10 @@ def test_the_notice_survives_a_screen_change():
 def test_no_port_refusal_renders_undefined():
     js = (UI / "app.js").read_text()
     assert "PORT_REFUSALS[result.reason] ||" in js
+
+
+def test_hidden_beats_any_display_rule():
+    """#notice is display:flex, which outranks the UA's [hidden] rule: the
+    notice showed on every launch with no detail, and Dismiss did nothing."""
+    css = (UI / "app.css").read_text()
+    assert re.search(r"\[hidden\]\s*\{\s*display:\s*none\s*!important", css)

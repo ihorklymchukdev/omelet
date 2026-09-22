@@ -38,6 +38,9 @@
   src:url('fonts/ibm-plex-mono-400.woff2') format('woff2'); }
 
 * { box-sizing:border-box; }
+/* Any author display rule (#notice is flex) beats the UA's [hidden] rule, and
+   the element would then ignore hidden = true for good. */
+[hidden] { display:none !important; }
 html, body { height:100%; }
 body {
   margin:0; background:var(--cream); color:var(--ink);
@@ -56,8 +59,6 @@ body {
 }
 
 @keyframes om-spin { to { transform:rotate(360deg); } }
-@keyframes om-sizzle { 0%{transform:translateY(0) scale(.5);opacity:0}
-  25%{opacity:.95} 100%{transform:translateY(-30px) scale(1.2);opacity:0} }
 @keyframes om-glow { 0%,100%{transform:scale(1);opacity:.85}
   50%{transform:scale(1.05);opacity:1} }
 @keyframes om-bob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-5px)} }
@@ -194,23 +195,31 @@ body {
   flex:0 0 300px; width:300px;
   display:flex; flex-direction:column; align-items:flex-start; gap:12px;
 }
+.install-left .pan { margin-bottom:12px; }
+.install-foot {
+  margin-top:auto; align-self:stretch; display:flex; flex-direction:column; gap:10px;
+}
 .install-left .btn-primary, .install-left .btn-secondary { align-self:stretch; text-align:center; }
 
-/* The pan is the screen's one animated loop; row marks change color instead
-   of animating, so only one thing ever moves at a time. */
+/* A pan seen from above. The hot one stays still: the running row's ring is
+   that screen's one loop. */
 .pan {
-  width:76px; height:76px; border-radius:var(--r-lg);
+  width:148px; height:148px; border-radius:50%;
   background:var(--surface-2); border:1px solid var(--line); flex:none;
   position:relative;
 }
 .pan-hot {
-  background:var(--yolk-soft); border-color:transparent;
+  border-color:transparent;
+  background:
+    radial-gradient(circle, var(--yolk) 0 16px, transparent 16.5px),
+    radial-gradient(circle, var(--cream) 0 49px, var(--line) 49.5px 51px, transparent 51.5px),
+    var(--yolk-soft);
 }
-.pan-hot::after {
-  content:''; position:absolute; top:-8px; left:50%; width:5px; height:14px;
-  margin-left:-2.5px; border-radius:999px; background:var(--yolk-deep);
-  animation:om-sizzle 1.3s var(--ease) infinite;
+.pan-hot::before, .pan-hot::after {
+  content:''; position:absolute; border-radius:50%;
 }
+.pan-hot::before { top:12px; left:44px; width:7px; height:7px; background:var(--yolk); opacity:.45; }
+.pan-hot::after { top:19px; left:75px; width:4px; height:4px; background:var(--yolk-deep); }
 .pan-asleep {
   background:var(--cold-soft); border-color:transparent;
 }
@@ -231,19 +240,20 @@ body {
 }
 
 .rows-col {
-  flex:1; min-width:0; min-height:0;
-  display:flex; flex-direction:column; gap:8px;
-}
-.rows {
-  flex:1; min-height:0; margin:0; padding:10px; list-style:none;
-  display:flex; flex-direction:column; gap:5px; overflow-y:auto;
+  flex:1; min-width:0; min-height:0; padding:10px;
+  display:flex; flex-direction:column;
   background:var(--surface); border:1px solid var(--line); border-radius:var(--r-xl);
 }
+.rows {
+  flex:1; min-height:0; margin:0; padding:0; list-style:none;
+  display:flex; flex-direction:column; gap:5px; overflow-y:auto;
+}
 /* Only the download step reports a fraction; this is the one place that
-   number is shown, so the overall bar above never sits full for the several
+   number is shown, so the overall bar never sits full for the several
    minutes create_vm/bootstrap/connect/verify/finish still take. */
 .download-note {
-  margin:0; padding:0 4px; font:400 13px 'IBM Plex Mono', monospace; color:var(--ink-3);
+  margin:8px 2px 0; padding:14px 10px 4px; border-top:1px solid var(--line);
+  font:400 13px 'Hanken Grotesk', sans-serif; color:var(--ink-3);
 }
 .row-step {
   display:flex; align-items:center; gap:10px;
@@ -263,8 +273,13 @@ body {
 .row-step .state { font:400 13px 'Hanken Grotesk', sans-serif; color:var(--ink-3); }
 
 .row-step[data-status="waiting"] .mark { border:2px dashed var(--line-2); }
+.row-step[data-status="waiting"] .label { font-weight:400; color:var(--ink-2); }
 .row-step[data-status="running"] { background:var(--yolk-soft); }
-.row-step[data-status="running"] .mark { background:var(--yolk-deep); }
+.row-step[data-status="running"] .mark {
+  border:2px solid var(--yolk-deep); border-right-color:transparent;
+  animation:om-spin .9s linear infinite;
+}
+.row-step[data-status="running"] .state { font-weight:600; color:var(--yolk-deep); }
 .row-step[data-status="done"] .mark,
 .row-step[data-status="skipped"] .mark { background:var(--basil-soft); color:var(--basil); }
 .row-step[data-status="done"] .mark::after,

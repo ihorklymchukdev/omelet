@@ -32,6 +32,34 @@ Useful flags: `-Rootfs <path>` to use a rootfs you already have,
 `wsl.exe`, and `get_provider()` raises `unsupported host platform: linux` if
 you run it from a WSL shell.
 
+## Building the installer (Windows)
+
+Build in PowerShell on Windows: PyInstaller only freezes a Windows `.exe` there.
+Use a Windows-side checkout, not `\\wsl$\...`, because a Linux `.venv` in a WSL
+checkout clashes with the Windows one.
+
+```powershell
+git clone <repo-url> C:\src\omelet
+cd C:\src\omelet
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"   # PyInstaller, pywebview, pythonnet
+winget install -e --id JRSoftware.InnoSetup
+
+powershell -ExecutionPolicy Bypass -File .\packaging\windows\build.ps1
+# -> dist\OmeletSetup-<version>.exe
+```
+
+If `ISCC.exe` is not found automatically, pass it with
+`-InnoSetup "C:\Path\To\ISCC.exe"`.
+
+`build.ps1` freezes `dist\Omelet\omelet.exe` and `setup.exe` from
+`packaging\windows\omelet.spec` and smoke-tests the frozen `omelet.exe`
+(`version`, then `selfcheck`). It then downloads Microsoft's WebView2
+bootstrapper, so the build needs network access. Finally, Inno Setup
+(`installer.iss`) packages everything. The version comes from `pyproject.toml`.
+The installer is unsigned. Manual release gates are in
+`docs/installer-test-matrix.md`.
+
 ## Setup (macOS)
 
 Build the installer, then install it:
