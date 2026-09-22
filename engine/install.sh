@@ -106,7 +106,7 @@ fi
 chgrp docker /opt/omelet/agent.token
 chmod 640 /opt/omelet/agent.token
 
-# 7. traefik + the agent, as one compose stack.
+# 7. traefik, the agent and the web page, as one compose stack.
 # Always pull: this is how an agent update reaches an already-provisioned VM,
 # so both the first install and every update need the network.
 install -m 644 "$ENGINE_DIR/stack.yml" /opt/omelet/stack.yml

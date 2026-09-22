@@ -17,3 +17,7 @@ dist/
 
 # Subagent-driven-development scratch (ledger, briefs, review packages)
 .superpowers/
+
+# web/ workspace
+node_modules/
+web/**/dist/

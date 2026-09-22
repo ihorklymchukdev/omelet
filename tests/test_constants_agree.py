@@ -77,3 +77,31 @@ def test_the_guest_cli_holds_the_same_values_as_the_host_and_the_agent():
         diverged = {name: (guest[name], other[name])
                     for name in shared if guest[name] != other[name]}
         assert not diverged, f"guest/{side} constants diverged: {diverged}"
+
+
+def test_the_web_page_speaks_the_api_the_agent_serves():
+    # The page is a separate image, but ships under the same engine tag; a
+    # page that no longer lists the agent's api number shows "needs an
+    # update" on every VM that installed the matching pair.
+    import re
+    from pathlib import Path
+
+    source = (Path(__file__).resolve().parent.parent / "web" / "apps" / "console"
+              / "src" / "api" / "version.ts").read_text()
+    match = re.search(r"SUPPORTED_API[^=]*=\s*\[([^\]]*)\]", source)
+    assert match, "version.ts must declare SUPPORTED_API as an array literal"
+    supported = {int(n) for n in re.findall(r"\d+", match[1])}
+    assert agent_constants.API_VERSION in supported
+
+
+def test_the_web_image_ships_with_the_agent_it_was_built_against():
+    # The page and the agent are released as a pair under one engine tag.
+    import re
+    from pathlib import Path
+
+    from agent import __version__ as package_version
+
+    stack = (Path(__file__).resolve().parent.parent / "engine" / "stack.yml").read_text()
+    web = re.search(r"\$\{OMELET_WEB_IMAGE:-[^}]+:([^}:]+)\}", stack)
+    assert web, "stack.yml must default OMELET_WEB_IMAGE with a tag"
+    assert web[1] == package_version

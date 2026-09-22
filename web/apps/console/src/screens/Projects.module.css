@@ -1,0 +1,6 @@
+.page { display: flex; flex-direction: column; gap: 18px; }
+.title { margin: 0; font: 800 34px var(--font-display); letter-spacing: -.025em; color: var(--ink); }
+.list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 10px; }
+.name { font: 700 18px var(--font-body); color: var(--ink); }
+.muted { margin: 0; font-size: 15px; color: var(--ink-3); }
+.error { margin: 0; font-size: 15px; color: var(--paprika); }

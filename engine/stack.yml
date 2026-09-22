@@ -70,8 +70,8 @@ services:
       - "${OMELET_DOCKER_GID:-999}"
     networks:
       - edge
-    # The browser UI's API. Same origin as the page (added with the web
-    # service), so the session cookie needs no CORS. Priority beats the
+    # The browser UI's API. Same origin as the page (the web service below),
+    # so the session cookie needs no CORS. Priority beats the
     # page's catch-all route; project hosts never match these two names.
     labels:
       - "traefik.enable=true"
@@ -79,6 +79,21 @@ services:
       - "traefik.http.routers.omelet-api.entrypoints=web"
       - "traefik.http.routers.omelet-api.priority=1000"
       - "traefik.http.services.omelet-api.loadbalancer.server.port=${OMELET_AGENT_PORT:-39099}"
+
+  # The browser UI: static files only, no secrets, no logic. Released under
+  # the agent's version -- the two install as a pair. Its router is the
+  # catch-all for the UI hosts, so it sits below omelet-api's priority.
+  web:
+    image: ${OMELET_WEB_IMAGE:-ghcr.io/ihorklymchukdev/omelet-web:0.2.0}
+    restart: always
+    networks:
+      - edge
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.omelet-web.rule=Host(`localhost`) || Host(`127.0.0.1`)"
+      - "traefik.http.routers.omelet-web.entrypoints=web"
+      - "traefik.http.routers.omelet-web.priority=10"
+      - "traefik.http.services.omelet-web.loadbalancer.server.port=8080"
 
 networks:
   edge:

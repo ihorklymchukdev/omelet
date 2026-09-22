@@ -5,6 +5,7 @@ import yaml
 from pathlib import Path
 
 STACK = Path(__file__).resolve().parents[2] / "engine" / "stack.yml"
+NGINX_CONF = Path(__file__).resolve().parents[2] / "web" / "nginx.conf"
 
 # Compose interpolation: ${VAR} or ${VAR:-default}. Stripping the whole
 # expression, not just the default, is what makes the "no bare literal" test
@@ -48,7 +49,7 @@ def test_stack_yml_parses_and_has_no_version_key():
 
 def test_stack_yml_both_services_restart_always_on_the_external_edge_network():
     doc = yaml.safe_load(_text())
-    for name in ("traefik", "agent"):
+    for name in ("traefik", "agent", "web"):
         service = doc["services"][name]
         assert service["restart"] == "always"
         assert "edge" in service["networks"]
@@ -79,3 +80,28 @@ def test_bootstrap_pins_a_traefik_that_docker_still_talks_to():
     assert match, "stack.yml must pin an explicit traefik version"
     assert (int(match[1]), int(match[2])) >= (3, 6), \
         f"traefik:v{match[1]}.{match[2]} requests Docker API 1.24, which docker-ce 29 refuses"
+
+
+def _labels(service: dict) -> dict:
+    return dict(label.split("=", 1) for label in service["labels"])
+
+
+def test_the_web_page_is_reached_only_through_traefik_below_the_api_route():
+    # Both routers match Host(localhost) || Host(127.0.0.1); the page's is a
+    # catch-all, so it must lose to the agent's /api router or it answers
+    # every API call with index.html. No published port: only Traefik fronts it.
+    services = yaml.safe_load(_text())["services"]
+    web, agent = _labels(services["web"]), _labels(services["agent"])
+    assert int(web["traefik.http.routers.omelet-web.priority"]) \
+        < int(agent["traefik.http.routers.omelet-api.priority"])
+    assert "ports" not in services["web"]
+
+
+def test_the_web_service_port_label_matches_the_port_nginx_listens_on():
+    # A drift here is a silent 502 on the whole page: Traefik would keep
+    # routing to a port nginx never binds.
+    web = _labels(yaml.safe_load(_text())["services"]["web"])
+    labeled_port = web["traefik.http.services.omelet-web.loadbalancer.server.port"]
+    match = re.search(r"listen\s+(\d+);", NGINX_CONF.read_text())
+    assert match, "web/nginx.conf must have a `listen <port>;` directive"
+    assert labeled_port == match[1]
