@@ -1,0 +1,8 @@
+*, *::before, *::after { box-sizing: border-box; }
+html, body, #root { min-height: 100%; }
+body {
+  margin: 0; background: var(--cream); color: var(--ink);
+  font-family: var(--font-body); -webkit-font-smoothing: antialiased;
+}
+a { color: var(--yolk-deep); text-decoration: none; }
+a:hover { color: var(--ink); text-decoration: underline; }
