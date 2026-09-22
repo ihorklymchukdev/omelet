@@ -17,6 +17,7 @@ function show(screen, data) {
   const template = document.querySelector(`template[data-screen="${screen}"]`);
   if (!template) throw new Error(`no template for ${screen}`);
   const root = document.getElementById('screen');
+  clearBusy();
   root.replaceChildren(template.content.cloneNode(true));
   root.dataset.screen = screen;
   fill(root, data || {});
@@ -39,10 +40,50 @@ function fill(root, data) {
   });
 }
 
+// These resolve as soon as the job starts; the screen only changes when the
+// job's terminal event calls refresh(), so they stay busy until show().
+const JOB_ACTIONS = new Set(['start-vm', 'stop-vm', 'restart-vm', 'repair', 'do-uninstall']);
+
 function wire(root) {
   root.querySelectorAll('[data-action]').forEach((node) => {
-    node.addEventListener('click', () => ACTIONS[node.dataset.action](node));
+    node.addEventListener('click', () => {
+      const name = node.dataset.action;
+      const result = ACTIONS[name](node);
+      if (!result || typeof result.then !== 'function') return;
+      setBusy(node);
+      result.then(
+        () => { if (!JOB_ACTIONS.has(name)) clearBusy(); },
+        // Rethrown so the unhandledrejection notice still explains it.
+        (error) => { clearBusy(); throw error; },
+      );
+    });
   });
+}
+
+let busy = { timer: null, node: null };
+
+function setBusy(node) {
+  clearBusy();
+  // Disabled at once so a second click can't hit JobBusy; the spinner waits
+  // so a fast call doesn't flash one.
+  if (node) node.disabled = true;
+  busy = {
+    node,
+    timer: setTimeout(() => {
+      document.getElementById('busy').hidden = false;
+      if (node) node.setAttribute('aria-busy', 'true');
+    }, 150),
+  };
+}
+
+function clearBusy() {
+  clearTimeout(busy.timer);
+  document.getElementById('busy').hidden = true;
+  if (busy.node) {
+    busy.node.disabled = false;
+    busy.node.removeAttribute('aria-busy');
+  }
+  busy = { timer: null, node: null };
 }
 
 // #notice sits outside #screen (a sibling in the body, not inside any
@@ -339,7 +380,14 @@ window.omelet.handlers.uninstall = (event) => {
 };
 
 async function refresh() {
-  const home = await api().home();
+  if (!busy.timer) setBusy(null);
+  let home;
+  try {
+    home = await api().home();
+  } catch (error) {
+    clearBusy();
+    throw error;
+  }
   document.title = 'Omelet';
   // A window RunOnce reopened by itself must continue setup, not show Home.
   if (home.resumed) return ACTIONS['start-install'](null, home);

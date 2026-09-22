@@ -15,6 +15,7 @@ LIFECYCLE_SURFACE = {
     "reboot_required",
     "reboot",
     "exists",
+    "running",
     "create",
     "start",
     "stop",

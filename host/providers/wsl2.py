@@ -185,6 +185,12 @@ class Wsl2Provider:
         out = self._meta(["-l", "-q"]).stdout
         return self.distro in [line.strip() for line in out.splitlines()]
 
+    def running(self) -> bool:
+        # Not exec(): any `wsl -d` boots the distro. With nothing running this
+        # exits non-zero and prints a sentence rather than an empty list.
+        out = self._meta(["-l", "--running", "-q"])
+        return out.ok and self.distro in [line.strip() for line in out.stdout.splitlines()]
+
     def create(self) -> None:
         if self.install_dir is None or self.rootfs is None:
             raise ValueError("install_dir and rootfs are required to create the VM")

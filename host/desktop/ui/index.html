@@ -21,9 +21,16 @@
   <button class="btn-secondary" data-action="dismiss-notice">Dismiss</button>
 </aside>
 
+<!-- Shown while a bridge call or a job is still out. Every screen change
+     re-probes the VM through several wsl.exe/limactl calls. -->
+<div id="busy" hidden></div>
+
 <template data-screen="first-run">
-  <section class="pad">
-    <h1 class="display">Welcome to Omelet</h1>
+  <section class="pad centered">
+    <div class="title-row">
+      <span class="egg" aria-hidden="true"></span>
+      <h1 class="display">Welcome to Omelet</h1>
+    </div>
     <p class="lede">Omelet sets up a tiny private computer inside your computer,
       so you can build real, working apps just by chatting with it.</p>
     <ol class="steps">
@@ -43,9 +50,14 @@
 
 <template data-screen="home:running">
   <section class="pad">
-    <span class="badge badge-running">Running</span>
-    <h1 class="display">The kitchen is open</h1>
-    <p class="lede">Your machine is up and the cook is at the counter.</p>
+    <div class="hero">
+      <div class="pan pan-hot" aria-hidden="true"></div>
+      <div class="hero-text">
+        <span class="badge badge-running">Running</span>
+        <h1 class="display">The kitchen is open</h1>
+        <p class="lede">Your machine is up and the cook is at the counter.</p>
+      </div>
+    </div>
     <div class="row">
       <button class="btn-primary" data-action="open-omelet">Open Omelet</button>
       <button class="btn-secondary" data-action="stop-vm">Stop the kitchen</button>
@@ -58,7 +70,7 @@
         <button data-action="doctor">Doctor</button>
         <button data-action="check-updates">Check for updates</button>
         <button class="tile-danger" data-action="uninstall">Uninstall</button>
-        <span class="tile-note"><span data-field="app_version"></span><span data-when="engine_version"> &middot; <span data-field="engine_version"></span></span></span>
+        <span class="tile-note">Version <span data-field="app_version"></span><span data-when="engine_version"> &middot; <span data-field="engine_version"></span></span></span>
       </div>
     </footer>
   </section>
@@ -66,9 +78,14 @@
 
 <template data-screen="home:stopped">
   <section class="pad">
-    <span class="badge badge-cold">Stopped</span>
-    <h1 class="display">The pan is cold</h1>
-    <p class="lede">Everything is saved and waiting. Starting up takes about 20 seconds.</p>
+    <div class="hero">
+      <div class="pan pan-asleep" aria-hidden="true"></div>
+      <div class="hero-text">
+        <span class="badge badge-cold">Stopped</span>
+        <h1 class="display">The pan is cold</h1>
+        <p class="lede">Everything is saved and waiting. Starting up takes about 20 seconds.</p>
+      </div>
+    </div>
     <div class="row">
       <button class="btn-primary" data-action="start-vm">Start the kitchen</button>
       <button class="btn-secondary" disabled>Open Omelet</button>
@@ -82,7 +99,7 @@
         <button data-action="doctor">Doctor</button>
         <button data-action="check-updates">Check for updates</button>
         <button class="tile-danger" data-action="uninstall">Uninstall</button>
-        <span class="tile-note"><span data-field="app_version"></span><span data-when="engine_version"> &middot; <span data-field="engine_version"></span></span></span>
+        <span class="tile-note">Version <span data-field="app_version"></span><span data-when="engine_version"> &middot; <span data-field="engine_version"></span></span></span>
       </div>
     </footer>
   </section>
@@ -90,10 +107,15 @@
 
 <template data-screen="home:not_installed">
   <section class="pad">
-    <span class="badge">Not installed</span>
-    <h1 class="display">No kitchen yet</h1>
-    <p class="lede">There's nothing cooking on this computer. Setting one up takes
-      about four minutes and 6 GB of space.</p>
+    <div class="hero">
+      <div class="pan pan-empty" aria-hidden="true"></div>
+      <div class="hero-text">
+        <span class="badge badge-empty">Not installed</span>
+        <h1 class="display">No kitchen yet</h1>
+        <p class="lede">There's nothing cooking on this computer. Setting one up takes
+          about four minutes and 6 GB of space.</p>
+      </div>
+    </div>
     <div class="row">
       <button class="btn-primary" data-action="start-install">Set up the kitchen</button>
     </div>
@@ -112,10 +134,15 @@
 
 <template data-screen="home:wrong">
   <section class="pad">
-    <span class="badge badge-bad">Needs a look</span>
-    <h1 class="display">Something's off in here</h1>
-    <p class="lede">The kitchen started but one of its parts didn't. Your projects
-      are safe — Doctor can usually sort this out on its own.</p>
+    <div class="hero">
+      <div class="pan pan-burnt" aria-hidden="true"></div>
+      <div class="hero-text">
+        <span class="badge badge-bad">Needs a look</span>
+        <h1 class="display">Something's off in here</h1>
+        <p class="lede">The kitchen started but one of its parts didn't. Your projects
+          are safe — Doctor can usually sort this out on its own.</p>
+      </div>
+    </div>
     <div class="row">
       <button class="btn-primary" data-action="doctor">Run Doctor</button>
       <button class="btn-secondary" data-action="restart-vm">Restart the kitchen</button>
@@ -130,7 +157,7 @@
         <button data-action="doctor">Doctor</button>
         <button data-action="check-updates">Check for updates</button>
         <button class="tile-danger" data-action="uninstall">Uninstall</button>
-        <span class="tile-note"><span data-field="app_version"></span><span data-when="engine_version"> &middot; <span data-field="engine_version"></span></span></span>
+        <span class="tile-note">Version <span data-field="app_version"></span><span data-when="engine_version"> &middot; <span data-field="engine_version"></span></span></span>
       </div>
     </footer>
   </section>
@@ -172,8 +199,10 @@
         its own sealed box.</p>
       <p class="hint">Good moment for a coffee.</p>
       <p class="hint" data-when="resumed">Continuing setup after the restart — you don't need to do anything.</p>
-      <div class="bar"><span data-field="progress"></span></div>
-      <span class="overline" data-field="counter"></span>
+      <div class="install-foot">
+        <div class="bar"><span data-field="progress"></span></div>
+        <span class="hint" data-field="counter"></span>
+      </div>
     </div>
     <div class="rows-col">
       <ol class="rows" data-rows></ol>
@@ -192,7 +221,7 @@
       <button class="btn-primary" data-action="reboot-now">Restart now</button>
       <button class="btn-secondary" data-action="go-home">I'll restart later</button>
     </div>
-    <ol class="rows" data-rows></ol>
+    <div class="rows-col"><ol class="rows" data-rows></ol></div>
   </section>
 </template>
 
@@ -205,7 +234,7 @@
       <button class="btn-primary" data-retry data-action="start-install">Try this step again</button>
       <button class="btn-secondary" data-action="start-over">Start over from scratch</button>
     </div>
-    <ol class="rows" data-rows></ol>
+    <div class="rows-col"><ol class="rows" data-rows></ol></div>
   </section>
 </template>
 
