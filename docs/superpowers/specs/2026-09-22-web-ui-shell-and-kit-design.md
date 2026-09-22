@@ -99,9 +99,8 @@ load
  ├─ GET /api/health                     (open, no cookie)
  │    no answer / non-2xx ─────────────► notAnswering
  │    api ∉ SUPPORTED_API ─────────────► needsUpdate(agentApi)
- ├─ #handoff=<code> in the URL?
- │    yes: history.replaceState() removes the hash, then
- │         POST /api/session {"code": <code>}
+ ├─ a handoff code was taken from the URL?
+ │    yes: POST /api/session {"code": <code>}
  │           200 ───────────────────────► signedIn
  │           401 handoff_invalid ─► continue to GET /api/session below;
  │                                  if that is 401 too → signedOut("handoff_spent")
@@ -113,9 +112,14 @@ load
       anything else ───────────────────► notAnswering
 ```
 
-`boot({fetch, location, history})` is a plain async function returning one of
-those four results; React renders the result and holds no start-up logic. The
-hash is removed before the POST, so a reload never resends a spent code.
+`takeHandoff(location, history)` reads `#handoff=<code>` and removes the hash
+with `history.replaceState()` synchronously, before anything is awaited, and
+the app keeps the code in a ref that the first boot empties. A reload never
+resends a spent code, and React's StrictMode running start-up twice in
+development never posts the same code twice. `boot({fetch, handoff})` is a
+plain async function returning one of the four results; React renders the
+result and holds no start-up logic. A code whose boot ended in `notAnswering`
+is not retried: it lives 60 seconds, and a fresh one is one click away.
 
 **API client.** A `fetch` wrapper with `credentials: "same-origin"`. It never
 sets or strips `Origin`: the browser sends it on every non-GET, and the agent
@@ -145,11 +149,12 @@ the screen that made the request.
 - **NotAnswering.** Same layout, cold Egg: Omelet's service inside the VM isn't
   answering. Retries on its own every 5 s and offers "Try again"; recovers
   into a full boot.
-- **Projects placeholder.** "Your projects", one line per project `id` (the agent has no separate name) from
-  `GET /api/projects`, and the frame 16 footer Notice. No actions.
+- **Projects placeholder.** "Your projects", one `RowCard` per project `id`
+  (the agent has no separate name) from `GET /api/projects`. No actions.
 - **Kit.** Every component and variant, rendered twice side by side under
-  forced light and dark tokens (a wrapper class re-declaring the dark values),
-  at 880 and 1200 widths.
+  forced light and dark tokens (`.om-theme-light` / `.om-theme-dark` wrapper
+  classes re-declaring the values). Density follows the viewport, so the
+  880/1200 layouts are reviewed by resizing the window.
 
 No sign-out button: the board has none, and part A leaves sign-out's dead-cookie
 gap open (A §8). The client exposes `signOut()` for later.
@@ -160,8 +165,11 @@ with a regex and asserts the agent's `API_VERSION` is in it.
 
 **Mocks.** MSW handlers for `/api/health`, `/api/session` (GET/POST) and
 `/api/projects`, with scenarios picked by `?scenario=`: `ok` (default),
-`expired`, `handoff-spent`, `old-agent`, `down`. MSW is started only by
-`npm run dev` and never reaches the production bundle.
+`expired`, `handoff-spent`, `old-agent`, `down`, and `lost-mid-use` (signed
+in, then `/api/projects` answers `session_expired`). MSW is started only by
+`npm run dev` and never reaches the production bundle: its worker lives in a
+dev-only public folder, and `check-offline.mjs` also fails a `dist/` that
+contains `mockServiceWorker.js`.
 
 ## 4. Image, stack and release
 
@@ -169,9 +177,12 @@ with a regex and asserts the agent's `API_VERSION` is in it.
 
 1. `FROM --platform=$BUILDPLATFORM node:24-alpine` — `npm ci`, typecheck,
    `npm test`, `vite build` for `apps/console`, then
-   `scripts/check-offline.mjs`, which fails the build when any file in `dist/`
-   refers to an `http(s)://` host. The only allowed absolute URLs are the ones
-   the script names on purpose, such as `http://www.w3.org/2000/svg`.
+   `scripts/check-offline.mjs`, which fails the build when anything in `dist/`
+   makes the browser load from another host: a CSS `url()` or `@import`, or an
+   HTML `src`/`href`, that is absolute (`http:`, `https:` or `//`). Strings in
+   the JS bundle are not scanned — React's own bundle carries
+   `https://react.dev/errors/` and the SVG namespaces, which are never fetched —
+   and the CSP's `default-src 'self'` blocks any runtime fetch to another host.
 2. `FROM nginxinc/nginx-unprivileged:alpine` — copies `dist/`, serves it on
    8080 as a non-root user.
 
@@ -228,8 +239,9 @@ gains a `web/` bullet under Architecture and the `npm` commands under Commands.
 Vitest, run with `npm test` in `web/`. Pytest never calls npm.
 
 - **`boot()`**: one test per outcome in the §3 diagram, including a spent handoff
-  with a live cookie resolving to `signedIn`, and the hash being removed before
-  the POST is sent.
+  with a live cookie resolving to `signedIn`.
+- **`takeHandoff()`**: returns the code and removes the hash; leaves history
+  alone when there is none.
 - **API client**: an agent error body, a body that isn't JSON, and a refused
   connection — the seam with the agent's contract.
 - **Kit boundary**: scans `packages/ui/src` imports and fails when the kit
