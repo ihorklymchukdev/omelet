@@ -228,3 +228,72 @@ Agent version bumps together with the Dockerfile's `AGENT_VERSION` and
 `engine/stack.yml` as usual. `API_VERSION` stays 1: every change adds a route or
 a field. New sqlite columns (`last_started_at`, `compose_name`) and the
 `sessions` table arrive as one migration step.
+
+## 8. Follow-ups for parts B–D
+
+What part A's reviews left for the parts that consume it. Each part still gets
+its own spec; this is the input, not the design.
+
+**B — shell and kit (items 1–3).**
+
+- `web/` npm workspace: `packages/ui` (kit from the board — light/dark tokens,
+  fonts bundled locally since the page must work offline, buttons, state badge,
+  sync marker, prompt card, modal, row card, progress bar, collapsible) and
+  `apps/console`.
+- `omelet-web` nginx image with an `index.html` fallback; `web` service in
+  `engine/stack.yml` with a Traefik catch-all for `Host(localhost) ||
+  Host(127.0.0.1)` below the agent's `/api` router (priority 1000); the web tag
+  joins `tests/test_constants_agree.py` and the release steps in `CLAUDE.md`.
+- Boot order: read `#handoff=` → `POST /api/session` → clear it with
+  `history.replaceState`; otherwise `GET /api/session`. 401 `not_signed_in` /
+  `session_expired` → screen 15, with an instruction to open the desktop app,
+  not a link. `/api/health` `api` mismatch → "needs an update"; no answer →
+  "service isn't answering".
+- Every non-GET request must send the page's own `Origin` (browsers do for
+  `fetch`; don't strip it with a proxy in dev).
+
+**C — project screens (items 4–9, 13–17).**
+
+- List state is derived from `status`, `problem`, `job` and `empty` together:
+  running job → Starting; `empty` → "waiting for your coding agent", not
+  Something's wrong; `problem` → Something's wrong; else `status`.
+- Starting screen polls `GET /jobs/{id}` for `phase` (`preparing` → `starting`
+  → `checking`; down jobs report `stopping`) and `started_at`; `first_run`
+  shows the slow-first-start note.
+- `folder_missing` offers only "Forget it" (plain `DELETE`).
+- Delete confirmation reads `GET /projects/{id}/delete-preview` and deletes
+  with `?purge=true`. The preview can undercount folders the agent cannot read,
+  and `stopped: false` can come back even when `docker rm -f` removed the
+  containers after a failed stop — word the result as "may still be running",
+  not as a failure.
+- Delete can miss containers of a compose project that was renamed, or started
+  by hand from `~/projects/<id>` (different `working_dir` label).
+- Sync marker: built, hidden until sync exists.
+
+**D — files and uploads (items 10–12).**
+
+- Browse with `GET /projects/{id}/files?dir=`; entries the agent cannot stat
+  are skipped; a folder it cannot open answers 409 `permission_denied`.
+- Upload client: one file at a time, `chunk_size` from the start response.
+  On `offset_mismatch`, continue from the `offset` in the error body.
+- The final chunk can answer 409 `project_busy` while an `up` holds the project
+  lock; retry with an empty `PATCH` at `Upload-Offset: <size>` until it
+  finishes.
+- Start errors to handle: `not_enough_space` (507, `free_bytes`; screen 13,
+  pre-checked with `GET /disk`), `file_exists` (ask, then resend with
+  `replace: true`), `path_is_folder`, `path_traversal`. Mid-transfer:
+  `disk_full` (507, `offset`; screen 14). At finish: `permission_denied`,
+  `project_not_found` (the upload is cancelled).
+- After a reload: `GET /projects/{id}/uploads`, ask for the same file again,
+  match `fingerprint` (`name:size:lastModified`), resume from the server offset.
+- Copy must not promise uploads continue with the page closed.
+
+**Outside the web UI.**
+
+- The desktop's replace-import deletes without `purge`, so "replace" still
+  merges into the old folder; it should pass `purge=true`.
+- Known agent gaps left as is: sign-out that crosses the hourly cookie refresh
+  leaves a dead cookie; expired session rows are only pruned when presented;
+  ENOSPC while staging an upload's metadata answers 500 rather than 507;
+  tree-mode `GET /projects/{id}/files` still 500s on an unreadable folder;
+  `first_run` is true for projects started before agent 0.2.0.
