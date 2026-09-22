@@ -223,6 +223,29 @@ describe("UploadQueue controls", () => {
     expect(lost).toEqual(["session_expired"]);
   });
 
+  it("lets a non-session disk() failure reject carryOn instead of swallowing it", async () => {
+    const lost: string[] = [];
+    const queue = new UploadQueue({
+      api: {
+        start: async () => ({ upload_id: "up1", offset: 0, size: 10, chunk_size: 4, done: false }),
+        patch: async () => {
+          throw new Error("not used by this test");
+        },
+        status: async () => {
+          throw new Error("not used by this test");
+        },
+        cancel: async () => ({}),
+        pending: async () => ({ uploads: [] }),
+        disk: async () => {
+          throw new ApiError("unexpected", "boom", 500);
+        },
+      },
+      onSessionLost: (reason) => lost.push(reason),
+    });
+    await expect(queue.carryOn()).rejects.toThrow("boom");
+    expect(lost).toEqual([]);
+  });
+
   it("doesn't let a disk_full write that lands after a pause turn the item noRoom", async () => {
     const landed: UploadItem[] = [];
     let rejectPatch: ((error: unknown) => void) | null = null;
