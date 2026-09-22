@@ -186,7 +186,7 @@ export class UploadQueue {
             return;
           }
           const end = Math.min(item.size, item.offset + item.chunkSize);
-          if (end === item.size) finishSent = true;
+          finishSent = end === item.size;
           const answer = await this.api.patch(item.uploadId, item.offset, item.file.slice(item.offset, end), controller.signal);
           failures = 0;
           if (answer.done) {
