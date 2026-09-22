@@ -343,6 +343,7 @@ export class UploadQueue {
                 return;
               }
               if (restarted) {
+                if (this.find(key)?.state !== "going") return;
                 this.fail(key, error);
                 return;
               }
@@ -350,6 +351,7 @@ export class UploadQueue {
               this.update(key, { uploadId: null, offset: 0, samples: [] });
               continue;
             default:
+              if (this.find(key)?.state !== "going") return;
               this.fail(key, error);
               return;
           }
