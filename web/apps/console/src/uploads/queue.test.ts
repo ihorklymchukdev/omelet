@@ -138,6 +138,15 @@ describe("UploadQueue protocol", () => {
     expect(item(b).state).toBe("done");
   });
 
+  it("stalls an upload on an error that isn't the agent's, and still runs the next one", async () => {
+    const { agent, queue, item } = setup();
+    agent.failOn("patch", 1, new TypeError("Load failed"));
+    const [a, b] = queue.add("p", "", [file("a.txt", "abcdefghij"), file("b.txt", "xy")]);
+    await expect(queue.settled()).resolves.toBeUndefined();
+    expect(item(a)).toMatchObject({ state: "stalled", message: "Load failed" });
+    expect(item(b).state).toBe("done");
+  });
+
   it("hands a lost session to the app instead of failing the upload", async () => {
     const { agent, queue, lost, item } = setup();
     agent.failOn("patch", 1, new ApiError("session_expired", "gone", 401));

@@ -8,7 +8,7 @@ export function fakeAgent() {
   const sleeps: number[] = [];
   const uploads = new Map<string, { size: number; offset: number; path: string }>();
   const counts: Record<Method, number> = { start: 0, patch: 0, status: 0 };
-  const scripted: Array<{ method: Method; at: number; error: ApiError }> = [];
+  const scripted: Array<{ method: Method; at: number; error: Error }> = [];
   const state = { next: 0, free: 100 * 1024 ** 3, skew: 0, busyOnFinish: 0, hangAt: 0, loseResponseAt: 0, hangAfterApplyAt: 0 };
 
   function scriptedFailure(method: Method): void {
@@ -86,7 +86,7 @@ export function fakeAgent() {
     sleeps,
     uploads,
     state,
-    failOn(method: Method, at: number, error: ApiError) {
+    failOn(method: Method, at: number, error: Error) {
       scripted.push({ method, at, error });
     },
     sleep: (ms: number) => {

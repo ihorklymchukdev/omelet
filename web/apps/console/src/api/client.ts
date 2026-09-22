@@ -51,6 +51,20 @@ function parse(text: string): { ok: true; value: unknown } | { ok: false } {
   }
 }
 
+// AbortSignal.any is missing before Safari 17.4.
+function either(a: AbortSignal, b: AbortSignal): AbortSignal {
+  if (typeof AbortSignal.any === "function") return AbortSignal.any([a, b]);
+  const controller = new AbortController();
+  for (const signal of [a, b]) {
+    if (signal.aborted) {
+      controller.abort(signal.reason);
+      break;
+    }
+    signal.addEventListener("abort", () => controller.abort(signal.reason), { once: true });
+  }
+  return controller.signal;
+}
+
 interface Payload {
   json?: unknown;
   raw?: Blob;
@@ -61,7 +75,7 @@ interface Payload {
 export function createApi(fetchImpl: typeof fetch, { timeoutMs = 10_000 }: { timeoutMs?: number } = {}): Api {
   async function send(method: string, path: string, payload: Payload = {}): Promise<{ status: number; text: string }> {
     const timeout = AbortSignal.timeout(timeoutMs);
-    const signal = payload.signal ? AbortSignal.any([payload.signal, timeout]) : timeout;
+    const signal = payload.signal ? either(payload.signal, timeout) : timeout;
     const headers: Record<string, string> = {
       ...(payload.json !== undefined ? { "Content-Type": "application/json" } : {}),
       ...(payload.raw !== undefined ? { "Content-Type": "application/octet-stream" } : {}),

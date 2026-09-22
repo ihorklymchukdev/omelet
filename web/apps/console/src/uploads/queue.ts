@@ -315,7 +315,12 @@ export class UploadQueue {
             samples: addSample(item.samples, { at: this.now(), offset: answer.offset }),
           });
         } catch (error) {
-          if (!(error instanceof ApiError)) throw error;
+          if (!(error instanceof ApiError)) {
+            if (this.find(key)?.state === "going") {
+              this.update(key, { state: "stalled", message: error instanceof Error ? error.message : String(error) });
+            }
+            return;
+          }
           if (error.code === "aborted") return;
           if (isSessionLost(error)) {
             // A pause can't abort start/status, so the write must not undo it —
@@ -381,7 +386,11 @@ export class UploadQueue {
     const item = this.find(key);
     if (!item) return;
     this.update(key, { state: "done", offset: item.size, busy: false, file: null });
-    this.onLanded(this.find(key)!);
+    try {
+      this.onLanded(this.find(key)!);
+    } catch {
+      // The file is in the project; a failing listener can't make that untrue.
+    }
   }
 
   private fail(key: string, error: ApiError): void {
