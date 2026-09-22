@@ -1,7 +1,8 @@
 # Omelet web UI — decisions, and part A: agent prerequisites
 
 Date: 2026-09-21
-Design board: `Omelet Web UI.dc.html` (claude.ai/design project `5a77e605`)
+Design board: `Omelet Web UI.dc.html` (claude.ai/design project `5a77e605`);
+snapshot and frame-to-part map in `docs/design/`
 
 The web UI is the page at `http://localhost:39080` a non-technical user manages
 projects from. The board has sixteen frames drawn at the desktop window size
@@ -73,7 +74,10 @@ different auth dependency. No handler is duplicated.
    sets `omelet_session` — `HttpOnly`, `SameSite=Strict`, `Path=/api`, no
    `Secure` (plain http on loopback).
 4. Sessions live in sqlite as a SHA-256 of the id, so they survive an agent
-   restart. Seven days, sliding on use. `DELETE /api/session` signs out.
+   restart. Seven days, sliding on use: once less than `SESSION_TTL - 1h`
+   remains, a request extends the row and the middleware re-sends the cookie
+   with a fresh `Max-Age` — at most one sqlite write an hour, not one per poll.
+   `DELETE /api/session` signs out.
 
 `GET /api/session` answers 200 or 401, so the page can decide what to render
 before it asks for anything else.
@@ -141,15 +145,17 @@ polling phase and `started_at`, never from log output.
 - `DELETE /projects/{id}` stays synchronous with today's response shape
   (`{id, stopped, detail}`): the host CLI's `destroy`, install verification and
   the desktop's replace-import all call it and wait. It never reads the compose
-  file any more: containers, then networks, are found by
-  `label=com.docker.compose.project=<name>` and removed, so a broken
-  `docker-compose.yml` no longer blocks it.
+  file any more: containers are stopped, then containers and networks are found
+  by `label=com.docker.compose.project=<name>` and removed, so a broken
+  `docker-compose.yml` no longer blocks it. Every step runs even if an earlier
+  one failed; the first failure is what `detail` reports.
 - `?purge=true` also removes the project's volumes and its folder. The web UI
   always sends it; existing callers do not, so their behaviour (forget the
   project, keep its files and volumes) is unchanged.
-- `<name>` is the compose project name recorded at the last `up` (new
-  `compose_name` column): the directory name unless the file sets a top-level
-  `name:`. A project never started falls back to its id.
+- `<name>` is resolved in order: the `com.docker.compose.project` label of any
+  container whose `com.docker.compose.project.working_dir` is the project
+  folder; then the `compose_name` column, recorded before every `up` (the
+  directory name unless the file sets a top-level `name:`); then the id.
 
 **Free space.** `GET /disk` → `{free_bytes, total_bytes}` via `statvfs` on
 `projects_root`. A write that hits ENOSPC anywhere in the file routes answers
