@@ -11,14 +11,16 @@ import s from "./FilesPage.module.css";
 const percent = (item: UploadItem) => (item.size === 0 ? 100 : Math.floor((item.offset / item.size) * 100));
 
 export function UploadPanel({ items, queue }: { items: readonly UploadItem[]; queue: UploadQueue }) {
-  const [stillFull, setStillFull] = useState<number | null>(null);
+  // Keyed to the holding item, so a later hold never shows an earlier one's answer.
+  const [stillFull, setStillFull] = useState<{ key: string; free: number } | null>(null);
   if (items.length === 0) return null;
   const full = items.find((item) => item.state === "noRoom" && item.uploadId !== null);
 
   async function carryOn() {
-    const moved = await queue.carryOn().catch(() => false);
+    await queue.carryOn().catch(() => {});
     // Read the queue, not `items`: this closure's copy predates carryOn's update.
-    setStillFull(moved ? null : (queue.snapshot().find((i) => i.state === "noRoom")?.freeBytes ?? 0));
+    const holding = queue.snapshot().find((i) => i.state === "noRoom" && i.uploadId !== null);
+    setStillFull(holding ? { key: holding.key, free: holding.freeBytes ?? 0 } : null);
   }
 
   return (
@@ -31,7 +33,7 @@ export function UploadPanel({ items, queue }: { items: readonly UploadItem[]; qu
             free up space in the desktop app first.
           </p>
           <Button variant="primary" onClick={carryOn}>I've freed some up — carry on</Button>
-          {stillFull !== null && <Notice>Still not enough room — {size(stillFull)} free.</Notice>}
+          {stillFull?.key === full.key && <Notice>Still not enough room — {size(stillFull.free)} free.</Notice>}
         </RowCard>
       )}
       <Collapsible boxed defaultOpen summary="Carrying things in" aside={summary(items)}>

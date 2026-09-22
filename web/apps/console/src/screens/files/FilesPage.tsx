@@ -33,6 +33,17 @@ export function FilesPage() {
     void queue.syncPending(id);
   }, [queue, id]);
 
+  // A file dropped outside the listing would make the browser open it and leave the app.
+  useEffect(() => {
+    const stay = (event: Event) => event.preventDefault();
+    window.addEventListener("dragover", stay);
+    window.addEventListener("drop", stay);
+    return () => {
+      window.removeEventListener("dragover", stay);
+      window.removeEventListener("drop", stay);
+    };
+  }, []);
+
   async function dropInto(files: File[]) {
     const disk = await client.fetchQuery({ queryKey: ["disk"], queryFn: () => api.get<Disk>("/api/disk"), staleTime: 0 });
     const fitting = files.filter((f) => fits(f.size, disk.free_bytes));
