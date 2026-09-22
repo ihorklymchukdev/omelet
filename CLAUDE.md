@@ -43,15 +43,17 @@ Before the first shipped host can install anything:
 - At least one `engine-vX.Y.Z` tag exists.
 - The ghcr image named by that tag's `engine/stack.yml` is published and public.
 - `agent/__init__.py`, the Dockerfile's `AGENT_VERSION` and `engine/stack.yml` are bumped together
-  before the first tag — the agent gained `/health`'s `api` field after 0.1.0.
+  before the first tag — the agent gained `/health`'s `api` field after 0.1.0. The stack's
+  `omelet-web` tag carries the same version.
 
 `engine/get.sh` on `main` is a live contract for every shipped host: keep its env vars
 (`OMELET_ENGINE_REPO`, `OMELET_ENGINE_REF`, `OMELET_ENGINE_REPAIR`), marker path and exit
 semantics backward compatible.
 
 1. Bump `agent/__init__.py`'s `__version__`, the Dockerfile's `AGENT_VERSION` and
-   `engine/stack.yml`'s image tag together (`tests/test_constants_agree.py` holds them equal).
-2. `docker build -t ghcr.io/ihorklymchukdev/omelet-agent:X.Y.Z agent/ && docker push ghcr.io/ihorklymchukdev/omelet-agent:X.Y.Z`
+   `engine/stack.yml`'s agent and web image tags together (`tests/test_constants_agree.py` holds them equal).
+2. `docker build -t ghcr.io/ihorklymchukdev/omelet-agent:X.Y.Z agent/ && docker push ghcr.io/ihorklymchukdev/omelet-agent:X.Y.Z`,
+   then `docker buildx build --platform linux/amd64,linux/arm64 -t ghcr.io/ihorklymchukdev/omelet-web:X.Y.Z --push web/`
 3. `git tag engine-vX.Y.Z && git push origin engine-vX.Y.Z`
 
 Bump `agent/core/constants.API_VERSION` (and the host's `SUPPORTED_API`) only when a route the host
@@ -65,6 +67,16 @@ pip install -e ".[dev]"
 python3 -m pytest -q                                    # full suite (~710 tests, ~7s)
 python3 -m pytest tests/agent/test_project.py -q        # one file
 python3 -m pytest -k classify -q                        # one test by name
+```
+
+The browser UI lives in `web/` (npm workspace, Node ≥ 22.22):
+
+```bash
+cd web && npm install
+npm run dev          # Vite + an in-browser mock agent; ?scenario=expired|handoff-spent|old-agent|down|lost-mid-use
+npm test             # Vitest
+npm run typecheck
+npm run build && npm run check-offline
 ```
 
 In this WSL sandbox `/tmp/pytest-of-$USER` is root-owned, which breaks `tmp_path` fixtures.
@@ -188,6 +200,15 @@ Do not add an `if windows` anywhere else — push the difference into a provider
   outside `projects_root`; the staged file's size is the offset.
   `agent/core/reconcile.py` lists project folders with no state row (made by a
   coding agent) for the UI's adopt flow.
+- `web/` — the browser UI at `localhost:<edge>`, shipped as the `omelet-web` nginx image and
+  routed by Traefik below the agent's `/api` router. `packages/ui` is the kit (tokens, fonts,
+  components; drawn from `docs/design/`, never from `host/desktop/ui`; its imports are held to
+  React and its fonts by `packages/ui/test/boundary.test.ts`). `apps/console` is the app:
+  `boot/boot.ts` decides signed-in / signed-out / needs-update / not-answering from `/api/health`
+  and `/api/session`; `api/version.ts`'s `SUPPORTED_API` is held to the agent's `API_VERSION` by
+  `tests/test_constants_agree.py`. Assets always ship as files — the CSP refuses `data:` fonts
+  (`build.assetsInlineLimit: 0` in `apps/console/vite.config.ts`). The page must work offline —
+  `scripts/check-offline.mjs` fails the image build on any load from another host.
 
 ### Things that will bite you
 
