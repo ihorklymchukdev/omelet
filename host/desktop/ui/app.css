@@ -69,9 +69,8 @@ body {
 @keyframes om-bar { 0%{transform:translateX(-100%)} 100%{transform:translateX(320%)} }
 @keyframes om-blink { 0%,100%{opacity:1} 50%{opacity:.35} }
 
-/* The board's own motion note: loops are for waiting, and only one thing
-   loops at a time. Under reduced-motion none of them do -- the pan is still
-   a pan, it just stops sizzling. */
+/* Under reduced-motion nothing loops -- the pan is still a pan, it just
+   stops sizzling. */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration:0.001ms !important;
@@ -96,6 +95,9 @@ body {
   transition:background 120ms var(--ease), color 120ms var(--ease);
 }
 .btn-secondary:hover { background:var(--surface-2); color:var(--ink); }
+.btn-secondary:disabled {
+  cursor:not-allowed; color:var(--ink-3); background:transparent; border-color:var(--line);
+}
 
 /* Layout: window padding 40/48, card padding 16-22, gaps 10-14 within a
    group, 22-28 between groups. Type scale from the board's token sheet. */
@@ -135,6 +137,8 @@ body {
   border:1px solid var(--line-2);
 }
 .badge::before { content:''; width:7px; height:7px; border-radius:50%; background:currentColor; }
+.badge-empty { background:var(--surface-2); border-color:transparent; }
+.badge-empty::before { background:transparent; border:1.5px solid currentColor; width:5px; height:5px; }
 .badge-running { background:var(--basil-soft); color:var(--basil); border-color:transparent; }
 .badge-cold { background:var(--cold-soft); color:var(--cold); border-color:transparent; }
 .badge-bad { background:var(--paprika-soft); color:var(--paprika); border-color:transparent; }
@@ -174,10 +178,20 @@ body {
   display:flex; align-items:center; gap:14px; flex-wrap:wrap;
 }
 
-.log { margin-top:4px; }
+details.log {
+  margin-top:4px; padding:14px 16px; border-radius:var(--r-md);
+  background:var(--surface); border:1px solid var(--line);
+}
 .log summary {
   cursor:pointer; font:600 14.5px 'Hanken Grotesk', sans-serif; color:var(--ink-2);
 }
+.log summary { list-style:none; }
+.log summary::-webkit-details-marker { display:none; }
+.log summary::after {
+  content:''; display:inline-block; width:5px; height:5px; margin-left:9px; vertical-align:3px;
+  border:solid currentColor; border-width:0 1.5px 1.5px 0; transform:rotate(45deg);
+}
+.log[open] summary::after { transform:rotate(-135deg); vertical-align:0; }
 .log pre {
   font:400 13px 'IBM Plex Mono', monospace; white-space:pre-wrap; word-break:break-word;
   background:var(--surface-2); border:1px solid var(--line); border-radius:var(--r-sm);
@@ -211,7 +225,10 @@ body {
 .tiles [data-action="check-updates"] { --icon:url("data:image/svg+xml,<svg xmlns='http%3A//www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4'/><path d='m7 10 5 5 5-5'/><path d='M12 15V3'/></svg>"); }
 .tiles [data-action="uninstall"] { --icon:url("data:image/svg+xml,<svg xmlns='http%3A//www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M3 6h18'/><path d='M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6'/><path d='M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2'/></svg>"); }
 .tiles button:hover { background:var(--surface-2); }
-.tiles button:disabled { opacity:.5; cursor:not-allowed; }
+.tiles button:disabled:not([aria-busy]) {
+  cursor:not-allowed; color:var(--ink-3); background:transparent; border-style:dashed;
+}
+.tiles button:disabled:not([aria-busy])::before { display:none; }
 .tile-danger:hover { background:var(--paprika-soft); color:var(--paprika); }
 .tile-note {
   align-self:center; padding-left:14px;
@@ -235,35 +252,46 @@ body {
 }
 .install-left .btn-primary, .install-left .btn-secondary { align-self:stretch; text-align:center; }
 
-/* A pan seen from above. It only sizzles while setup is waiting on it. */
 .pan {
-  width:148px; height:148px; border-radius:50%;
-  background:var(--surface-2); border:1px solid var(--line); flex:none;
-  position:relative;
-}
-.pan-hot {
-  border-color:transparent;
+  --rim:var(--surface-2); --base:var(--cream); --dot:transparent;
+  width:148px; height:148px; border-radius:50%; flex:none; position:relative;
+  /* Sizes are fractions of the radius so the pan scales with its box. */
   background:
-    radial-gradient(circle, var(--yolk) 0 16px, transparent 16.5px),
-    radial-gradient(circle, var(--cream) 0 49px, var(--line) 49.5px 51px, transparent 51.5px),
-    var(--yolk-soft);
+    radial-gradient(circle closest-side, var(--dot) 0 22%, transparent 23%),
+    radial-gradient(circle closest-side, var(--base) 0 66%, var(--line) 67% 69%, transparent 70%),
+    var(--rim);
 }
+.pan-hot { --rim:var(--yolk-soft); --dot:var(--yolk); }
 .pan-hot::before, .pan-hot::after {
   content:''; position:absolute; border-radius:50%;
+  animation:om-sizzle 1.8s var(--ease) infinite;
 }
-.pan-hot::before { top:14px; left:44px; width:7px; height:7px; background:var(--yolk); opacity:.5; }
-.pan-hot::after { top:20px; left:75px; width:4px; height:4px; background:var(--yolk-deep); }
-.install .pan-hot::before { animation:om-sizzle 1.8s var(--ease) infinite; }
-.install .pan-hot::after { animation:om-sizzle 1.8s var(--ease) .9s infinite; }
-.pan-asleep {
-  background:var(--cold-soft); border-color:transparent;
-}
-.pan-asleep::after {
+.pan-hot::before { top:10%; left:30%; width:5%; height:5%; background:var(--yolk); opacity:.5; }
+.pan-hot::after { top:14%; left:51%; width:3%; height:3%; background:var(--yolk-deep); animation-delay:.9s; }
+
+.pan-asleep { --rim:var(--cold-soft); --dot:var(--cold); }
+.install .pan-asleep::after {
   content:'z'; position:absolute; top:-6px; right:6px; color:var(--ink-3);
   font:700 16px 'Bricolage Grotesque', sans-serif;
   animation:om-zzz 1.8s var(--ease) infinite;
 }
-.pan-burnt { background:var(--paprika-soft); border-color:transparent; }
+
+.pan-empty {
+  border:2px dashed var(--line-2);
+  background:radial-gradient(circle closest-side, var(--surface-2) 0 52%, transparent 53%);
+}
+
+/* A broken yolk with a crack across it. */
+.pan-burnt { --rim:var(--paprika-soft); }
+.pan-burnt::before, .pan-burnt::after { content:''; position:absolute; left:50%; top:50%; }
+.pan-burnt::before {
+  width:30%; height:21%; margin:-10.5% 0 0 -15%; border-radius:50%;
+  background:var(--yolk); opacity:.7;
+}
+.pan-burnt::after {
+  width:6%; height:24%; margin:-14% 0 0 -3%; border-radius:999px;
+  background:var(--paprika-soft); transform:rotate(-28deg);
+}
 
 .bar {
   position:relative; width:100%; height:8px; border-radius:999px;
@@ -317,6 +345,8 @@ body {
   mask:url("data:image/svg+xml,<svg xmlns='http%3A//www.w3.org/2000/svg' viewBox='0 0 22 22'><circle cx='11' cy='11' r='9' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-dasharray='44 12.6'/></svg>") center/contain no-repeat;
   animation:om-spin 1s linear infinite;
 }
+/* Hint beside a row of buttons wraps rather than stretching to the edge. */
+.hero + .row .hint { max-width:190px; }
 .row-step[data-status="running"] .state { font-weight:600; color:var(--yolk-deep); }
 .row-step[data-status="done"] .mark,
 .row-step[data-status="skipped"] .mark { background:var(--basil-soft); color:var(--basil); }
@@ -370,7 +400,7 @@ fieldset[data-conflict] {
 
 /* import:progress reuses .pan and adds one more loop; only one animates at a
    time because it is the only template that shows a .pan. */
-.pan-carry { background:var(--yolk-soft); border-color:transparent; }
+.pan-carry { background:var(--yolk-soft); }
 .pan-carry::after {
   content:''; position:absolute; left:50%; top:50%; width:26px; height:18px;
   margin:-9px 0 0 -13px; border-radius:4px; background:var(--yolk-deep);
