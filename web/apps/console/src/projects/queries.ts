@@ -9,7 +9,7 @@ const JOB_MS = 1000;
 
 const ALL = ["projects"] as const;
 const LIST = ["projects", "list"] as const;
-const ONE = (id: string) => ["projects", "one", id] as const;
+export const ONE = (id: string) => ["projects", "one", id] as const;
 
 export function projectPath(id: string): string {
   return `/api/projects/${encodeURIComponent(id)}`;
@@ -86,7 +86,13 @@ export function useDeleteProject(id: string) {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (purge: boolean) => api.del<DeleteResult>(`${projectPath(id)}${purge ? "?purge=true" : ""}`),
-    onSuccess: () => client.invalidateQueries({ queryKey: LIST }),
+    onSuccess: () => {
+      // Update the list eagerly so the deleted row is gone before navigate("/")
+      // paints; the single-project cache is removed by the list once it has
+      // taken over, so a still-mounted project page never re-fetches into a 404.
+      client.setQueryData<ProjectList>(LIST, (d) => d && { ...d, projects: d.projects.filter((p) => p.id !== id) });
+      void client.invalidateQueries({ queryKey: LIST });
+    },
   });
 }
 

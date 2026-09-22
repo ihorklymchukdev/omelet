@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useLocation } from "react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button, Notice } from "@omelet/ui";
 import { subtitle } from "../../projects/format";
-import { useProjects } from "../../projects/queries";
+import { ONE, useProjects } from "../../projects/queries";
 import type { DeleteResult } from "../../projects/types";
 import { projectView } from "../../projects/view";
 import { PLUS } from "../icons";
@@ -25,47 +26,61 @@ function DeletedNotice({ result }: { result: DeleteResult }) {
 
 export function ProjectList() {
   const query = useProjects();
+  const client = useQueryClient();
   const [creating, setCreating] = useState(false);
   const deleted = (useLocation().state as { deleted?: DeleteResult } | null)?.deleted;
   const modal = <NewProjectModal open={creating} onClose={() => setCreating(false)} />;
 
+  // The single-project cache for a deleted project is dropped only once the
+  // list has taken over navigation, so a project page still mid-unmount never
+  // re-fetches into a 404 before it's replaced by this screen.
+  useEffect(() => {
+    if (deleted) client.removeQueries({ queryKey: ONE(deleted.id) });
+  }, [deleted, client]);
+
+  let body: ReactNode;
   if (query.data === undefined) {
-    return query.isError ? <p className={s.error}>{query.error.message}</p> : <p className={s.muted}>Checking the kitchen…</p>;
+    body = query.isError ? <p className={s.error}>{query.error.message}</p> : <p className={s.muted}>Checking the kitchen…</p>;
+  } else {
+    const { projects, discovered } = query.data;
+    if (projects.length === 0 && discovered.length === 0) {
+      body = (
+        <>
+          {deleted && <DeletedNotice result={deleted} />}
+          <EmptyCounter onNew={() => setCreating(true)} />
+        </>
+      );
+    } else {
+      const cooking = projects.filter((project) => projectView(project).kind === "running").length;
+      body = (
+        <section className={s.page}>
+          {deleted && <DeletedNotice result={deleted} />}
+          {query.isError && <Notice>{query.error.message}</Notice>}
+          <header className={s.head}>
+            <div>
+              <h1 className={s.title}>Your projects</h1>
+              <p className={s.sub}>{subtitle(projects.length, cooking)}</p>
+            </div>
+            <Button variant="primary" onClick={() => setCreating(true)}>{PLUS}New project</Button>
+          </header>
+          {discovered.length > 0 && <DiscoveredBand folders={discovered} />}
+          {projects.length > 0 && (
+            <ul className={s.list}>
+              {projects.map((project) => (
+                <li key={project.id}><ProjectRow project={project} /></li>
+              ))}
+            </ul>
+          )}
+          <Notice>These addresses only work on this computer. Nothing is out on the internet.</Notice>
+        </section>
+      );
+    }
   }
 
-  const { projects, discovered } = query.data;
-  if (projects.length === 0 && discovered.length === 0) {
-    return (
-      <>
-        {deleted && <DeletedNotice result={deleted} />}
-        <EmptyCounter onNew={() => setCreating(true)} />
-        {modal}
-      </>
-    );
-  }
-
-  const cooking = projects.filter((project) => projectView(project).kind === "running").length;
   return (
-    <section className={s.page}>
-      {deleted && <DeletedNotice result={deleted} />}
-      {query.isError && <Notice>{query.error.message}</Notice>}
-      <header className={s.head}>
-        <div>
-          <h1 className={s.title}>Your projects</h1>
-          <p className={s.sub}>{subtitle(projects.length, cooking)}</p>
-        </div>
-        <Button variant="primary" onClick={() => setCreating(true)}>{PLUS}New project</Button>
-      </header>
-      {discovered.length > 0 && <DiscoveredBand folders={discovered} />}
-      {projects.length > 0 && (
-        <ul className={s.list}>
-          {projects.map((project) => (
-            <li key={project.id}><ProjectRow project={project} /></li>
-          ))}
-        </ul>
-      )}
-      <Notice>These addresses only work on this computer. Nothing is out on the internet.</Notice>
+    <>
+      {body}
       {modal}
-    </section>
+    </>
   );
 }
