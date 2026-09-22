@@ -59,7 +59,7 @@ export function ProjectPage() {
 
   const project = query.data;
   const primary = primaryUrl(project);
-  const tiles = <Tiles onAnalyze={() => setModal("analyze")} onDelete={() => setModal("delete")} />;
+  const tiles = <Tiles id={project.id} onAnalyze={() => setModal("analyze")} onDelete={() => setModal("delete")} />;
   const failed = lifecycle.error && <Notice>{actionError(lifecycle.error)}</Notice>;
   const head = (sub?: string) => (
     <header className={s.head}>

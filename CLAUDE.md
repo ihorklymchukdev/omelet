@@ -55,8 +55,8 @@ semantics backward compatible.
 
 1. Bump `agent/__init__.py`'s `__version__`, the Dockerfile's `AGENT_VERSION` and
    `engine/stack.yml`'s agent and web image tags together (`tests/test_constants_agree.py` holds them equal).
-2. `docker build -t ghcr.io/ihorklymchukdev/omelet-agent:X.Y.Z agent/ && docker push ghcr.io/ihorklymchukdev/omelet-agent:X.Y.Z`,
-   then `docker buildx build --platform linux/amd64,linux/arm64 -t ghcr.io/ihorklymchukdev/omelet-web:X.Y.Z --push web/`
+2. `packaging/images/build.sh --push` — builds and pushes both images for amd64 and arm64. The web
+   build needs `--build-context fixtures=tests/fixtures`, so a bare `docker build web/` fails.
 3. `git tag engine-vX.Y.Z && git push origin engine-vX.Y.Z`
 
 Bump `agent/core/constants.API_VERSION` (and the host's `SUPPORTED_API`) only when a route the host
@@ -76,7 +76,7 @@ The browser UI lives in `web/` (npm workspace, Node ≥ 22.22):
 
 ```bash
 cd web && npm install
-npm run dev          # Vite + an in-browser mock agent; ?scenario=empty|expired|handoff-spent|old-agent|down|lost-mid-use|wrong-host
+npm run dev          # Vite + an in-browser mock agent; ?scenario=empty|expired|handoff-spent|old-agent|down|lost-mid-use|wrong-host|uploads|full|fills-up|busy|locked
 npm test             # Vitest
 npm run typecheck
 npm run build && npm run check-offline
@@ -215,6 +215,9 @@ Do not add an `if windows` anywhere else — push the difference into a provider
   `projects/view.ts` maps the agent's `status`/`problem`/`job`/`empty` to one screen state for both the
   list and the project page; `projects/slugify.ts` mirrors the agent's `_slug`, held equal by
   `tests/fixtures/slugify-cases.json` (read by Vitest and `tests/agent/test_slug_cases.py`).
+  `uploads/queue.ts` owns the chunked-upload protocol (resume at the agent's offset, busy retry on
+  the last chunk, hold on `disk_full`) with no React in it; one instance lives above the router in
+  `uploads/QueueProvider.tsx`, so uploads carry on across screens but stop when the page closes.
 
 ### Things that will bite you
 

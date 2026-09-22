@@ -4,6 +4,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router";
 import { createQueryClient } from "./api/queryClient";
 import { boot, type BootResult } from "./boot/boot";
 import { Kit } from "./screens/Kit";
+import { FilesPage } from "./screens/files/FilesPage";
 import { NeedsUpdate } from "./screens/NeedsUpdate";
 import { NotAnswering } from "./screens/NotAnswering";
 import { ProjectList } from "./screens/list/ProjectList";
@@ -11,6 +12,7 @@ import { ProjectPage } from "./screens/project/ProjectPage";
 import { SignedOut } from "./screens/SignedOut";
 import { WrongHost } from "./screens/WrongHost";
 import { Shell } from "./shell/Shell";
+import { QueueProvider } from "./uploads/QueueProvider";
 
 export function App({ handoff }: { handoff: string | null }) {
   const [result, setResult] = useState<BootResult | null>(null);
@@ -45,16 +47,19 @@ export function App({ handoff }: { handoff: string | null }) {
     case "signedIn":
       return (
         <QueryClientProvider client={queryClient}>
-          <BrowserRouter>
-            <Shell>
-              <Routes>
-                <Route path="/" element={<ProjectList />} />
-                <Route path="/p/:id" element={<ProjectPage />} />
-                <Route path="/kit" element={<Kit />} />
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Routes>
-            </Shell>
-          </BrowserRouter>
+          <QueueProvider onSessionLost={(reason) => setResult({ kind: "signedOut", reason })}>
+            <BrowserRouter>
+              <Shell>
+                <Routes>
+                  <Route path="/" element={<ProjectList />} />
+                  <Route path="/p/:id" element={<ProjectPage />} />
+                  <Route path="/p/:id/files/*" element={<FilesPage />} />
+                  <Route path="/kit" element={<Kit />} />
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
+              </Shell>
+            </BrowserRouter>
+          </QueueProvider>
         </QueryClientProvider>
       );
     case "signedOut":

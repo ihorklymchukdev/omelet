@@ -91,4 +91,34 @@ describe("the API client", () => {
     const error = await failure(api.text("/api/projects/a/logs"));
     expect([error.code, error.status]).toEqual(["logs_unavailable", 409]);
   });
+
+  it("keeps the agent's extra error fields so an upload can resume from the real offset", async () => {
+    const { api } = answering(409, JSON.stringify({ error: { code: "offset_mismatch", message: "m", offset: 8388608 } }));
+    const error = await failure(api.get("/api/uploads/x"));
+    expect(error.details).toEqual({ offset: 8388608 });
+  });
+
+  it("sends a PATCH body raw, with its headers, not as JSON", async () => {
+    const { api, seen } = answering(200, JSON.stringify({ offset: 3 }));
+    const chunk = new Blob(["abc"]);
+    await api.patch("/api/uploads/x", chunk, { "Upload-Offset": "0" });
+    expect(seen[0]).toMatchObject({
+      method: "PATCH",
+      headers: { "Content-Type": "application/octet-stream", "Upload-Offset": "0" },
+      body: chunk,
+    });
+  });
+
+  it("reports a request the caller cancelled as 'aborted', not as a dropped connection", async () => {
+    const fetchImpl = ((_input: RequestInfo | URL, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(init.signal!.reason));
+      })) as typeof fetch;
+    const api = createApi(fetchImpl);
+    const controller = new AbortController();
+    const pending = failure(api.patch("/api/uploads/x", new Blob(["a"]), {}, controller.signal));
+    controller.abort();
+    const error = await pending;
+    expect([error.code, error.status]).toEqual(["aborted", 0]);
+  });
 });

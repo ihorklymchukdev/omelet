@@ -134,6 +134,64 @@ omelet vm stop           # stop the VM
 omelet vm destroy        # destroy the VM
 ```
 
+## Releasing the agent and web UI
+
+The VM runs two images of ours, `omelet-agent` and `omelet-web`. They release
+together under one version. A VM pulls whatever tags the installed engine
+tag's `engine/stack.yml` names, so a new image reaches no one until a new
+`engine-v*` tag points at it.
+
+1. On `main`, bump these together: `agent/__init__.py`'s `__version__`,
+   `agent/Dockerfile`'s `AGENT_VERSION`, and both image tags in
+   `engine/stack.yml`.
+2. Build and push both images for `linux/amd64` and `linux/arm64`. This needs
+   `docker buildx` and a `docker login ghcr.io`:
+
+   ```bash
+   packaging/images/build.sh --push
+   ```
+
+   The script refuses to build if those versions disagree. A package pushed
+   for the first time is private on ghcr: make it public in the package
+   settings, or every VM install fails pulling it.
+3. Tag the release. Only `engine-vN.N.N` tags count; `get.sh` ignores others:
+
+   ```bash
+   git tag engine-vX.Y.Z && git push origin engine-vX.Y.Z
+   ```
+
+Other ways to run the script:
+
+```bash
+packaging/images/build.sh                              # native arch, into local docker, no push
+packaging/images/build.sh --only web                   # just one image
+packaging/images/build.sh --push --tag dev --only web  # a throwaway tag to try in a VM
+```
+
+### Updating an installed VM
+
+Re-running setup does nothing once the engine is installed. Repair reinstalls
+the ref that is **already** installed, so it pulls the same image tags. To
+move a VM to the newest `engine-v*` release, run `get.sh` in it without the
+repair flag. It pulls the new images and recreates the containers whose
+image changed:
+
+```powershell
+wsl -d omelet-vm -u root -- bash -lc "curl -fsSL https://raw.githubusercontent.com/ihorklymchukdev/local-environment/main/engine/get.sh | bash"
+```
+
+On macOS, run the same command through `limactl shell omelet-vm -- sudo bash -lc "..."`.
+Pin a release by putting `OMELET_ENGINE_REF=engine-vX.Y.Z` before `bash`.
+
+To try a `--tag dev` image without cutting a release, swap it in by hand. The
+next `get.sh` run puts the released image back:
+
+```bash
+# inside the VM, as root
+OMELET_WEB_IMAGE=ghcr.io/ihorklymchukdev/omelet-web:dev \
+  docker compose -f /opt/omelet/stack.yml up -d web
+```
+
 ## Looking inside the VM
 
 There is no `omelet shell` command; use the VM tool for your platform.
