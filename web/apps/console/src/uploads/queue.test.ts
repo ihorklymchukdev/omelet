@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../api/client";
-import { fakeAgent, file } from "./fakeAgent";
+import { fakeAgent, file, until } from "./fakeAgent";
 import { UploadQueue, type UploadItem } from "./queue";
+import type { PendingUpload } from "./uploadApi";
 
 function setup() {
   const agent = fakeAgent();
@@ -113,5 +114,114 @@ describe("UploadQueue protocol", () => {
     await queue.settled();
     expect(lost).toEqual(["session_expired"]);
     expect(item(key).state).toBe("stalled");
+  });
+});
+
+describe("UploadQueue controls", () => {
+  it("pauses by aborting the chunk and re-reads the server offset before resuming", async () => {
+    const { agent, queue, item } = setup();
+    agent.state.hangAt = 2;
+    const [key] = queue.add("p", "", [file("a.txt", "abcdefghij")]);
+    await until(() => agent.calls.length === 3);
+    queue.pause(key);
+    await queue.settled();
+    expect(item(key)).toMatchObject({ state: "paused", offset: 4 });
+    agent.state.hangAt = 0;
+    queue.resume(key);
+    await queue.settled();
+    expect(agent.calls.slice(3)).toEqual(["status up1", "patch up1 @4+4", "patch up1 @8+2"]);
+    expect(item(key).state).toBe("done");
+  });
+
+  it("cancels a started upload on the agent when it is removed, then moves on", async () => {
+    const { agent, queue } = setup();
+    agent.state.hangAt = 1;
+    const [a] = queue.add("p", "", [file("a.txt", "abcdefghij"), file("b.txt", "xy")]);
+    await until(() => agent.calls.length === 2);
+    queue.remove(a);
+    await until(() => queue.snapshot().every((i) => i.state === "done"));
+    expect(agent.calls).toContain("cancel up1");
+    expect(queue.snapshot().map((i) => i.name)).toEqual(["b.txt"]);
+  });
+
+  it("resends a refused duplicate with replace once the user says so", async () => {
+    const { agent, queue, item } = setup();
+    agent.failOn("start", 1, new ApiError("file_exists", "exists", 409));
+    const [key] = queue.add("p", "data", [file("a.txt", "abc")]);
+    await queue.settled();
+    queue.replace(key);
+    await queue.settled();
+    expect(agent.calls).toContain("start data/a.txt replace");
+    expect(item(key).state).toBe("done");
+  });
+
+  const pending = (over: Partial<PendingUpload> = {}): PendingUpload => ({
+    id: "srv1", project_id: "p", path: "data/a.txt", size: 10, offset: 4,
+    fingerprint: "a.txt:10:7", replace: false, updated_at: 0, ...over,
+  });
+
+  it("refuses to resume a reloaded upload with a different file", async () => {
+    const { queue, item } = setup();
+    queue.adoptPending("p", [pending()]);
+    expect(queue.relink("srv1", file("a.txt", "abcdefghij", 8))).toBe(false);
+    expect(item("srv1")).toMatchObject({ state: "stalled", file: null });
+  });
+
+  it("resumes a reloaded upload from the server's offset once given the same file", async () => {
+    const { agent, queue, item } = setup();
+    agent.uploads.set("srv1", { size: 10, offset: 4, path: "data/a.txt" });
+    queue.adoptPending("p", [pending()]);
+    expect(item("srv1")).toMatchObject({ dir: "data", name: "a.txt", fromReload: true });
+    expect(queue.relink("srv1", file("a.txt", "abcdefghij", 7))).toBe(true);
+    await queue.settled();
+    // No start answer after a reload, so the chunk size is the 8 MiB default: one PATCH finishes it.
+    expect(agent.calls).toEqual(["status srv1", "patch srv1 @4+6"]);
+    expect(item("srv1").state).toBe("done");
+  });
+
+  it("doesn't add a second row for an upload it already holds", () => {
+    const { queue } = setup();
+    queue.adoptPending("p", [pending()]);
+    queue.adoptPending("p", [pending()]);
+    expect(queue.snapshot()).toHaveLength(1);
+  });
+
+  it("carries on after disk_full only once the agent reports room", async () => {
+    const { agent, queue, item } = setup();
+    agent.failOn("patch", 2, new ApiError("disk_full", "full", 507, { offset: 4 }));
+    const [a, b] = queue.add("p", "", [file("a.txt", "abcdefghij"), file("b.txt", "xy")]);
+    await queue.settled();
+    agent.state.free = 3;
+    expect(await queue.carryOn()).toBe(false);
+    expect(item(a).state).toBe("noRoom");
+    agent.state.free = 100;
+    expect(await queue.carryOn()).toBe(true);
+    await until(() => item(b).state === "done");
+    expect(item(a).state).toBe("done");
+  });
+
+  it("doesn't let a disk_full write that lands after a pause turn the item noRoom", async () => {
+    const landed: UploadItem[] = [];
+    let rejectPatch: ((error: unknown) => void) | null = null;
+    const queue = new UploadQueue({
+      api: {
+        start: async () => ({ upload_id: "up1", offset: 0, size: 10, chunk_size: 4, done: false }),
+        patch: () => new Promise((_resolve, reject) => (rejectPatch = reject)),
+        status: async () => {
+          throw new Error("not used by this test");
+        },
+        cancel: async () => ({}),
+        pending: async () => ({ uploads: [] }),
+        disk: async () => ({ free_bytes: 0, total_bytes: 0 }),
+      },
+      onLanded: (i) => landed.push(i),
+    });
+    const item = (key: string) => queue.snapshot().find((i) => i.key === key)!;
+    const [key] = queue.add("p", "", [file("a.txt", "abcdefghij")]);
+    await until(() => rejectPatch !== null);
+    queue.pause(key);
+    rejectPatch!(new ApiError("disk_full", "full", 507, { offset: 4 }));
+    await queue.settled();
+    expect(item(key).state).toBe("paused");
   });
 });

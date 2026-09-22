@@ -1,7 +1,7 @@
 import { ApiError, isSessionLost, type SessionLoss } from "../api/client";
 import { addSample, type Sample } from "./eta";
-import { joinPath } from "./paths";
-import type { UploadApi } from "./uploadApi";
+import { baseName, joinPath, parentOf } from "./paths";
+import type { PendingUpload, UploadApi } from "./uploadApi";
 
 export const RESERVE = 1024 ** 3;
 export const DEFAULT_CHUNK = 8 * 1024 * 1024;
@@ -112,6 +112,107 @@ export class UploadQueue {
     return added.map((i) => i.key);
   }
 
+  pause(key: string): void {
+    if (this.find(key)?.state !== "going") return;
+    this.update(key, { state: "paused", busy: false });
+    this.abort(key);
+  }
+
+  resume(key: string): void {
+    const item = this.find(key);
+    if (!item) return;
+    const resumable = item.state === "paused" || (item.state === "stalled" && item.file !== null);
+    if (!resumable) return;
+    this.update(key, { state: "waiting" });
+    this.kick();
+  }
+
+  remove(key: string): void {
+    const item = this.find(key);
+    if (!item) return;
+    this.abort(key);
+    this.items = this.items.filter((i) => i.key !== key);
+    this.emit();
+    // A failed cancel is left for the agent's seven-day sweep.
+    if (item.uploadId !== null && item.state !== "done") void this.api.cancel(item.uploadId).catch(() => {});
+    this.kick();
+  }
+
+  replace(key: string): void {
+    const item = this.find(key);
+    if (item?.state !== "failed" || item.reason !== "file_exists") return;
+    this.update(key, { replace: true, state: "waiting", reason: null, message: null });
+    this.kick();
+  }
+
+  relink(key: string, file: File): boolean {
+    const item = this.find(key);
+    if (!item || fingerprintOf(file) !== item.fingerprint) return false;
+    this.update(key, { file, state: "waiting" });
+    this.kick();
+    return true;
+  }
+
+  adoptPending(projectId: string, uploads: readonly PendingUpload[]): void {
+    const held = new Set(this.items.map((i) => i.uploadId));
+    const found: UploadItem[] = uploads
+      .filter((u) => !held.has(u.id))
+      .map((u) => ({
+        key: u.id,
+        projectId,
+        dir: parentOf(u.path),
+        name: baseName(u.path),
+        size: u.size,
+        fingerprint: u.fingerprint,
+        file: null,
+        uploadId: u.id,
+        offset: u.offset,
+        chunkSize: DEFAULT_CHUNK,
+        replace: u.replace,
+        state: "stalled",
+        reason: null,
+        message: null,
+        busy: false,
+        fromReload: true,
+        freeBytes: null,
+        samples: [],
+      }));
+    if (found.length === 0) return;
+    this.items = [...this.items, ...found];
+    this.emit();
+  }
+
+  async syncPending(projectId: string): Promise<void> {
+    try {
+      const { uploads } = await this.api.pending(projectId);
+      this.adoptPending(projectId, uploads);
+    } catch (error) {
+      if (isSessionLost(error)) this.onSessionLost(error.code);
+    }
+  }
+
+  async carryOn(): Promise<boolean> {
+    const { free_bytes: free } = await this.api.disk();
+    let moved = false;
+    for (const item of this.items) {
+      if (item.state !== "noRoom") continue;
+      // Staged bytes are already on disk; only a fresh start needs the reserve.
+      const room = item.uploadId !== null ? item.size - item.offset <= free : fits(item.size, free);
+      if (room) {
+        this.update(item.key, { state: "waiting", freeBytes: null });
+        moved = true;
+      } else {
+        this.update(item.key, { freeBytes: free });
+      }
+    }
+    this.kick();
+    return moved;
+  }
+
+  private abort(key: string): void {
+    if (this.active?.key === key) this.active.controller.abort();
+  }
+
   // A disk_full item already holds staged bytes; nothing else may start until
   // space is freed, or it would hit the same wall.
   private get held(): boolean {
@@ -202,6 +303,8 @@ export class UploadQueue {
           if (!(error instanceof ApiError)) throw error;
           if (error.code === "aborted") return;
           if (isSessionLost(error)) {
+            // A pause can't abort start/status; the wait that follows must not undo it.
+            if (this.find(key)?.state !== "going") return;
             this.update(key, { state: "stalled" });
             this.onSessionLost(error.code);
             return;
@@ -212,18 +315,22 @@ export class UploadQueue {
               continue;
             case "project_busy":
               // Only the finishing step takes the project lock, so every byte is already in.
+              if (this.find(key)?.state !== "going") return;
               this.update(key, { busy: true, offset: item.size });
               await this.sleep(BUSY_RETRY_MS);
               continue;
             case "disk_full":
+              if (this.find(key)?.state !== "going") return;
               this.update(key, { state: "noRoom", offset: numberOr(error.details.offset, item.offset) });
               return;
             case "not_enough_space":
+              if (this.find(key)?.state !== "going") return;
               this.update(key, { state: "noRoom", freeBytes: numberOr(error.details.free_bytes, null) });
               return;
             case "unreachable":
               failures += 1;
               if (failures > NETWORK_RETRIES) {
+                if (this.find(key)?.state !== "going") return;
                 this.update(key, { state: "stalled" });
                 return;
               }
