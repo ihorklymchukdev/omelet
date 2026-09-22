@@ -38,6 +38,10 @@ export function Modal({
         // The panel fills the dialog, so a click landing on the dialog itself is the backdrop.
         if (event.target === event.currentTarget) onClose();
       }}
+      onClose={() => {
+        // Browser-initiated close (e.g., form method="dialog"): only notify if open was true.
+        if (open) onClose();
+      }}
     >
       <div className={s.panel}>
         <h2 id={titleId} className={s.title}>{title}</h2>
