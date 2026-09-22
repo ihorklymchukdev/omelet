@@ -49,6 +49,20 @@ describe("the API client", () => {
     expect([error.code, error.status]).toEqual(["unreachable", 0]);
   });
 
+  it(
+    "gives up on a hung fetch instead of leaving the request pending forever",
+    async () => {
+      const fetchImpl = ((_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(init.signal!.reason));
+        })) as typeof fetch;
+      const api = createApi(fetchImpl, { timeoutMs: 20 });
+      const error = await failure(api.get("/api/health"));
+      expect([error.code, error.status]).toEqual(["unreachable", 0]);
+    },
+    1000,
+  );
+
   it("sends the session cookie and a JSON body on POST", async () => {
     const { api, seen } = answering(200, JSON.stringify({ signed_in: true }));
     await api.post("/api/session", { code: "abc" });

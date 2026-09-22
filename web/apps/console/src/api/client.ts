@@ -42,14 +42,17 @@ function parse(text: string): { ok: true; value: unknown } | { ok: false } {
   }
 }
 
-export function createApi(fetchImpl: typeof fetch): Api {
+export function createApi(fetchImpl: typeof fetch, { timeoutMs = 10_000 }: { timeoutMs?: number } = {}): Api {
   async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
     let response: Response;
     try {
       // Origin is left to the browser: the agent refuses a non-GET without it.
+      // A hung agent must not hang the page: an aborted fetch rejects and
+      // falls into the same "unreachable" mapping below as a refused one.
       response = await fetchImpl(path, {
         method,
         credentials: "same-origin",
+        signal: AbortSignal.timeout(timeoutMs),
         ...(body === undefined
           ? {}
           : { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
