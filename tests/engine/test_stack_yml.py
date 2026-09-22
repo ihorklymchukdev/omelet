@@ -5,6 +5,7 @@ import yaml
 from pathlib import Path
 
 STACK = Path(__file__).resolve().parents[2] / "engine" / "stack.yml"
+NGINX_CONF = Path(__file__).resolve().parents[2] / "web" / "nginx.conf"
 
 # Compose interpolation: ${VAR} or ${VAR:-default}. Stripping the whole
 # expression, not just the default, is what makes the "no bare literal" test
@@ -94,3 +95,13 @@ def test_the_web_page_is_reached_only_through_traefik_below_the_api_route():
     assert int(web["traefik.http.routers.omelet-web.priority"]) \
         < int(agent["traefik.http.routers.omelet-api.priority"])
     assert "ports" not in services["web"]
+
+
+def test_the_web_service_port_label_matches_the_port_nginx_listens_on():
+    # A drift here is a silent 502 on the whole page: Traefik would keep
+    # routing to a port nginx never binds.
+    web = _labels(yaml.safe_load(_text())["services"]["web"])
+    labeled_port = web["traefik.http.services.omelet-web.loadbalancer.server.port"]
+    match = re.search(r"listen\s+(\d+);", NGINX_CONF.read_text())
+    assert match, "web/nginx.conf must have a `listen <port>;` directive"
+    assert labeled_port == match[1]
