@@ -9,6 +9,7 @@ import { createUploadApi } from "./uploadApi";
 interface QueueContext {
   queue: UploadQueue;
   items: readonly UploadItem[];
+  heldBy: UploadItem | null;
   landed: UploadItem | null;
   dismiss: () => void;
 }
@@ -31,6 +32,7 @@ export function QueueProvider({ onSessionLost, children }: { onSessionLost: (rea
   );
   const items = useSyncExternalStore(queue.subscribe, queue.snapshot);
   const going = items.some((item) => item.state === "going");
+  const heldBy = useMemo(() => items.find((item) => item.state === "noRoom" && item.uploadId !== null) ?? null, [items]);
 
   useEffect(() => {
     if (!going) return;
@@ -39,14 +41,14 @@ export function QueueProvider({ onSessionLost, children }: { onSessionLost: (rea
     return () => window.removeEventListener("beforeunload", warn);
   }, [going]);
 
-  const value = useMemo(() => ({ queue, items, landed, dismiss: () => setLanded(null) }), [queue, items, landed]);
+  const value = useMemo(() => ({ queue, items, heldBy, landed, dismiss: () => setLanded(null) }), [queue, items, heldBy, landed]);
   return <Context.Provider value={value}>{children}</Context.Provider>;
 }
 
 export function useUploads(projectId: string) {
   const context = useContext(Context);
   if (!context) throw new Error("useUploads needs a QueueProvider");
-  const { queue, items, landed, dismiss } = context;
+  const { queue, items, heldBy, landed, dismiss } = context;
   const mine = useMemo(() => items.filter((item) => item.projectId === projectId), [items, projectId]);
-  return { queue, items: mine, landed: landed?.projectId === projectId ? landed : null, dismiss };
+  return { queue, items: mine, heldBy, landed: landed?.projectId === projectId ? landed : null, dismiss };
 }

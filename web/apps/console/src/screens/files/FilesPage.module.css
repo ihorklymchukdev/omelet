@@ -37,6 +37,7 @@
 .banner { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
 .bannerTitle { margin: 0; font: 700 17px var(--font-body); color: var(--ink); }
 .bannerText { margin: 0; font-size: 15px; line-height: 1.5; color: var(--ink-2); }
+.bannerActions { display: flex; gap: 8px; flex-wrap: wrap; }
 .queue { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 14px; }
 .upload { display: flex; flex-direction: column; gap: 6px; }
 .uploadHead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }

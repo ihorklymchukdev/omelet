@@ -20,7 +20,7 @@ export function FilesPage() {
   const id = params.id ?? "";
   const dir = joinPath(params["*"] ?? "");
   const listing = useListing(id, dir);
-  const { queue, items, landed, dismiss } = useUploads(id);
+  const { queue, items, heldBy, landed, dismiss } = useUploads(id);
   const navigate = useNavigate();
   const now = useNow();
   const client = useQueryClient();
@@ -107,6 +107,17 @@ export function FilesPage() {
         />
       </header>
       {landed && <DoneCard item={landed} onDismiss={dismiss} />}
+      {heldBy && heldBy.projectId !== id && items.some((item) => item.state === "waiting") && (
+        <div className={s.banner}>
+          <Notice>
+            Uploads are waiting — {heldBy.name} in {heldBy.projectId} ran out of room. Free up space in the desktop app, then carry on.
+          </Notice>
+          <div className={s.bannerActions}>
+            <Button variant="primary" onClick={() => void queue.carryOn().catch(() => false)}>I've freed some up — carry on</Button>
+            <Button variant="quiet" onClick={() => queue.remove(heldBy.key)}>Give up on {heldBy.name}</Button>
+          </div>
+        </div>
+      )}
       <UploadPanel items={items} queue={queue} />
       <div
         className={cx(s.drop, dragging && s.dragging)}

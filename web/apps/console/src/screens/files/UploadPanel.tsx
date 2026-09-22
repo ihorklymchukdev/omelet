@@ -93,7 +93,12 @@ function UploadRow({ item, queue, onCarryOn }: { item: UploadItem; queue: Upload
       break;
     case "noRoom":
       line = item.uploadId !== null ? `Stopped at ${percent(item)}% · ${got} got through · ${into(item.dir)}` : `Won't fit — ${size(item.size)}, with ${size(item.freeBytes ?? 0)} of room left`;
-      actions = <Button onClick={onCarryOn}>Carry on</Button>;
+      actions = (
+        <>
+          <Button onClick={onCarryOn}>Carry on</Button>
+          <Button variant="quiet" onClick={() => queue.remove(item.key)}>Remove</Button>
+        </>
+      );
       break;
     case "failed":
       line = failure(item);
