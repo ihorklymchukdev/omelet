@@ -263,6 +263,10 @@ class LimaProvider:
         out = self._cmd(["list", "--quiet"]).stdout
         return self.name in [line.strip() for line in out.splitlines()]
 
+    def running(self) -> bool:
+        out = self._cmd(["list", "--format", "{{.Status}}", self.name])
+        return out.ok and out.stdout.strip() == "Running"
+
     def create(self) -> None:
         if self.config is None:
             raise ValueError("config path is required to create the VM")
@@ -384,6 +388,16 @@ class LimaProvider:
 
     def reboot_required(self) -> bool:
         return False   # no OS features to enable; Lima needs no restart
+
+    def reboot(self) -> None:
+        """Restart macOS now.
+
+        Through Apple Events rather than `shutdown -r`, which needs root: this
+        prompts the user exactly as choosing Restart from the Apple menu does.
+        Unreachable in practice -- reboot_required() is always False here --
+        but the Protocol is satisfied honestly rather than with a pass.
+        """
+        self._run(["osascript", "-e", 'tell application "System Events" to restart'])
 
     # Nothing on macOS to turn on: the Virtualization framework is part of the
     # OS, so setup has no remediation step and no restart to gate on. Both

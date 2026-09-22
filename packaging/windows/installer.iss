@@ -18,11 +18,18 @@ WizardStyle=modern
 
 [Files]
 Source: "..\..\dist\Omelet\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
+; Microsoft's evergreen bootstrapper, fetched by build.ps1. A no-op on
+; Windows 11 and any updated Windows 10 -- it detects an existing runtime and
+; exits without reinstalling -- so shipping and running it unconditionally is
+; cheaper than detecting the runtime ourselves.
+Source: "MicrosoftEdgeWebView2Setup.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
 
 [Icons]
 Name: "{group}\Omelet Setup"; Filename: "{app}\setup.exe"; Parameters: "setup"
 
 [Run]
+Filename: "{tmp}\MicrosoftEdgeWebView2Setup.exe"; Parameters: "/silent /install"; \
+  StatusMsg: "Installing Microsoft Edge WebView2 runtime..."; Flags: waituntilterminated
 Filename: "{app}\setup.exe"; Parameters: "setup"; \
   Description: "Set up Omelet now"; Flags: postinstall nowait skipifsilent
 

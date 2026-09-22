@@ -52,7 +52,14 @@ def test_every_bundled_source_exists_and_lands_where_its_reader_looks(spec):
 
     entries = _datas(spec)
     for source, _dest in entries:
-        assert (spec.parent / source).resolve().is_file(), f"{source} does not exist"
+        resolved = (spec.parent / source).resolve()
+        # A datas source may name a whole directory (PyInstaller copies it
+        # recursively, e.g. host/desktop/ui). An empty one would ship an app
+        # with no assets, so a directory has to actually contain files.
+        assert resolved.exists(), f"{source} does not exist"
+        if resolved.is_dir():
+            assert any(p.is_file() for p in resolved.rglob("*")), \
+                f"{source} is an empty directory"
 
     dests = {dest for _src, dest in entries}
     expected = {VERIFY_TEMPLATE.relative_to(ROOT).as_posix()}

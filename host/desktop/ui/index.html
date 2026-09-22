@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<!-- No remote origin is reachable from this page. The bridge is the only way
+     out, and it takes scalars. -->
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self';">
+<title>Omelet</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<main id="screen"></main>
+
+<!-- Outside #screen on purpose: show() replaces #screen wholesale on every
+     navigation, so a notice living inside it would vanish the instant the
+     crash handler calls refresh() -- the one moment it needs to stay put. -->
+<aside id="notice" hidden>
+  <p class="notice-head">Something went wrong.</p>
+  <pre class="notice-detail" id="notice-detail"></pre>
+  <button class="btn-secondary" data-action="dismiss-notice">Dismiss</button>
+</aside>
+
+<!-- Shown while a bridge call or a job is still out. Every screen change
+     re-probes the VM through several wsl.exe/limactl calls. -->
+<div id="busy" hidden></div>
+
+<template data-screen="first-run">
+  <section class="pad centered">
+    <div class="title-row">
+      <span class="egg" aria-hidden="true"></span>
+      <h1 class="display">Welcome to Omelet</h1>
+    </div>
+    <p class="lede">Omelet sets up a tiny private computer inside your computer,
+      so you can build real, working apps just by chatting with it.</p>
+    <ol class="steps">
+      <li><b>We build you a kitchen</b><span>A small Linux machine in a sealed box.
+        Your own files stay exactly where they are.</span></li>
+      <li><b>We hire the cook</b><span>A coding agent moves in. It writes the code
+        and runs it in there, never out here.</span></li>
+      <li><b>You start ordering</b><span>Describe what you want. Watch it get made.
+        Change your mind as often as you like.</span></li>
+    </ol>
+    <div class="row">
+      <button class="btn-primary" data-action="start-install">Warm up the kitchen</button>
+      <span class="hint">About 4 minutes. You can quit and come back.</span>
+    </div>
+  </section>
+</template>
+
+<template data-screen="home:running">
+  <section class="pad">
+    <div class="hero">
+      <div class="pan pan-hot" aria-hidden="true"></div>
+      <div class="hero-text">
+        <span class="badge badge-running">Running</span>
+        <h1 class="display">The kitchen is open</h1>
+        <p class="lede">Your machine is up and the cook is at the counter.</p>
+      </div>
+    </div>
+    <div class="row">
+      <button class="btn-primary" data-action="open-omelet">Open Omelet</button>
+      <button class="btn-secondary" data-action="stop-vm">Stop the kitchen</button>
+    </div>
+    <footer class="odds">
+      <span class="overline">Odds and ends</span>
+      <div class="tiles">
+        <button data-action="import">Import folder</button>
+        <button data-action="ports">Ports</button>
+        <button data-action="doctor">Doctor</button>
+        <button data-action="check-updates">Check for updates</button>
+        <button class="tile-danger" data-action="uninstall">Uninstall</button>
+        <span class="tile-note">Version <span data-field="app_version"></span><span data-when="engine_version"> &middot; <span data-field="engine_version"></span></span></span>
+      </div>
+    </footer>
+  </section>
+</template>
+
+<template data-screen="home:stopped">
+  <section class="pad">
+    <div class="hero">
+      <div class="pan pan-asleep" aria-hidden="true"></div>
+      <div class="hero-text">
+        <span class="badge badge-cold">Stopped</span>
+        <h1 class="display">The pan is cold</h1>
+        <p class="lede">Everything is saved and waiting. Starting up takes about 20 seconds.</p>
+      </div>
+    </div>
+    <div class="row">
+      <button class="btn-primary" data-action="start-vm">Start the kitchen</button>
+      <button class="btn-secondary" disabled>Open Omelet</button>
+      <span class="hint">Opens by itself once the pan is hot.</span>
+    </div>
+    <footer class="odds">
+      <span class="overline">Odds and ends</span>
+      <div class="tiles">
+        <button data-action="import">Import folder</button>
+        <button data-action="ports">Ports</button>
+        <button data-action="doctor">Doctor</button>
+        <button data-action="check-updates">Check for updates</button>
+        <button class="tile-danger" data-action="uninstall">Uninstall</button>
+        <span class="tile-note">Version <span data-field="app_version"></span><span data-when="engine_version"> &middot; <span data-field="engine_version"></span></span></span>
+      </div>
+    </footer>
+  </section>
+</template>
+
+<template data-screen="home:not_installed">
+  <section class="pad">
+    <div class="hero">
+      <div class="pan pan-empty" aria-hidden="true"></div>
+      <div class="hero-text">
+        <span class="badge badge-empty">Not installed</span>
+        <h1 class="display">No kitchen yet</h1>
+        <p class="lede">There's nothing cooking on this computer. Setting one up takes
+          about four minutes and 6 GB of space.</p>
+      </div>
+    </div>
+    <div class="row">
+      <button class="btn-primary" data-action="start-install">Set up the kitchen</button>
+    </div>
+    <footer class="odds">
+      <span class="overline">Odds and ends</span>
+      <div class="tiles">
+        <button data-action="import" disabled>Import folder</button>
+        <button data-action="ports" disabled>Ports</button>
+        <button data-action="doctor">Doctor</button>
+        <button data-action="check-updates">Check for updates</button>
+        <span class="tile-note">App version <span data-field="app_version"></span> &middot; nothing installed on this computer</span>
+      </div>
+    </footer>
+  </section>
+</template>
+
+<template data-screen="home:wrong">
+  <section class="pad">
+    <div class="hero">
+      <div class="pan pan-burnt" aria-hidden="true"></div>
+      <div class="hero-text">
+        <span class="badge badge-bad">Needs a look</span>
+        <h1 class="display">Something's off in here</h1>
+        <p class="lede">The kitchen started but one of its parts didn't. Your projects
+          are safe — Doctor can usually sort this out on its own.</p>
+      </div>
+    </div>
+    <div class="row">
+      <button class="btn-primary" data-action="doctor">Run Doctor</button>
+      <button class="btn-secondary" data-action="restart-vm">Restart the kitchen</button>
+    </div>
+    <details class="log"><summary>Show the log</summary>
+      <pre data-field="problem"></pre></details>
+    <footer class="odds">
+      <span class="overline">Odds and ends</span>
+      <div class="tiles">
+        <button data-action="import">Import folder</button>
+        <button data-action="ports">Ports</button>
+        <button data-action="doctor">Doctor</button>
+        <button data-action="check-updates">Check for updates</button>
+        <button class="tile-danger" data-action="uninstall">Uninstall</button>
+        <span class="tile-note">Version <span data-field="app_version"></span><span data-when="engine_version"> &middot; <span data-field="engine_version"></span></span></span>
+      </div>
+    </footer>
+  </section>
+</template>
+
+<template data-screen="unreachable">
+  <section class="pad">
+    <span class="badge badge-warm">Running, but quiet</span>
+    <h1 class="display">Nobody's answering the door</h1>
+    <p class="lede">Your machine is on — we can see it humming — but Omelet can't
+      get a word in. Nine times out of ten a retry sorts it out. Nothing is lost
+      either way.</p>
+    <div class="row">
+      <button class="btn-primary" data-action="go-home">Try again</button>
+      <button class="btn-secondary" data-action="repair">Repair the connection</button>
+      <span class="hint">Repair restarts the link. Your projects stay put.</span>
+    </div>
+    <details class="log"><summary>Show logs</summary>
+      <pre data-field="problem"></pre></details>
+  </section>
+</template>
+
+<template data-screen="updates-unavailable">
+  <section class="pad centered">
+    <h2 class="title">Nothing to check yet</h2>
+    <p class="lede">Omelet updates itself when a new version is released.
+      There's nothing to check for yet.</p>
+    <p class="hint"><span data-field="app_version"></span><span data-when="engine_version"> &middot; <span data-field="engine_version"></span></span></p>
+    <div class="row"><button class="btn-secondary" data-action="go-home">Done</button></div>
+  </section>
+</template>
+
+<template data-screen="install:running">
+  <section class="install">
+    <div class="install-left">
+      <div class="pan pan-hot" aria-hidden="true"></div>
+      <h2 class="title">Heating the pan</h2>
+      <p class="lede">Nothing here can hurt your computer — the kitchen lives in
+        its own sealed box.</p>
+      <p class="hint">Good moment for a coffee.</p>
+      <p class="hint" data-when="resumed">Continuing setup after the restart — you don't need to do anything.</p>
+      <div class="install-foot">
+        <div class="bar"><span data-field="progress"></span></div>
+        <span class="hint" data-field="counter"></span>
+      </div>
+    </div>
+    <div class="rows-col">
+      <ol class="rows" data-rows></ol>
+      <p class="download-note" data-field="download" hidden></p>
+    </div>
+  </section>
+</template>
+
+<template data-screen="install:reboot">
+  <section class="install">
+    <div class="install-left">
+      <div class="pan pan-asleep" aria-hidden="true"></div>
+      <h2 class="title">Time for a quick nap</h2>
+      <p class="lede">Your computer needs one restart before the kitchen can open.
+        We'll pick up exactly where we left off — nothing is lost.</p>
+      <button class="btn-primary" data-action="reboot-now">Restart now</button>
+      <button class="btn-secondary" data-action="go-home">I'll restart later</button>
+    </div>
+    <div class="rows-col"><ol class="rows" data-rows></ol></div>
+  </section>
+</template>
+
+<template data-screen="install:failed">
+  <section class="install install-failed">
+    <div class="install-left">
+      <div class="pan pan-burnt" aria-hidden="true"></div>
+      <h2 class="title">The burner wouldn't light</h2>
+      <p class="lede" data-field="action"></p>
+      <button class="btn-primary" data-retry data-action="start-install">Try this step again</button>
+      <button class="btn-secondary" data-action="start-over">Start over from scratch</button>
+    </div>
+    <div class="rows-col"><ol class="rows" data-rows></ol></div>
+  </section>
+</template>
+
+<template data-screen="import">
+  <section class="pad">
+    <h2 class="title">Bring in a folder</h2>
+    <p class="lede">Copy a folder from your computer into the kitchen. The
+      original stays exactly where it is.</p>
+    <div class="field">
+      <span class="overline">Folder</span>
+      <div class="picker">
+        <span class="mono" data-field="path"></span>
+        <button class="btn-secondary" data-action="choose-folder">Choose…</button>
+      </div>
+    </div>
+    <div class="field">
+      <span class="overline">Project name</span>
+      <div class="derived"><span data-field="name"></span>
+        <span class="hint">from folder name</span></div>
+    </div>
+    <fieldset data-conflict hidden>
+      <legend class="overline">A project with this name already exists in here</legend>
+      <label class="choice"><input type="radio" name="mode" value="merge" checked>
+        <b>Merge into it</b>
+        <span>Adds the new files and updates ones with the same name.
+          Everything else stays put.</span></label>
+      <label class="choice"><input type="radio" name="mode" value="replace">
+        <b>Replace it</b>
+        <span>Empties the project first, then copies your folder in.</span></label>
+      <p class="warn"><b>Replace deletes files.</b> Anything in the existing
+        project that isn't in your folder is gone for good — including work the
+        cook did in there. There's no undo.</p>
+    </fieldset>
+    <div class="row">
+      <button class="btn-primary" data-action="do-import">Bring it in</button>
+      <button class="btn-secondary" data-action="go-home">Cancel</button>
+      <span class="hint" data-field="summary"></span>
+    </div>
+  </section>
+</template>
+
+<template data-screen="import:progress">
+  <section class="pad centered">
+    <div class="pan pan-carry" aria-hidden="true"></div>
+    <h2 class="title">Carrying it in…</h2>
+    <p class="lede">Copying <b data-field="name"></b> into the kitchen. Your
+      original folder isn't being touched.</p>
+    <div class="bar"><span data-field="fraction"></span></div>
+    <span class="hint" data-field="counter"></span>
+  </section>
+</template>
+
+<template data-screen="ports">
+  <section class="pad">
+    <h2 class="title">Serving hatches</h2>
+    <p class="lede">Each one lets something inside the kitchen show up in your
+      browser at a normal web address.</p>
+    <button class="btn-primary" data-action="add-port-row">Add a port</button>
+    <table class="hatches">
+      <thead><tr><th>On this computer</th><th>Inside the kitchen</th><th></th></tr></thead>
+      <tbody data-ports></tbody>
+    </table>
+    <p class="note">Only you can reach these. Nothing is published to the internet.</p>
+    <div class="row"><button class="btn-secondary" data-action="go-home">Done</button></div>
+  </section>
+</template>
+
+<template data-screen="doctor">
+  <section class="pad">
+    <h2 class="title">Doctor</h2>
+    <pre class="log" data-field="text"></pre>
+    <div class="row"><button class="btn-secondary" data-action="go-home">Done</button></div>
+  </section>
+</template>
+
+<template data-screen="uninstall-confirm">
+  <section class="pad">
+    <h2 class="title">Close the kitchen for good?</h2>
+    <p class="lede">This removes the Linux machine and everything inside it.
+      Your own files, outside the kitchen, are untouched.</p>
+    <label class="choice"><input type="checkbox" name="purge">
+      <b>Also delete downloads and settings</b>
+      <span>Frees the disk space Omelet used. You'd start from scratch next time.</span></label>
+    <p class="warn"><b>There's no undo.</b> Any project the cook made in there
+      goes with it.</p>
+    <div class="row">
+      <button class="btn-danger" data-action="do-uninstall">Remove Omelet</button>
+      <button class="btn-secondary" data-action="go-home">Keep it</button>
+    </div>
+  </section>
+</template>
+
+<script src="app.js"></script>
+</body>
+</html>

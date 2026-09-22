@@ -8,12 +8,16 @@ from host.core.status import Readiness, probe
 
 
 class FakeProvider:
-    def __init__(self, *, exists=True, reachable=True, engine="0.1.0"):
+    def __init__(self, *, exists=True, reachable=True, engine="0.1.0", running=True):
         self._exists, self._reachable, self._engine = exists, reachable, engine
+        self._running = running
         self.calls = []
 
     def exists(self):
         return self._exists
+
+    def running(self):
+        return self._running
 
     def exec(self, argv, *, root=False):
         self.calls.append(argv)
@@ -34,6 +38,9 @@ class RaisingExecProvider:
         self._fail_on = fail_on
 
     def exists(self):
+        return True
+
+    def running(self):
         return True
 
     def exec(self, argv, *, root=False):
@@ -164,3 +171,11 @@ def test_an_unsupported_agent_api_is_not_ready():
     result = probe(FakeProvider(), client_factory=_client(health={"api": unsupported}))
     assert result.agent_api == unsupported
     assert not result.ready
+
+
+def test_a_stopped_vm_is_reported_without_touching_the_guest():
+    """exec() boots a stopped WSL distro, so probing that way undid Stop."""
+    provider = FakeProvider(running=False)
+    result = probe(provider, client_factory=_client())
+    assert result == Readiness(vm_exists=True)
+    assert provider.calls == []

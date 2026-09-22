@@ -1,0 +1,264 @@
+"""The only object JavaScript can reach.
+
+Everything here is a security boundary, so the surface is a fixed list of
+method names taking scalars. No path, command or URL arriving from JS is
+passed to a shell, and nothing is eval'd. Slow work goes through
+JobRegistry rather than blocking the thread that owns the window.
+
+Thin on purpose: the decisions live in view.py, which is testable without a
+window.
+"""
+from __future__ import annotations
+
+import webbrowser
+
+from host.core import constants
+from host.core.status import probe
+
+from .jobs import JobRegistry
+from .view import inspect_folder, progress_event, route_for, rows_for, terminal_event, validate_port
+
+
+class DesktopApi:
+    IMPORT_MODES = ("merge", "replace")
+
+    def __init__(self, provider, state, *, push,
+                 probe_fn=probe, browser_open=webbrowser.open, steps_factory=None,
+                 client_factory=None, install_dir_factory=None):
+        self._provider = provider
+        self._state = state
+        self._probe = probe_fn
+        self._open = browser_open
+        self._steps_factory = steps_factory
+        self._client_factory = client_factory or self._default_client_factory
+        self._install_dir_factory = install_dir_factory or self._default_install_dir
+        self.jobs = JobRegistry(push)
+
+    @staticmethod
+    def _default_client_factory(provider):
+        from host.client import AgentClient
+
+        return AgentClient.for_provider(provider)
+
+    @staticmethod
+    def _default_install_dir():
+        from host.providers import default_install_dir
+
+        return default_install_dir()
+
+    # --- what to draw -------------------------------------------------
+
+    def home(self) -> dict:
+        """Not idempotent: the first call after a resume consumes the flag.
+
+        `resumed` is one-shot. RunOnce relaunches the app with `--resume`
+        after a restart, and the first screen consumes that to continue the
+        install. Left set, every later refresh() would start the install
+        again -- and since most steps are always_run, that is a full
+        re-install loop with no way back to Home.
+        """
+        readiness = self._probe(self._provider)
+        route, state = route_for(readiness)
+        resumed = getattr(self, "resumed", False)
+        self.resumed = False
+        return {
+            "route": route,
+            "state": state,
+            # Carried over from host/setup_app/app.py's _should_auto_start:
+            # true only where nothing has ever been recorded. Once any step
+            # has completed the answer flips, because "not vm_exists" stays
+            # true across every failed create_vm relaunch too.
+            "first_run": not readiness.vm_exists and not self._state.completed(),
+            "app_version": constants.APP_VERSION,
+            "engine_version": readiness.engine_version or "",
+            "problem": readiness.problem,
+            # Set by __main__.run() when RunOnce reopened the window after a
+            # restart, so the install screen can explain why it appeared.
+            "resumed": resumed,
+        }
+
+    # --- actions ------------------------------------------------------
+
+    def open_omelet(self) -> dict:
+        # The edge port, never the agent port: this is whatever Traefik is
+        # routing, and becomes the web app for free when that ships.
+        self._open(f"http://localhost:{constants.EDGE_PORT}")
+        return {"ok": True}
+
+    def start_install(self) -> dict:
+        from host.core.install import run_install
+
+        # A fresh list per run: the steps close over provider state
+        # (provider.rootfs is assigned while the list is built), so re-running
+        # a list built for an earlier run installs against stale bindings.
+        steps = self._steps_factory()
+
+        def work(emit):
+            def report(progress):
+                emit(progress_event(progress))
+
+            try:
+                run_install(steps, self._state, report)
+            except Exception as e:
+                return terminal_event(e)
+            return terminal_event(None)
+
+        job_id = self.jobs.start("install", work)
+        return {"job": job_id, "rows": rows_for(steps)}
+
+    def reboot_now(self) -> dict:
+        import sys
+        # Order matters and is pinned by a test: a machine that goes down
+        # before RunOnce is written never comes back to setup.
+        self._provider.register_resume(sys.executable)
+        self._provider.reboot()
+        return {"ok": True}
+
+    def reset_install(self) -> dict:
+        """Forget every recorded step so the next run starts from preflight."""
+        self._state.clear()
+        return {"ok": True}
+
+    def choose_folder(self) -> dict:
+        """Native folder picker. pywebview supplies it on both platforms."""
+        import webview
+        window = webview.windows[0]
+        chosen = window.create_file_dialog(webview.FOLDER_DIALOG)
+        if not chosen:
+            return {"cancelled": True}
+        return self.inspect_folder(chosen[0])
+
+    def inspect_folder(self, path: str) -> dict:
+        from host.client import project_id_for
+
+        summary = inspect_folder(path)
+        project_id = project_id_for(summary["name"])
+        try:
+            self._client_factory(self._provider).get_project(project_id)
+            conflict = True
+        except Exception:
+            # Any refusal means "no project by that name to merge into". A
+            # conflict banner shown because the agent was briefly unreachable
+            # would offer Replace -- which deletes -- over nothing.
+            conflict = False
+        return {**summary, "path": path, "project_id": project_id,
+                "conflict": conflict}
+
+    def start_import(self, path: str, mode: str) -> dict:
+        from host.client import project_id_for
+
+        if mode not in self.IMPORT_MODES:
+            # Never guessed: one of the two modes deletes a project.
+            raise ValueError(f"unknown import mode {mode!r}")
+
+        summary = inspect_folder(path)
+        project_id = project_id_for(summary["name"])
+        client = self._client_factory(self._provider)
+
+        def work(emit):
+            if mode == "replace":
+                # Delete first. The other order merges the folder in and then
+                # wipes it, losing the import along with the old project.
+                client.delete_project(project_id)
+            client.ensure_project(project_id)
+
+            def on_progress(phase, done, total):
+                emit({"type": "progress", "phase": phase,
+                      "done": done, "total": total})
+
+            client.upload_directory(project_id, path, on_progress=on_progress)
+            return {"type": "done", "project_id": project_id}
+
+        return {"job": self.jobs.start("import", work),
+                "project_id": project_id, **summary}
+
+    def list_ports(self) -> dict:
+        return {"ports": [{"guest": guest, "host": host_port}
+                          for guest, host_port in self._provider.forwards()]}
+
+    def add_port(self, guest: int, host_port: int) -> dict:
+        try:
+            guest, host_port = int(guest), int(host_port)
+        except (TypeError, ValueError):
+            return {"ok": False, "reason": "range"}
+        reason = validate_port(guest, host_port, self._provider.forwards())
+        if reason:
+            return {"ok": False, "reason": reason}
+        try:
+            self._provider.forward(guest, host_port)
+        except Exception as e:
+            # forward() shells netsh on Windows, which writes to HKLM and needs
+            # administrator: it can fail outright or be declined at the UAC
+            # prompt. Uncaught, this rejects the JS promise and the user's
+            # click silently does nothing.
+            return {"ok": False, "reason": "refused", "message": f"{e}"}
+        return {"ok": True}
+
+    def remove_port(self, guest: int, host_port: int) -> dict:
+        try:
+            self._provider.unforward(int(guest), int(host_port))
+        except Exception as e:
+            # netsh writes to HKLM and needs administrator, so removal can
+            # fail or be declined at the UAC prompt. The row says so rather
+            # than disappearing as though it worked.
+            return {"ok": False, "reason": "refused", "message": f"{e}"}
+        return {"ok": True}
+
+    def doctor(self) -> dict:
+        from host.core.diagnose import render_diagnosis
+
+        diagnosis = self._provider.preflight()
+        # Rendered by host/core so the modal shows exactly what `omelet doctor`
+        # prints -- one wording for the user to read out to whoever helps them.
+        return {"ok": diagnosis.ok, "text": render_diagnosis(diagnosis)}
+
+    def start_vm(self) -> dict:
+        def work(emit):
+            self._provider.start()
+            return {"type": "done"}
+
+        return {"job": self.jobs.start("vm", work)}
+
+    def stop_vm(self) -> dict:
+        def work(emit):
+            self._provider.stop()
+            return {"type": "done"}
+
+        return {"job": self.jobs.start("vm", work)}
+
+    def restart_vm(self) -> dict:
+        def work(emit):
+            self._provider.stop()
+            self._provider.start()
+            return {"type": "done"}
+
+        return {"job": self.jobs.start("vm", work)}
+
+    def start_repair(self) -> dict:
+        from host.core.bootstrap import bootstrap
+        from host.core.install import connect_step
+
+        def work(emit):
+            emit({"type": "stage", "stage": "bootstrap"})
+            bootstrap(self._provider, repair=True)
+            emit({"type": "stage", "stage": "connect"})
+            connect_step(self._provider)
+            return {"type": "done"}
+
+        return {"job": self.jobs.start("repair", work)}
+
+    def start_uninstall(self, purge: bool) -> dict:
+        from host.core.install import remove_downloads, remove_vm_data
+
+        def work(emit):
+            self._provider.destroy()
+            install_dir = self._install_dir_factory()
+            remove_vm_data(install_dir.parent, install_dir)
+            # Purge is the app's second confirmation level (the design board's
+            # "Also delete downloads and settings" checkbox), not a gate like
+            # cli.uninstall's --purge -- the modal is the confirmation here.
+            if purge:
+                remove_downloads(install_dir.parent)
+            return {"type": "done"}
+
+        return {"job": self.jobs.start("uninstall", work)}

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -35,6 +36,31 @@ class InstallState:
 
     def clear(self) -> None:
         self._path.unlink(missing_ok=True)
+
+
+def remove_vm_data(root: Path, install_dir: Path) -> None:
+    """Everything that goes with the VM itself.
+
+    install_dir is removed even though `destroy()` normally empties it: a
+    failed or partial destroy strands a multi-gigabyte disk image there.
+    """
+    InstallState(root / "install-state.json").clear()
+    shutil.rmtree(install_dir, ignore_errors=True)
+
+
+def remove_downloads(root: Path) -> None:
+    """The cached guest image and the managed Lima runtime.
+
+    Separate from remove_vm_data because the desktop app offers this as its
+    own choice -- it is disk space, not state, and a user may want to keep it
+    to avoid re-downloading several hundred megabytes.
+    """
+    shutil.rmtree(root / "cache", ignore_errors=True)
+    # macOS only in practice (root/lima is never created on Windows), but
+    # harmless to remove unconditionally: setup's install_runtime step puts
+    # the managed Lima here (lima_install.managed_root), and leaving it
+    # behind was the ~100 MB --purge never actually cleaned up.
+    shutil.rmtree(root / "lima", ignore_errors=True)
 
 
 @dataclass(frozen=True)

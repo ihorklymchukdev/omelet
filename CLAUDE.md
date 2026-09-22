@@ -62,15 +62,13 @@ calls changes incompatibly — that one needs a host release.
 ```bash
 pip install -e ".[dev]"
 
-python3 -m pytest -q                                    # full suite (~530 tests, ~7s)
+python3 -m pytest -q                                    # full suite (~640 tests, ~7s)
 python3 -m pytest tests/agent/test_project.py -q        # one file
 python3 -m pytest -k classify -q                        # one test by name
 ```
 
-In this WSL sandbox `/tmp/pytest-of-$USER` is root-owned, which breaks `tmp_path` fixtures, and
-`tkinter` is absent, so `tests/host/test_setup_app_logic.py` and the two `selfcheck` tests in
-`tests/test_setup_cli.py` fail. Prefix with `TMPDIR=<writable dir>` and ignore those; sandbox
-artifacts, not code bugs.
+In this WSL sandbox `/tmp/pytest-of-$USER` is root-owned, which breaks `tmp_path` fixtures.
+Prefix with `TMPDIR=<writable dir>`.
 
 There is no linter or formatter configured.
 
@@ -91,10 +89,13 @@ host localhost:39080 ───────────────────�
 
 The host ships as a PyInstaller-frozen binary and reaches the agent over HTTP; the agent ships as a
 Docker image built from `agent/` alone. `tests/host/test_no_agent_import.py` and
-`tests/agent/test_no_host_import.py` enforce both directions by AST, anchored to `__file__`. The
-host's only runtime dependency is `typer` — it parses no YAML, and
-`tests/host/test_host_dependencies.py` fails on a declared or imported one. Names both packages
-need are declared twice and held equal by `tests/test_constants_agree.py`.
+`tests/agent/test_no_host_import.py` enforce both directions by AST, anchored to `__file__`. Every
+declared host dependency lands in that frozen binary, so the list stays short and the agent's
+FastAPI/uvicorn must never appear in it: `typer` for the CLI, `pywebview` for the desktop window,
+and its native backends — `pythonnet` on Windows, the three `pyobjc-*` packages on macOS — marker-
+scoped in `pyproject.toml` so neither platform's binding installs on the other.
+`tests/host/test_host_dependencies.py` fails on a declared or imported dependency outside that
+list. Names both packages need are declared twice and held equal by `tests/test_constants_agree.py`.
 
 ### Hard invariant: no platform branching outside `host/providers/`
 
@@ -127,6 +128,16 @@ Do not add an `if windows` anywhere else — push the difference into a provider
   when set and `OMELET_ENGINE_REPAIR=1` on repair. Values are checked against a shell-safe pattern
   because the argument is re-parsed by wsl.exe/ssh. `host/provision/` holds only the installer's
   `nginx-hello` smoke-test project (`tests/host/test_no_guest_assets.py`).
+- `host/desktop/` — the GUI, a native window over the system webview (WebView2 on Windows,
+  WKWebView on macOS) that replaced the old tkinter wizard. `view.py` is pure mappings from
+  `host/core` values to what a screen needs — no provider, no client, nothing reaching the VM or
+  the network (it does walk the local filesystem in `inspect_folder()`) — which is what makes
+  it the only module here worth unit-testing. `api.py` is the only object JavaScript can reach, so
+  it stays a thin, fixed list of methods taking scalars, with every real decision pushed into
+  `view.py`. `jobs.py` runs one slow job at a time on a worker thread: `InstallState` is a JSON
+  file, and two installs writing it at once would race. `ui/` holds the HTML, CSS, JS and bundled
+  fonts and must work fully offline. `cli.setup` launches it; `--headless` still bypasses it
+  entirely for a machine without a webview runtime.
 - `engine/get.sh` — the entrypoint: `resolve_ref` (explicit `OMELET_ENGINE_REF` → installed ref on
   repair → highest `engine-v*` tag by `sort -V`), downloads that ref's tarball, replaces
   `/opt/omelet/engine/` with its `engine/`, runs `install.sh <ref> [--repair]`.
@@ -191,13 +202,14 @@ not here.
 ## Conventions
 
 - Python 3.12+, `from __future__ import annotations`, frozen dataclasses for value types.
-- Host runtime deps are `typer` alone; the agent's are declared in `agent/pyproject.toml`. Keep
-  it that way unless there's a reason.
+- Host runtime deps are `typer`, `pywebview`, and `pywebview`'s marker-scoped native backends
+  (`pythonnet` on Windows, `pyobjc-*` on macOS); the agent's are declared in `agent/pyproject.toml`.
+  Keep the host list that short unless there's a reason.
 - Packaging lives in `packaging/<platform>/`: Inno Setup on Windows (`build.ps1`), `pkgbuild`/
   `productbuild` on macOS (`build.sh` → `dist/OmeletSetup-<version>.pkg`). Both freeze with
   PyInstaller one-dir and smoke-test the frozen binary (`version`, then `selfcheck`) *before*
-  packaging it. The mac build needs a Python 3.12+ with tkinter and is native-arch only. Manual
-  release gates: `docs/installer-test-matrix.md`, `docs/macos-install-test-matrix.md`.
+  packaging it. The mac build is native-arch only. Manual release gates:
+  `docs/installer-test-matrix.md`, `docs/macos-install-test-matrix.md`.
 - Live WSL2 run needs an Ubuntu 24.04 rootfs tarball path in `OMELET_ROOTFS` (README has the
   current download URL); the provider factory reads it, and `omelet vm create` without it raises
   `ValueError`. The value must be a Windows path — it goes straight to `wsl.exe --import`.

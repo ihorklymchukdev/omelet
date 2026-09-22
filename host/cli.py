@@ -167,17 +167,20 @@ def up(directory: str = typer.Argument(".", help="Project directory with a docke
     from host.core.constants import COMPOSE_FILE
 
     local = _Path(directory).resolve()
-    if not (local / COMPOSE_FILE).is_file():
-        # Checked here so an empty folder is not registered as a project the
-        # agent then has to refuse.
-        typer.echo(f"There is no {COMPOSE_FILE} in {local}.", err=True)
-        raise typer.Exit(code=1)
     project_id = project_id_for(local.name)
 
     with _agent_errors():
         client = _client()
         client.ensure_project(project_id)
         client.upload_directory(project_id, local)
+        if not (local / COMPOSE_FILE).is_file():
+            # A folder with no compose file is still a real import: the
+            # upload above already happened, and the coding agent inside the
+            # VM writes the compose file later. This is the outcome the
+            # desktop app's Import screen exists for, not a refusal.
+            typer.echo(f"{project_id} was imported. There is no "
+                       f"{COMPOSE_FILE} yet, so there is nothing to start.")
+            return
         typer.echo(f"Starting {project_id} in the VM…")
         try:
             job = client.wait_for_job(client.project_up(project_id))
@@ -285,8 +288,9 @@ def setup(resume: bool = typer.Option(False, "--resume"),
         )
 
     if not headless:
-        from host.setup_app.app import run_window
-        raise typer.Exit(code=run_window(provider, build_steps, state, resumed=resume))
+        from host.desktop.__main__ import run
+        raise typer.Exit(code=run(provider, state, steps_factory=build_steps,
+                                  resumed=resume))
 
     steps = build_steps()
     # A provider names its own step's words -- "Installing Lima 2.2.0" is
@@ -339,8 +343,7 @@ def uninstall(purge: bool = typer.Option(False, "--purge")):
         typer.echo("This destroys the VM and every project inside it. "
                    "Re-run with --purge to confirm.")
         raise typer.Exit(code=1)
-    import shutil
-    from host.core.install import InstallState
+    from host.core.install import remove_downloads, remove_vm_data
     from host.providers import default_install_dir
 
     destroy_error = None
@@ -351,16 +354,8 @@ def uninstall(purge: bool = typer.Option(False, "--purge")):
 
     install_dir = default_install_dir()
     root = install_dir.parent
-    InstallState(root / "install-state.json").clear()
-    shutil.rmtree(root / "cache", ignore_errors=True)
-    # The VM's own directory: wsl --unregister normally empties it, but a
-    # failed or partial destroy leaves a multi-gigabyte vhdx behind.
-    shutil.rmtree(install_dir, ignore_errors=True)
-    # macOS only in practice (root/lima is never created on Windows), but
-    # harmless to remove unconditionally: setup's install_runtime step puts
-    # the managed Lima here (lima_install.managed_root), and leaving it
-    # behind was the ~100 MB --purge never actually cleaned up.
-    shutil.rmtree(root / "lima", ignore_errors=True)
+    remove_vm_data(root, install_dir)
+    remove_downloads(root)
     # No host-side state.db to remove any more: project state lives in the VM
     # at /opt/omelet/state.db and goes with the VM.
 
@@ -392,29 +387,42 @@ def selfcheck():
         ("host/providers/omelet.yaml", Path(_providers.__file__).parent / "omelet.yaml"),
     ]
 
+    try:
+        from host.desktop.__main__ import ui_dir
+        checks.append(("host/desktop/ui", ui_dir() / "index.html"))
+    except ImportError as e:
+        # host.desktop.__main__ is itself one of the hidden-import modules
+        # checked below -- if it can't even be imported, there is no ui_dir()
+        # to call. Reported here in the same "->" shape as a real miss so
+        # this loop never crashes instead of reporting; the module import
+        # itself is still reported separately by the loop below.
+        checks.append(("host/desktop/ui", Path(f"<{e}>")))
+
     all_ok = True
     for label, path in checks:
         ok = path.is_file()
         all_ok = all_ok and ok
         typer.echo(f"{'OK' if ok else 'MISSING':<7} {label} -> {path}")
 
-    # The setup window is five modules PyInstaller can only find through the
-    # spec's hiddenimports. A bundle missing one launches, shows a Dock icon
-    # and dies on the first draw -- which is exactly what this command exists
-    # to catch before a user does. Reported the same way as the asset checks
-    # above (an OK/MISSING line per item) rather than as an uncaught
-    # traceback, so the two failure classes this command guards against read
-    # the same way. Caught as ImportError, not the narrower
-    # ModuleNotFoundError: `app` does `from . import status`, so a missing
-    # `status` fails `app`'s own import too, but as a plain ImportError
-    # ("cannot import name 'status'"), not a ModuleNotFoundError -- both mean
-    # "not found in this bundle". A real bug inside one of these modules
-    # (a RuntimeError, an AttributeError, anything raised by the module's own
-    # code rather than by the import machinery) is a different failure and
-    # still surfaces as a full traceback, not as MISSING.
+    # The desktop window is four modules PyInstaller can only find through
+    # the spec's hiddenimports: cli.setup() reaches host.desktop.__main__
+    # through a function-local import, and it imports api/view/jobs in turn.
+    # A bundle missing one launches, shows a Dock icon and dies on the first
+    # draw -- which is exactly what this command exists to catch before a
+    # user does. Reported the same way as the asset checks above (an
+    # OK/MISSING line per item) rather than as an uncaught traceback, so the
+    # two failure classes this command guards against read the same way.
+    # Caught as ImportError, not the narrower ModuleNotFoundError: `api` does
+    # `from .jobs import JobRegistry`, so a missing `jobs` fails `api`'s own
+    # import too, but as a plain ImportError ("cannot import name..."), not a
+    # ModuleNotFoundError -- both mean "not found in this bundle". A real bug
+    # inside one of these modules (a RuntimeError, an AttributeError,
+    # anything raised by the module's own code rather than by the import
+    # machinery) is a different failure and still surfaces as a full
+    # traceback, not as MISSING.
     import importlib
-    for name in ("theme", "widgets", "wizard", "status", "app"):
-        label = f"host.setup_app.{name}"
+    for name in ("__main__", "api", "view", "jobs"):
+        label = f"host.desktop.{name}"
         try:
             importlib.import_module(label)
         except ImportError as e:

@@ -159,3 +159,18 @@ def test_stop_and_destroy_report_failures_instead_of_claiming_success():
     destroy = ScriptedRunner("--unregister",
                              stderr="no distribution".encode("utf-16-le"))
     _raises(make(destroy).destroy, "could not be removed")
+
+
+def test_running_reads_the_running_list_without_booting_the_distro():
+    # Any `wsl -d` boots the distro, so a probe using exec() restarts a VM
+    # the user just stopped.
+    r = FakeRunner(stdout="Ubuntu\r\nomelet-vm\r\n".encode("utf-16-le"))
+    assert make(r).running() is True
+    assert r.calls == [["wsl.exe", "-l", "--running", "-q"]]
+
+
+def test_running_false_when_the_distro_is_stopped():
+    # With nothing running, wsl.exe prints a sentence and exits non-zero.
+    r = FakeRunner(stdout="There are no running distributions.\r\n".encode("utf-16-le"),
+                   returncode=1)
+    assert make(r).running() is False
