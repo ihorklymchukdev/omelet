@@ -102,8 +102,10 @@ export function handlersFor(scenario: Scenario) {
       target.status = "started_ok";
       // photo-sorter never gets better, so "Try again" can be walked.
       target.problem = target.id === "photo-sorter" ? LOOPBACK : null;
-      job.state = target.problem ? "failed" : "done";
-      job.detail = target.problem ? target.problem.message : "";
+      // started_ok with a diagnosed problem still finishes the job as done,
+      // same as the real agent; the problem lives on the project, in result.
+      job.state = "done";
+      job.detail = "";
       job.result = { status: target.status, urls: target.urls, problem: target.problem };
     };
     window.setTimeout(tick, stepMs);
