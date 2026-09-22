@@ -80,4 +80,15 @@ describe("the API client", () => {
     expect(isSessionLost(new ApiError("handoff_invalid", "", 401))).toBe(false);
     expect(isSessionLost(new ApiError("forbidden_origin", "", 403))).toBe(false);
   });
+
+  it("returns a plain-text body as it came from text()", async () => {
+    const { api } = answering(200, "11:04:19 web  listening on 127.0.0.1:8000\n");
+    expect(await api.text("/api/projects/a/logs")).toBe("11:04:19 web  listening on 127.0.0.1:8000\n");
+  });
+
+  it("still turns an agent error into an ApiError from text()", async () => {
+    const { api } = answering(409, JSON.stringify({ error: { code: "logs_unavailable", message: "no logs" } }));
+    const error = await failure(api.text("/api/projects/a/logs"));
+    expect([error.code, error.status]).toEqual(["logs_unavailable", 409]);
+  });
 });
