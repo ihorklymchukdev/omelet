@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button, Collapsible, Egg, Modal, Notice, PromptCard, StateBadge } from "@omelet/ui";
 import { ApiError } from "../../api/client";
 import { CAUSE_COPY, actionError, primaryUrl } from "../../projects/copy";
@@ -11,8 +11,14 @@ import s from "./ProjectPage.module.css";
 
 function Logs({ id, wanted }: { id: string; wanted: boolean }) {
   const logs = useLogs(id, wanted);
+  const pre = useRef<HTMLPreElement>(null);
+
+  useEffect(() => {
+    if (pre.current) pre.current.scrollTop = pre.current.scrollHeight;
+  }, [logs.data]);
+
   if (logs.data !== undefined) {
-    return <pre className={s.logs}>{logs.data.trim() ? logs.data : "There aren't any logs to show yet."}</pre>;
+    return <pre ref={pre} className={s.logs}>{logs.data.trim() ? logs.data : "There aren't any logs to show yet."}</pre>;
   }
   if (logs.isError) {
     return (
@@ -32,6 +38,13 @@ export function WrongBody({ project, cause, detail }: { project: Project; cause:
   const [wantLogs, setWantLogs] = useState(false);
   const copy = CAUSE_COPY[cause];
   const primary = primaryUrl(project);
+
+  // Clear a stale error notice from a previous action once the diagnosed
+  // cause changes (still "wrong", but a different problem now).
+  useEffect(() => {
+    lifecycle.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cause]);
 
   return (
     <>
