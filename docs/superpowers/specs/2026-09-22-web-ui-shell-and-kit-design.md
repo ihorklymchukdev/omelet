@@ -197,7 +197,8 @@ architecture only.
   names are content-hashed); `index.html`: `no-cache`, so a new image takes
   effect on the next load.
 - `Content-Security-Policy: default-src 'self'; img-src 'self' data:;
-  style-src 'self' 'unsafe-inline'; frame-ancestors 'none'`,
+  style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none';
+  form-action 'none'; object-src 'none'`,
   `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`,
   `server_tokens off`. `frame-ancestors 'none'` matters: project apps on
   `*.<domain>` share the browser and must not frame the console.
