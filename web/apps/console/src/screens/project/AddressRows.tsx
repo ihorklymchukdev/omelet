@@ -11,10 +11,17 @@ function CopyButton({ text }: { text: string }) {
     const timer = window.setTimeout(() => setState("idle"), 2000);
     return () => window.clearTimeout(timer);
   }, [state]);
-  const copy = () => navigator.clipboard.writeText(text).then(() => setState("copied"), () => setState("refused"));
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setState("copied");
+    } catch {
+      setState("refused");
+    }
+  };
   return (
     <Button variant="quiet" onClick={copy}>
-      {state === "copied" ? "Copied" : state === "refused" ? "Couldn't copy" : "Copy"}
+      <span role="status" aria-live="polite">{state === "copied" ? "Copied" : state === "refused" ? "Couldn't copy" : "Copy"}</span>
     </Button>
   );
 }
