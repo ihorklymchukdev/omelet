@@ -8,6 +8,7 @@ import { NeedsUpdate } from "./screens/NeedsUpdate";
 import { NotAnswering } from "./screens/NotAnswering";
 import { Projects } from "./screens/Projects";
 import { SignedOut } from "./screens/SignedOut";
+import { WrongHost } from "./screens/WrongHost";
 import { Shell } from "./shell/Shell";
 
 export function App({ handoff }: { handoff: string | null }) {
@@ -59,5 +60,7 @@ export function App({ handoff }: { handoff: string | null }) {
       return <NeedsUpdate agentApi={result.agentApi} onRetry={run} />;
     case "notAnswering":
       return <NotAnswering onRetry={run} />;
+    case "wrongHost":
+      return <WrongHost onRetry={run} />;
   }
 }

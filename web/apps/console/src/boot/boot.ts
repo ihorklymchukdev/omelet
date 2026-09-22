@@ -7,7 +7,16 @@ export type BootResult =
   | { kind: "signedIn" }
   | { kind: "signedOut"; reason: SignedOutReason }
   | { kind: "needsUpdate"; agentApi: number | null }
-  | { kind: "notAnswering" };
+  | { kind: "notAnswering" }
+  | { kind: "wrongHost" };
+
+function isWrongHost(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    error.status === 403 &&
+    (error.code === "forbidden_host" || error.code === "forbidden_origin")
+  );
+}
 
 export function takeHandoff(
   location: Pick<Location, "hash" | "pathname" | "search">,
@@ -31,8 +40,8 @@ export async function boot({
   let health: { api?: unknown } | undefined;
   try {
     health = await api.get<{ api?: unknown }>("/api/health");
-  } catch {
-    return { kind: "notAnswering" };
+  } catch (error) {
+    return isWrongHost(error) ? { kind: "wrongHost" } : { kind: "notAnswering" };
   }
   const agentApi = typeof health?.api === "number" ? health.api : null;
   if (agentApi === null || !SUPPORTED_API.includes(agentApi)) {
@@ -45,6 +54,7 @@ export async function boot({
       await api.post("/api/session", { code: handoff });
       return { kind: "signedIn" };
     } catch (error) {
+      if (isWrongHost(error)) return { kind: "wrongHost" };
       if (!(error instanceof ApiError && error.code === "handoff_invalid")) {
         return { kind: "notAnswering" };
       }
@@ -60,6 +70,6 @@ export async function boot({
     if (isSessionLost(error)) {
       return { kind: "signedOut", reason: spent ? "handoff_spent" : error.code };
     }
-    return { kind: "notAnswering" };
+    return isWrongHost(error) ? { kind: "wrongHost" } : { kind: "notAnswering" };
   }
 }
