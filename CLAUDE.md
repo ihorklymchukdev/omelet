@@ -55,8 +55,8 @@ semantics backward compatible.
 
 1. Bump `agent/__init__.py`'s `__version__`, the Dockerfile's `AGENT_VERSION` and
    `engine/stack.yml`'s agent and web image tags together (`tests/test_constants_agree.py` holds them equal).
-2. `docker build -t ghcr.io/ihorklymchukdev/omelet-agent:X.Y.Z agent/ && docker push ghcr.io/ihorklymchukdev/omelet-agent:X.Y.Z`,
-   then `docker buildx build --platform linux/amd64,linux/arm64 -t ghcr.io/ihorklymchukdev/omelet-web:X.Y.Z --push web/`
+2. `packaging/images/build.sh --push` — builds and pushes both images for amd64 and arm64. The web
+   build needs `--build-context fixtures=tests/fixtures`, so a bare `docker build web/` fails.
 3. `git tag engine-vX.Y.Z && git push origin engine-vX.Y.Z`
 
 Bump `agent/core/constants.API_VERSION` (and the host's `SUPPORTED_API`) only when a route the host
