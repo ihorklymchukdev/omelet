@@ -232,7 +232,8 @@ records the prompt card.
 
 `["files", id, dir]` → one level, refetched on focus and on landing, never
 polled. `["disk"]` read fresh before each add (`staleTime: 0`), never polled.
-`["uploads", id]` read when the Files screen mounts.
+Pending uploads are read by `queue.syncPending(id)` when the Files screen mounts
+(no query cache: the queue is their only home).
 
 ## 5. Mocks
 
