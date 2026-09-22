@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
-import { useNavigate } from "react-router";
+import { useEffect, type ReactNode } from "react";
+import { Link, useNavigate } from "react-router";
 import { Button, Notice, RowCard, StateBadge } from "@omelet/ui";
 import { Elapsed } from "../../components/Elapsed";
 import { CAUSE_COPY, actionError, primaryUrl } from "../../projects/copy";
@@ -18,6 +18,13 @@ export function ProjectRow({ project }: { project: Project }) {
   const page = `/p/${encodeURIComponent(project.id)}`;
   const look = () => navigate(page);
 
+  // Clear a stale error notice from a previous action once the row moves to
+  // a different view (e.g. a failed Start shouldn't still show once it's running).
+  useEffect(() => {
+    lifecycle.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view.kind]);
+
   let line: ReactNode = null;
   let actions: ReactNode = null;
   switch (view.kind) {
@@ -25,14 +32,29 @@ export function ProjectRow({ project }: { project: Project }) {
       line = primary && <a className={s.address} href={primary} target="_blank" rel="noopener noreferrer">{hostOf(primary)}</a>;
       actions = (
         <>
-          {primary && <Button onClick={() => window.open(primary, "_blank", "noopener,noreferrer")}>Open{ARROW}</Button>}
-          <Button variant="quiet" disabled={lifecycle.isPending} onClick={() => lifecycle.mutate("down")}>Stop</Button>
+          {primary && (
+            <Button aria-label={`Open ${project.id}`} onClick={() => window.open(primary, "_blank", "noopener,noreferrer")}>
+              Open{ARROW}
+            </Button>
+          )}
+          <Button
+            aria-label={`Stop ${project.id}`}
+            variant="quiet"
+            disabled={lifecycle.isPending}
+            onClick={() => lifecycle.mutate("down")}
+          >
+            Stop
+          </Button>
         </>
       );
       break;
     case "stopped":
       line = primary && <span className={s.addressMuted}>{hostOf(primary)}</span>;
-      actions = <Button disabled={lifecycle.isPending} onClick={() => lifecycle.mutate("up")}>Start</Button>;
+      actions = (
+        <Button aria-label={`Start ${project.id}`} disabled={lifecycle.isPending} onClick={() => lifecycle.mutate("up")}>
+          Start
+        </Button>
+      );
       break;
     case "starting":
       line = primary && <span className={s.addressMuted}>{hostOf(primary)}</span>;
@@ -43,15 +65,15 @@ export function ProjectRow({ project }: { project: Project }) {
       break;
     case "wrong":
       line = <span className={s.trouble}>{CAUSE_COPY[view.cause].short}</span>;
-      actions = <Button variant="danger" onClick={look}>Take a look</Button>;
+      actions = <Button aria-label={`Take a look at ${project.id}`} variant="danger" onClick={look}>Take a look</Button>;
       break;
     case "gone":
       line = <span className={s.trouble}>Its folder has gone missing</span>;
-      actions = <Button variant="danger" onClick={look}>Take a look</Button>;
+      actions = <Button aria-label={`Take a look at ${project.id}`} variant="danger" onClick={look}>Take a look</Button>;
       break;
     case "waiting":
       line = <span className={s.quiet}>Waiting for your coding agent</span>;
-      actions = <Button onClick={look}>Open page</Button>;
+      actions = <Button aria-label={`Open page for ${project.id}`} onClick={look}>Open page</Button>;
       break;
   }
 
@@ -59,7 +81,7 @@ export function ProjectRow({ project }: { project: Project }) {
     <>
       <RowCard accent={view.badge === "wrong" ? "trouble" : "plain"} className={s.row}>
         <div className={s.who}>
-          <a className={s.name} href={page} onClick={(event) => { event.preventDefault(); look(); }}>{project.id}</a>
+          <Link className={s.name} to={page}>{project.id}</Link>
           {line}
         </div>
         <StateBadge state={view.badge} />
