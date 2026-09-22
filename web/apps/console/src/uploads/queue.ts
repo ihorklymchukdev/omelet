@@ -146,6 +146,10 @@ export class UploadQueue {
     let needSync = this.find(key)?.uploadId != null;
     let restarted = false;
     let failures = 0;
+    // A finishing PATCH (chunk ending at size, including the empty busy-retry
+    // one) can succeed on the agent while its response is lost. A 404 after
+    // that means the upload landed and was cleaned up, not that it's gone.
+    let finishSent = false;
     try {
       for (;;) {
         const item = this.find(key);
@@ -182,6 +186,7 @@ export class UploadQueue {
             return;
           }
           const end = Math.min(item.size, item.offset + item.chunkSize);
+          if (end === item.size) finishSent = true;
           const answer = await this.api.patch(item.uploadId, item.offset, item.file.slice(item.offset, end), controller.signal);
           failures = 0;
           if (answer.done) {
@@ -226,6 +231,10 @@ export class UploadQueue {
               needSync = item.uploadId !== null;
               continue;
             case "upload_not_found":
+              if (finishSent) {
+                this.land(key);
+                return;
+              }
               if (restarted) {
                 this.fail(key, error);
                 return;

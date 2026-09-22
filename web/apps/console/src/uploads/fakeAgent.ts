@@ -9,7 +9,7 @@ export function fakeAgent() {
   const uploads = new Map<string, { size: number; offset: number; path: string }>();
   const counts: Record<Method, number> = { start: 0, patch: 0, status: 0 };
   const scripted: Array<{ method: Method; at: number; error: ApiError }> = [];
-  const state = { next: 0, free: 100 * 1024 ** 3, skew: 0, busyOnFinish: 0, hangAt: 0 };
+  const state = { next: 0, free: 100 * 1024 ** 3, skew: 0, busyOnFinish: 0, hangAt: 0, loseResponseAt: 0 };
 
   function scriptedFailure(method: Method): void {
     counts[method] += 1;
@@ -45,8 +45,11 @@ export function fakeAgent() {
         state.busyOnFinish -= 1;
         return Promise.reject(new ApiError("project_busy", "busy", 409));
       }
-      if (up.offset === up.size) uploads.delete(id);
-      return Promise.resolve({ upload_id: id, offset: up.offset, size: up.size, done: up.offset === up.size });
+      const done = up.offset === up.size;
+      if (done) uploads.delete(id);
+      // The chunk lands on the agent, but its answer never makes it back.
+      if (state.loseResponseAt === counts.patch) return Promise.reject(new ApiError("unreachable", "down", 0));
+      return Promise.resolve({ upload_id: id, offset: up.offset, size: up.size, done });
     },
     async status(id) {
       calls.push(`status ${id}`);

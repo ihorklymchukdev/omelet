@@ -29,10 +29,10 @@ describe("UploadQueue protocol", () => {
 
   it("carries on from the offset the agent reports after an offset_mismatch", async () => {
     const { agent, queue, item } = setup();
-    agent.state.skew = 4;
+    agent.state.skew = 8;
     const [key] = queue.add("p", "", [file("a.txt", "abcdefghij")]);
     await queue.settled();
-    expect(agent.calls).toEqual(["start a.txt", "patch up1 @0+4", "patch up1 @4+4", "patch up1 @8+2"]);
+    expect(agent.calls).toEqual(["start a.txt", "patch up1 @0+4", "patch up1 @8+2"]);
     expect(item(key).state).toBe("done");
   });
 
@@ -85,6 +85,16 @@ describe("UploadQueue protocol", () => {
     await queue.settled();
     expect(agent.calls).toEqual(["start a.txt", "patch up1 @0+4", "start a.txt", "patch up2 @0+4"]);
     expect(item(key)).toMatchObject({ state: "failed", reason: "upload_not_found" });
+  });
+
+  it("lands an upload whose finishing response was lost, instead of restarting it", async () => {
+    const { agent, queue, landed, item } = setup();
+    agent.state.loseResponseAt = 3; // the last patch, @8+2, completes the file on the agent
+    const [key] = queue.add("p", "", [file("a.txt", "abcdefghij")]);
+    await queue.settled();
+    expect(agent.calls).toEqual(["start a.txt", "patch up1 @0+4", "patch up1 @4+4", "patch up1 @8+2", "status up1"]);
+    expect(item(key).state).toBe("done");
+    expect(landed.map((i) => i.name)).toEqual(["a.txt"]);
   });
 
   it("fails a start the agent refuses and keeps going with the next file", async () => {
