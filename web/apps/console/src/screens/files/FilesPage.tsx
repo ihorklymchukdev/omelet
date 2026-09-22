@@ -10,7 +10,9 @@ import { useUploads } from "../../uploads/QueueProvider";
 import { fits } from "../../uploads/queue";
 import type { Disk } from "../../uploads/uploadApi";
 import { DestinationModal } from "./DestinationModal";
+import { DoneCard } from "./DoneCard";
 import { Listing } from "./Listing";
+import { UploadPanel } from "./UploadPanel";
 import s from "./FilesPage.module.css";
 
 export function FilesPage() {
@@ -18,7 +20,7 @@ export function FilesPage() {
   const id = params.id ?? "";
   const dir = joinPath(params["*"] ?? "");
   const listing = useListing(id, dir);
-  const { queue } = useUploads(id);
+  const { queue, items, landed, dismiss } = useUploads(id);
   const navigate = useNavigate();
   const now = useNow();
   const client = useQueryClient();
@@ -104,6 +106,8 @@ export function FilesPage() {
           }}
         />
       </header>
+      {landed && <DoneCard item={landed} onDismiss={dismiss} />}
+      <UploadPanel items={items} queue={queue} />
       <div
         className={cx(s.drop, dragging && s.dragging)}
         onDragOver={(event) => {

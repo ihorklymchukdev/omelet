@@ -200,6 +200,29 @@ describe("UploadQueue controls", () => {
     expect(item(a).state).toBe("done");
   });
 
+  it("hands a lost session to the app instead of throwing out of carryOn", async () => {
+    const lost: string[] = [];
+    const queue = new UploadQueue({
+      api: {
+        start: async () => ({ upload_id: "up1", offset: 0, size: 10, chunk_size: 4, done: false }),
+        patch: async () => {
+          throw new Error("not used by this test");
+        },
+        status: async () => {
+          throw new Error("not used by this test");
+        },
+        cancel: async () => ({}),
+        pending: async () => ({ uploads: [] }),
+        disk: async () => {
+          throw new ApiError("session_expired", "gone", 401);
+        },
+      },
+      onSessionLost: (reason) => lost.push(reason),
+    });
+    expect(await queue.carryOn()).toBe(false);
+    expect(lost).toEqual(["session_expired"]);
+  });
+
   it("doesn't let a disk_full write that lands after a pause turn the item noRoom", async () => {
     const landed: UploadItem[] = [];
     let rejectPatch: ((error: unknown) => void) | null = null;

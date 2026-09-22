@@ -193,7 +193,14 @@ export class UploadQueue {
   }
 
   async carryOn(): Promise<boolean> {
-    const { free_bytes: free } = await this.api.disk();
+    let free: number;
+    try {
+      ({ free_bytes: free } = await this.api.disk());
+    } catch (error) {
+      if (!isSessionLost(error)) throw error;
+      this.onSessionLost(error.code);
+      return false;
+    }
     let moved = false;
     for (const item of this.items) {
       if (item.state !== "noRoom") continue;
