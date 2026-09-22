@@ -270,7 +270,7 @@ details.log {
 .pan-hot::after { top:14%; left:51%; width:3%; height:3%; background:var(--yolk-deep); animation-delay:.9s; }
 
 .pan-asleep { --rim:var(--cold-soft); --dot:var(--cold); }
-.install .pan-asleep::after {
+.pan-asleep::after {
   content:'z'; position:absolute; top:-6px; right:6px; color:var(--ink-3);
   font:700 16px 'Bricolage Grotesque', sans-serif;
   animation:om-zzz 1.8s var(--ease) infinite;
