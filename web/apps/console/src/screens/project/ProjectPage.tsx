@@ -10,6 +10,7 @@ import { projectView } from "../../projects/view";
 import { ARROW } from "../icons";
 import { AddressRows } from "./AddressRows";
 import { AnalyzeModal } from "./AnalyzeModal";
+import { DeleteModal } from "./DeleteModal";
 import { StartingBody } from "./StartingBody";
 import { Tiles } from "./Tiles";
 import { WrongBody } from "./WrongBody";
@@ -153,7 +154,7 @@ export function ProjectPage() {
       {query.isError && <Notice>{query.error.message}</Notice>}
       {body}
       <AnalyzeModal open={modal === "analyze"} onClose={() => setModal(null)} />
-      {/* delete modal: Task 9 */}
+      <DeleteModal id={project.id} open={modal === "delete"} onClose={() => setModal(null)} />
     </section>
   );
 }
