@@ -7,6 +7,7 @@ import { Kit } from "./screens/Kit";
 import { NeedsUpdate } from "./screens/NeedsUpdate";
 import { NotAnswering } from "./screens/NotAnswering";
 import { ProjectList } from "./screens/list/ProjectList";
+import { ProjectPage } from "./screens/project/ProjectPage";
 import { SignedOut } from "./screens/SignedOut";
 import { WrongHost } from "./screens/WrongHost";
 import { Shell } from "./shell/Shell";
@@ -48,6 +49,7 @@ export function App({ handoff }: { handoff: string | null }) {
             <Shell>
               <Routes>
                 <Route path="/" element={<ProjectList />} />
+                <Route path="/p/:id" element={<ProjectPage />} />
                 <Route path="/kit" element={<Kit />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
