@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { Button, Egg, Notice, PromptCard, StateBadge } from "@omelet/ui";
 import { ApiError } from "../../api/client";
@@ -23,18 +23,32 @@ export function ProjectPage() {
   const forget = useDeleteProject(id);
   const navigate = useNavigate();
   const [modal, setModal] = useState<"analyze" | "delete" | null>(null);
+  const view = query.data ? projectView(query.data) : null;
+
+  // Clear a stale error notice from a previous action once the project has
+  // moved to a different view (e.g. a failed Stop shouldn't still show once
+  // a Start has begun). Kept above the early returns below so this hook
+  // always runs, whatever query.data/query.error currently hold.
+  useEffect(() => {
+    lifecycle.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view?.kind]);
 
   const back = <Link to="/" className={s.back}>‹ All projects</Link>;
 
-  if (query.data === undefined) {
-    if (query.error instanceof ApiError && query.error.code === "project_not_found") {
-      return (
-        <section className={s.page}>
-          {back}
-          <h1 className={s.name}>No project called {id}</h1>
-        </section>
-      );
-    }
+  // Checked before the data check: TanStack keeps stale data around on a
+  // failed refetch, so a project deleted elsewhere would otherwise keep
+  // showing its old body instead of this notice.
+  if (query.error instanceof ApiError && query.error.code === "project_not_found") {
+    return (
+      <section className={s.page}>
+        {back}
+        <h1 className={s.name}>No project called {id}</h1>
+      </section>
+    );
+  }
+
+  if (query.data === undefined || view === null) {
     return (
       <section className={s.page}>
         {back}
@@ -44,7 +58,6 @@ export function ProjectPage() {
   }
 
   const project = query.data;
-  const view = projectView(project);
   const primary = primaryUrl(project);
   const tiles = <Tiles onAnalyze={() => setModal("analyze")} onDelete={() => setModal("delete")} />;
   const failed = lifecycle.error && <Notice>{actionError(lifecycle.error)}</Notice>;
