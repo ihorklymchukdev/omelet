@@ -1,11 +1,15 @@
-import { useEffect } from "react";
+import { useEffect, useRef, useState, type DragEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router";
-import { Notice } from "@omelet/ui";
-import { ApiError } from "../../api/client";
+import { useQueryClient } from "@tanstack/react-query";
+import { Button, Notice, cx } from "@omelet/ui";
+import { api, ApiError } from "../../api/client";
 import { useNow } from "../../projects/useNow";
 import { filesRoute, joinPath } from "../../uploads/paths";
 import { useListing } from "../../uploads/queries";
 import { useUploads } from "../../uploads/QueueProvider";
+import { fits } from "../../uploads/queue";
+import type { Disk } from "../../uploads/uploadApi";
+import { DestinationModal } from "./DestinationModal";
 import { Listing } from "./Listing";
 import s from "./FilesPage.module.css";
 
@@ -17,10 +21,42 @@ export function FilesPage() {
   const { queue } = useUploads(id);
   const navigate = useNavigate();
   const now = useNow();
+  const client = useQueryClient();
+  const picker = useRef<HTMLInputElement>(null);
+  const [dialog, setDialog] = useState<{ files: File[]; chooser: boolean } | null>(null);
+  const [folderRefused, setFolderRefused] = useState(false);
+  const [dragging, setDragging] = useState(false);
 
   useEffect(() => {
     void queue.syncPending(id);
   }, [queue, id]);
+
+  async function dropInto(files: File[]) {
+    const disk = await client.fetchQuery({ queryKey: ["disk"], queryFn: () => api.get<Disk>("/api/disk"), staleTime: 0 });
+    const fitting = files.filter((f) => fits(f.size, disk.free_bytes));
+    if (fitting.length > 0) queue.add(id, dir, fitting);
+    const tooBig = files.filter((f) => !fitting.includes(f));
+    if (tooBig.length > 0) setDialog({ files: tooBig, chooser: false });
+  }
+
+  function onDrop(event: DragEvent) {
+    event.preventDefault();
+    setDragging(false);
+    const files: File[] = [];
+    let folder = false;
+    for (const item of Array.from(event.dataTransfer.items)) {
+      if (item.kind !== "file") continue;
+      // A folder shows up as a File too; only the entry API tells them apart.
+      if (item.webkitGetAsEntry()?.isDirectory) {
+        folder = true;
+        continue;
+      }
+      const f = item.getAsFile();
+      if (f) files.push(f);
+    }
+    setFolderRefused(folder);
+    if (files.length > 0) void dropInto(files).catch(() => setDialog({ files, chooser: true }));
+  }
 
   const code = listing.error instanceof ApiError ? listing.error.code : null;
   useEffect(() => {
@@ -55,22 +91,58 @@ export function FilesPage() {
             ))}
           </nav>
         </div>
+        <Button variant="primary" onClick={() => picker.current?.click()}>Upload</Button>
+        <input
+          ref={picker}
+          type="file"
+          multiple
+          hidden
+          onChange={(event) => {
+            const files = Array.from(event.target.files ?? []);
+            event.target.value = "";
+            if (files.length > 0) setDialog({ files, chooser: true });
+          }}
+        />
       </header>
-      {code === "permission_denied" ? (
-        <Notice>Omelet can't look inside this folder — a program in the project owns it.</Notice>
-      ) : listing.isError ? (
-        <Notice>{listing.error.message}</Notice>
-      ) : listing.data === undefined ? (
-        <p className={s.muted}>Looking in the cupboard…</p>
-      ) : (
-        <>
-          {entries.length > 0 && <Listing projectId={id} dir={dir} entries={entries} now={now} />}
-          <p className={s.foot}>
-            {entries.length > 0 && <strong>{entries.length} {entries.length === 1 ? "thing" : "things"} in here</strong>}{" "}
-            Drag files in from your desktop, or use Upload to choose where they land.
-          </p>
-        </>
-      )}
+      <div
+        className={cx(s.drop, dragging && s.dragging)}
+        onDragOver={(event) => {
+          event.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={onDrop}
+      >
+        {code === "permission_denied" ? (
+          <Notice>Omelet can't look inside this folder — a program in the project owns it.</Notice>
+        ) : listing.isError ? (
+          <Notice>{listing.error.message}</Notice>
+        ) : listing.data === undefined ? (
+          <p className={s.muted}>Looking in the cupboard…</p>
+        ) : (
+          <>
+            {entries.length > 0 && <Listing projectId={id} dir={dir} entries={entries} now={now} />}
+            <p className={s.foot}>
+              {entries.length > 0 && <strong>{entries.length} {entries.length === 1 ? "thing" : "things"} in here</strong>}{" "}
+              Drag files in from your desktop, or use Upload to choose where they land.
+            </p>
+          </>
+        )}
+      </div>
+      {folderRefused && <Notice>Folders can't go up as they are — zip it first, then drop the zip.</Notice>}
+      <DestinationModal
+        projectId={id}
+        files={dialog?.files ?? []}
+        startDir={dir}
+        chooser={dialog?.chooser ?? true}
+        open={dialog !== null}
+        onClose={() => setDialog(null)}
+        onSend={(target, files) => queue.add(id, target, files)}
+        onPickAgain={() => {
+          setDialog(null);
+          picker.current?.click();
+        }}
+      />
     </section>
   );
 }

@@ -21,3 +21,15 @@
   .row { grid-template-columns: 1fr auto; }
   .row > :last-child { display: none; }
 }
+
+.drop { display: flex; flex-direction: column; gap: 12px; border-radius: 18px; outline: 2px dashed transparent; outline-offset: 6px; }
+.dragging { outline-color: var(--yolk-deep); }
+.modalSub { margin: 0; font-size: 15px; line-height: 1.5; color: var(--ink-2); }
+.modalFoot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.note { margin: 0; font-size: 14px; color: var(--ink-3); }
+.picked { margin: 0; display: flex; gap: 10px; align-items: baseline; font-size: 15px; overflow-wrap: anywhere; }
+.picked span { color: var(--ink-3); font-size: 14px; }
+.choices { margin: 0; padding: 0; list-style: none; border: 1px solid var(--line); border-radius: 14px; }
+.choices li + li { border-top: 1px solid var(--line); }
+.choice { display: flex; align-items: center; gap: 10px; padding: 10px 14px; font-size: 15px; cursor: pointer; }
+.path { margin: 0; font: 400 13px var(--font-mono); color: var(--ink-2); overflow-wrap: anywhere; }
