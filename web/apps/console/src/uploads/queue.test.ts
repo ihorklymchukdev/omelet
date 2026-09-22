@@ -98,6 +98,37 @@ describe("UploadQueue protocol", () => {
     expect(landed.map((i) => i.name)).toEqual(["a.txt"]);
   });
 
+  it("lands an upload paused during its finishing PATCH that the agent finished anyway", async () => {
+    const { agent, queue, landed, item } = setup();
+    agent.state.hangAfterApplyAt = 3;
+    const [key] = queue.add("p", "", [file("a.txt", "abcdefghij")]);
+    await until(() => agent.calls.length === 4);
+    queue.pause(key);
+    await queue.settled();
+    queue.resume(key);
+    await queue.settled();
+    expect(item(key).state).toBe("done");
+    expect(landed).toHaveLength(1);
+    expect(agent.calls.filter((c) => c.startsWith("start"))).toHaveLength(1);
+  });
+
+  it("lands a finished upload picked up after its lost finishing response stalled it", async () => {
+    const { agent, queue, landed, item } = setup();
+    const gone = new ApiError("unreachable", "down", 0);
+    agent.state.loseResponseAt = 3;
+    agent.failOn("status", 1, gone);
+    agent.failOn("status", 2, gone);
+    agent.failOn("status", 3, gone);
+    const [key] = queue.add("p", "", [file("a.txt", "abcdefghij")]);
+    await queue.settled();
+    expect(item(key).state).toBe("stalled");
+    queue.resume(key);
+    await queue.settled();
+    expect(item(key).state).toBe("done");
+    expect(landed).toHaveLength(1);
+    expect(agent.calls.filter((c) => c.startsWith("start"))).toHaveLength(1);
+  });
+
   it("fails a start the agent refuses and keeps going with the next file", async () => {
     const { agent, queue, item } = setup();
     agent.failOn("start", 1, new ApiError("file_exists", "'a.txt' is already in the project", 409));

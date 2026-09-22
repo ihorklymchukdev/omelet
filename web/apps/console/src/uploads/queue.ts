@@ -26,6 +26,9 @@ export interface UploadItem {
   reason: string | null;
   message: string | null;
   busy: boolean;
+  // A finishing PATCH (chunk ending at size, including the empty busy-retry
+  // one) can finish on the agent unanswered; a 404 after it means it landed.
+  finishing: boolean;
   fromReload: boolean;
   freeBytes: number | null;
   samples: readonly Sample[];
@@ -102,6 +105,7 @@ export class UploadQueue {
       reason: null,
       message: null,
       busy: false,
+      finishing: false,
       fromReload: false,
       freeBytes: null,
       samples: [],
@@ -174,6 +178,7 @@ export class UploadQueue {
         reason: null,
         message: null,
         busy: false,
+        finishing: false,
         fromReload: true,
         freeBytes: null,
         samples: [],
@@ -255,10 +260,6 @@ export class UploadQueue {
     let needSync = this.find(key)?.uploadId != null;
     let restarted = false;
     let failures = 0;
-    // A finishing PATCH (chunk ending at size, including the empty busy-retry
-    // one) can succeed on the agent while its response is lost. A 404 after
-    // that means the upload landed and was cleaned up, not that it's gone.
-    let finishSent = false;
     try {
       for (;;) {
         const item = this.find(key);
@@ -280,14 +281,19 @@ export class UploadQueue {
               this.land(key);
               return;
             }
-            this.update(key, { uploadId: answer.upload_id, offset: answer.offset, chunkSize: answer.chunk_size ?? item.chunkSize });
+            this.update(key, {
+              uploadId: answer.upload_id,
+              offset: answer.offset,
+              chunkSize: answer.chunk_size ?? item.chunkSize,
+              finishing: false,
+            });
             continue;
           }
           if (needSync) {
             const status = await this.api.status(item.uploadId);
             needSync = false;
             failures = 0;
-            this.update(key, { offset: status.offset });
+            this.update(key, { offset: status.offset, finishing: false });
             continue;
           }
           if (item.file === null) {
@@ -295,7 +301,7 @@ export class UploadQueue {
             return;
           }
           const end = Math.min(item.size, item.offset + item.chunkSize);
-          finishSent = end === item.size;
+          this.update(key, { finishing: end === item.size });
           const answer = await this.api.patch(item.uploadId, item.offset, item.file.slice(item.offset, end), controller.signal);
           failures = 0;
           if (answer.done) {
@@ -305,6 +311,7 @@ export class UploadQueue {
           this.update(key, {
             offset: answer.offset,
             busy: false,
+            finishing: false,
             samples: addSample(item.samples, { at: this.now(), offset: answer.offset }),
           });
         } catch (error) {
@@ -346,7 +353,7 @@ export class UploadQueue {
               needSync = item.uploadId !== null;
               continue;
             case "upload_not_found":
-              if (finishSent) {
+              if (this.find(key)?.finishing) {
                 this.land(key);
                 return;
               }
@@ -356,7 +363,7 @@ export class UploadQueue {
                 return;
               }
               restarted = true;
-              this.update(key, { uploadId: null, offset: 0, samples: [] });
+              this.update(key, { uploadId: null, offset: 0, samples: [], finishing: false });
               continue;
             default:
               if (this.find(key)?.state !== "going") return;

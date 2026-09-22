@@ -9,7 +9,7 @@ export function fakeAgent() {
   const uploads = new Map<string, { size: number; offset: number; path: string }>();
   const counts: Record<Method, number> = { start: 0, patch: 0, status: 0 };
   const scripted: Array<{ method: Method; at: number; error: ApiError }> = [];
-  const state = { next: 0, free: 100 * 1024 ** 3, skew: 0, busyOnFinish: 0, hangAt: 0, loseResponseAt: 0 };
+  const state = { next: 0, free: 100 * 1024 ** 3, skew: 0, busyOnFinish: 0, hangAt: 0, loseResponseAt: 0, hangAfterApplyAt: 0 };
 
   function scriptedFailure(method: Method): void {
     counts[method] += 1;
@@ -47,6 +47,12 @@ export function fakeAgent() {
       }
       const done = up.offset === up.size;
       if (done) uploads.delete(id);
+      // The agent took the chunk, but the client gave up waiting (a pause).
+      if (state.hangAfterApplyAt === counts.patch) {
+        return new Promise((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(new ApiError("aborted", "cancelled", 0)));
+        });
+      }
       // The chunk lands on the agent, but its answer never makes it back.
       if (state.loseResponseAt === counts.patch) return Promise.reject(new ApiError("unreachable", "down", 0));
       return Promise.resolve({ upload_id: id, offset: up.offset, size: up.size, done });
