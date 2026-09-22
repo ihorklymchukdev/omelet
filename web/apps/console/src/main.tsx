@@ -9,8 +9,16 @@ import { takeHandoff } from "./boot/boot";
 // Taken before anything renders or awaits, so a reload never resends the code.
 const handoff = takeHandoff(window.location, window.history);
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <App handoff={handoff} />
-  </StrictMode>,
-);
+async function start() {
+  if (import.meta.env.DEV) {
+    const { startMocks } = await import("./mocks/browser");
+    await startMocks();
+  }
+  createRoot(document.getElementById("root")!).render(
+    <StrictMode>
+      <App handoff={handoff} />
+    </StrictMode>,
+  );
+}
+
+void start();

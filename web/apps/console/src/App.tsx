@@ -3,6 +3,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router";
 import { createQueryClient } from "./api/queryClient";
 import { boot, type BootResult } from "./boot/boot";
+import { Kit } from "./screens/Kit";
 import { NeedsUpdate } from "./screens/NeedsUpdate";
 import { NotAnswering } from "./screens/NotAnswering";
 import { Projects } from "./screens/Projects";
@@ -45,6 +46,7 @@ export function App({ handoff }: { handoff: string | null }) {
           <BrowserRouter>
             <Shell>
               <Routes>
+                <Route path="/kit" element={<Kit />} />
                 <Route path="*" element={<Projects />} />
               </Routes>
             </Shell>
