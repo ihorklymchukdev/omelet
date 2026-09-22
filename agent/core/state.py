@@ -58,9 +58,47 @@ class State:
                 (code, message, id))
             self._conn.commit()
 
+    def set_compose_name(self, id, compose_name):
+        with self._lock:
+            self._conn.execute(
+                "UPDATE projects SET compose_name=? WHERE id=?",
+                (compose_name, id))
+            self._conn.commit()
+
+    def mark_started(self, id, at):
+        with self._lock:
+            self._conn.execute(
+                "UPDATE projects SET last_started_at=? WHERE id=?", (at, id))
+            self._conn.commit()
+
     def remove_project(self, id):
         with self._lock:
             self._conn.execute("DELETE FROM projects WHERE id=?", (id,))
+            self._conn.commit()
+
+    def add_session(self, id_hash, expires_at):
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO sessions(id_hash, expires_at) VALUES (?,?)",
+                (id_hash, expires_at))
+            self._conn.commit()
+
+    def get_session(self, id_hash):
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT * FROM sessions WHERE id_hash=?", (id_hash,)).fetchone()
+        return dict(row) if row else None
+
+    def set_session_expiry(self, id_hash, expires_at):
+        with self._lock:
+            self._conn.execute(
+                "UPDATE sessions SET expires_at=? WHERE id_hash=?",
+                (expires_at, id_hash))
+            self._conn.commit()
+
+    def remove_session(self, id_hash):
+        with self._lock:
+            self._conn.execute("DELETE FROM sessions WHERE id_hash=?", (id_hash,))
             self._conn.commit()
 
     def close(self):

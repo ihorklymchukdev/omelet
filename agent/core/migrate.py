@@ -43,11 +43,22 @@ def _v2_project_problem(conn: sqlite3.Connection) -> None:
     _add_column(conn, "projects", "problem_message", "TEXT")
 
 
+def _v3_web_ui(conn: sqlite3.Connection) -> None:
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS sessions (
+            id_hash TEXT PRIMARY KEY,
+            expires_at REAL NOT NULL
+        )""")
+    _add_column(conn, "projects", "last_started_at", "REAL")
+    _add_column(conn, "projects", "compose_name", "TEXT")
+
+
 # Append only. Editing an entry that has already shipped changes nothing on a
 # database that ran it -- add the next one instead.
 MIGRATIONS = [
     _v1_projects,
     _v2_project_problem,
+    _v3_web_ui,
 ]
 SCHEMA_VERSION = len(MIGRATIONS)
 

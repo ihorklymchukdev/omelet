@@ -20,7 +20,7 @@ from host.client import AgentClient, AgentError
 from host.core.constants import DEFAULT_DOMAIN, EDGE_PORT
 from host.core.install import VerificationFailed, verify_step
 
-from tests.agent.test_api_routes import PS_RESTARTING, FakeProbe, FakeRunner
+from tests.agent.conftest import PS_RESTARTING, FakeProbe, FakeRunner
 from tests.host.test_client_seam import AppOpener
 
 TOKEN = "test-token"
@@ -66,7 +66,8 @@ def test_verify_passes_on_200_and_removes_the_smoke_test_project(agent, template
         "the smoke test must use a reserved id, not the template's folder name"
     assert client.list_projects() == [], \
         "the smoke-test project must not be left behind in the VM"
-    assert runner.argv_containing("down"), \
+    assert any("label=com.docker.compose.project=omelet-selftest" in a
+               for a in runner.calls), \
         "the smoke-test containers must not be left running"
 
 

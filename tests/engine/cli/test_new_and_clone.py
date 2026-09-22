@@ -2,7 +2,7 @@ import os
 
 import pytest
 
-from tests.agent.test_api_routes import COMPOSE_ONE_WEB
+from tests.agent.conftest import COMPOSE_ONE_WEB
 from tests.engine.cli.loader import load
 
 cli = load()

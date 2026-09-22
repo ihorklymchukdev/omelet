@@ -37,8 +37,12 @@ services:
       - edge
 
   agent:
-    image: ${OMELET_AGENT_IMAGE:-ghcr.io/ihorklymchukdev/omelet-agent:0.1.0}
+    image: ${OMELET_AGENT_IMAGE:-ghcr.io/ihorklymchukdev/omelet-agent:0.2.0}
     restart: always
+    # No `hostname:` here -- the agent looks itself up with
+    # `docker inspect $HOSTNAME` to remove root-owned project files, and
+    # that only resolves when $HOSTNAME is still the container id compose
+    # assigns by default.
     # 0.0.0.0, not 127.0.0.1: WSL2's localhostForwarding only surfaces guest
     # sockets bound to all interfaces. That also means every other container
     # in the VM can reach an agent that holds the Docker socket -- Task 8
@@ -66,6 +70,15 @@ services:
       - "${OMELET_DOCKER_GID:-999}"
     networks:
       - edge
+    # The browser UI's API. Same origin as the page (added with the web
+    # service), so the session cookie needs no CORS. Priority beats the
+    # page's catch-all route; project hosts never match these two names.
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.omelet-api.rule=(Host(`localhost`) || Host(`127.0.0.1`)) && PathPrefix(`/api`)"
+      - "traefik.http.routers.omelet-api.entrypoints=web"
+      - "traefik.http.routers.omelet-api.priority=1000"
+      - "traefik.http.services.omelet-api.loadbalancer.server.port=${OMELET_AGENT_PORT:-39099}"
 
 networks:
   edge:

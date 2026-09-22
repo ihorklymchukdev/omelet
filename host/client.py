@@ -250,6 +250,9 @@ class AgentClient:
     def version(self) -> str:
         return str(self._call("GET", "/version").get("version", ""))
 
+    def handoff_code(self) -> str:
+        return str(self._call("POST", "/sessions/handoff")["code"])
+
     def create_project(self, project_id: str, *, web: list[dict] | None = None,
                        domain: str | None = None) -> dict:
         body: dict = {"id": project_id}

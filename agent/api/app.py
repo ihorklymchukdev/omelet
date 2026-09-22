@@ -3,20 +3,24 @@ from __future__ import annotations
 import logging
 import os
 import secrets
+import shutil
 import tempfile
 import threading
+import time
 from contextlib import contextmanager
+from dataclasses import asdict
 from pathlib import Path
 
 import yaml
-from fastapi import FastAPI, Request
+from fastapi import APIRouter, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import (FileResponse, JSONResponse, PlainTextResponse,
-                               StreamingResponse)
-from pydantic import BaseModel
+                               Response, StreamingResponse)
+from pydantic import BaseModel, Field
+from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from ..core import constants, files, lifecycle
+from ..core import constants, disk, files, lifecycle
 from ..core.config import AgentConfig
 from ..core.detect import AmbiguousError
 from ..core.exec import LocalRunner
@@ -24,7 +28,10 @@ from ..core.exec import LocalRunner
 from ..core.health import answers, default_probe, diagnose
 from ..core.overlay import host_for
 from ..core.project import STARTED_OK, Project, _slug, load_project
+from ..core.reconcile import discover, examine
+from ..core.sessions import COOKIE, HANDOFF_TTL, SESSION_TTL, Sessions
 from ..core.state import State
+from ..core.uploads import CHUNK_SIZE, UploadError, UploadStore
 from .jobs import JobFailed, JobRegistry
 
 TEXT = "text/plain; charset=utf-8"
@@ -45,6 +52,11 @@ class ApiError(Exception):
 def _busy(project_id: str) -> "ApiError":
     return ApiError("project_busy",
                     f"another operation on '{project_id}' is still running", 409)
+
+
+def _disk_full() -> ApiError:
+    return ApiError("disk_full", "Omelet's disk is full. Free up space in "
+                    "the desktop app, then try again.", 507)
 
 
 class ProjectLocks:
@@ -89,6 +101,17 @@ class CreateProject(BaseModel):
     domain: str | None = None
 
 
+class StartUpload(BaseModel):
+    path: str
+    size: int = Field(ge=0)
+    fingerprint: str = ""
+    replace: bool = False
+
+
+class Handoff(BaseModel):
+    code: str
+
+
 def _body(code: str, message: str, status: int) -> JSONResponse:
     return JSONResponse({"error": {"code": code, "message": message}},
                         status_code=status)
@@ -119,19 +142,27 @@ def _read_token(path: Path) -> str:
 
 
 def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
-               jobs: JobRegistry | None = None, http_probe=None) -> FastAPI:
+               jobs: JobRegistry | None = None, http_probe=None,
+               sessions: Sessions | None = None) -> FastAPI:
     config = config or AgentConfig.from_env()
     runner = runner or LocalRunner()
     http_probe = http_probe or default_probe
     state = state if state is not None else State(config.state_db)
     jobs = jobs or JobRegistry()
     locks = ProjectLocks()
+    sessions = sessions if sessions is not None else Sessions(state)
+    uploads = UploadStore(config.uploads_root,
+                          free_bytes=lambda: disk.usage(
+                              Path(config.projects_root))["free_bytes"])
+    uploads.sweep()
 
     app = FastAPI(title="omelet-agent", version=config.version)
     app.state.config = config
     app.state.runner = runner
     app.state.state = state
     app.state.jobs = jobs
+    app.state.sessions = sessions
+    router = APIRouter()
 
     @app.exception_handler(ApiError)
     async def _api_error(_request, exc: ApiError):
@@ -140,6 +171,11 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
     @app.exception_handler(RequestValidationError)
     async def _invalid_request(_request, exc: RequestValidationError):
         return _body("invalid_request", _validation_message(exc), 422)
+
+    @app.exception_handler(UploadError)
+    async def _upload_error(_request, exc: UploadError):
+        return JSONResponse({"error": {"code": exc.code, "message": exc.message,
+                                       **exc.extra}}, status_code=exc.status)
 
     @app.exception_handler(StarletteHTTPException)
     async def _http_error(_request, exc: StarletteHTTPException):
@@ -167,13 +203,16 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
     # device token per host.
     token = _read_token(config.token_path)
 
-    @app.middleware("http")
-    async def _require_bearer_token(request: Request, call_next):
-        if request.url.path == "/health":
-            return await call_next(request)
-        if not token:
-            return _body("agent_unconfigured",
-                         "the agent has no token configured; run setup again", 503)
+    allowed_hosts = {f"localhost:{config.edge_port}",
+                     f"127.0.0.1:{config.edge_port}"}
+    allowed_origins = {f"http://{host}" for host in allowed_hosts}
+    # Reachable before sign-in: checking the API version, and trading a
+    # handoff code for a cookie. GET/DELETE /api/session must still go
+    # through the session check below -- only the exchange itself is open.
+    open_browser_routes = {("GET", "/api/health"), ("HEAD", "/api/health"),
+                           ("POST", "/api/session")}
+
+    def _bearer_ok(request: Request) -> bool:
         scheme, _, supplied = request.headers.get("authorization", "").partition(" ")
         # Starlette decodes headers as latin-1, so a header value can carry
         # bytes that are not valid ASCII; compare_digest raises TypeError on
@@ -181,9 +220,49 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
         # encoded bytes instead means every wire-valid header reaches a
         # normal true/false answer, never an exception out of the one guard
         # that must never throw.
-        match = (scheme.lower() == "bearer"
+        return (scheme.lower() == "bearer"
                 and secrets.compare_digest(supplied.encode(), token.encode()))
-        if not match:
+
+    def _browser_refusal(request: Request) -> JSONResponse | None:
+        if request.headers.get("host", "") not in allowed_hosts:
+            return _body("forbidden_host",
+                         "this address is not where Omelet's page lives", 403)
+        if (request.method not in ("GET", "HEAD")
+                and request.headers.get("origin", "") not in allowed_origins):
+            return _body("forbidden_origin",
+                         "requests that change something must come from "
+                         "Omelet's own page", 403)
+        return None
+
+    @app.middleware("http")
+    async def _authenticate(request: Request, call_next):
+        path = request.url.path
+        if path == "/api" or path.startswith("/api/"):
+            refusal = _browser_refusal(request)
+            if refusal is not None:
+                return refusal
+            if (request.method, path) in open_browser_routes:
+                return await call_next(request)
+            session_id = request.cookies.get(COOKIE)
+            verdict = sessions.check(session_id)
+            if verdict == "ok":
+                response = await call_next(request)
+                if verdict.extended:
+                    response.set_cookie(COOKIE, session_id, max_age=SESSION_TTL,
+                                        httponly=True, samesite="strict",
+                                        path="/api")
+                return response
+            if verdict == "expired":
+                return _body("session_expired", "your sign-in ran out; open "
+                             "Omelet from the desktop app again", 401)
+            return _body("not_signed_in", "open Omelet from the desktop app "
+                         "to sign in", 401)
+        if path == "/health":
+            return await call_next(request)
+        if not token:
+            return _body("agent_unconfigured",
+                         "the agent has no token configured; run setup again", 503)
+        if not _bearer_ok(request):
             return _body("unauthorized", "missing or invalid bearer token", 401)
         return await call_next(request)
 
@@ -243,12 +322,20 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
         # broken project must never take the whole listing down with it.
         problem = None
         urls: list[str] = []
+        web: list[dict] = []
         project = None
-        try:
-            project = load(row["id"])
-            urls = urls_for(project, row["domain"])
-        except ApiError as e:
-            problem = {"code": e.code, "message": e.message}
+        folder = project_dir(row["id"])
+        if not folder.is_dir():
+            problem = {"code": "folder_missing",
+                       "message": "this project's folder is gone"}
+        else:
+            try:
+                project = load(row["id"])
+                urls = urls_for(project, row["domain"])
+                web = [{"url": url, "service": spec.service, "primary": index == 0}
+                       for index, (url, spec) in enumerate(zip(urls, project.webs))]
+            except ApiError as e:
+                problem = {"code": e.code, "message": e.message}
         if problem is None and row.get("problem_code"):
             # A file that will not parse outranks a routing fault: it is why
             # the project has no URLs to be unreachable on.
@@ -263,20 +350,27 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
                 # diagnosis that is true for a minute and false forever after.
                 state.set_problem(row["id"])
                 problem = None
+        active = jobs.active_for(row["id"])
         return {"id": row["id"], "status": row["status"], "domain": row["domain"],
-                "path": row["guest_path"], "urls": urls, "problem": problem}
+                "path": row["guest_path"], "urls": urls, "problem": problem,
+                "empty": folder.is_dir() and not (folder / constants.COMPOSE_FILE).exists(),
+                "web": web,
+                "first_run": row.get("last_started_at") is None,
+                "job": None if active is None else {
+                    "id": active.id, "kind": active.kind,
+                    "phase": active.phase, "started_at": active.started_at}}
 
-    def submit_locked(project_id: str, work) -> str:
+    def submit_locked(project_id: str, work, kind: str | None = None) -> str:
         """The job releases the lock itself, in its own `finally`."""
         if not locks.acquire(project_id):
             raise _busy(project_id)
         try:
-            return jobs.submit(work)
+            return jobs.submit(work, kind=kind, project_id=project_id)
         except BaseException:
             locks.release(project_id)
             raise
 
-    @app.get("/health")
+    @router.get("/health")
     def health() -> dict:
         probe = runner.exec([lifecycle.DOCKER, "version", "--format",
                              "{{.Server.Version}}"])
@@ -291,11 +385,15 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
             },
         }
 
-    @app.get("/version")
+    @router.get("/version")
     def version() -> dict:
         return {"version": config.version}
 
-    @app.post("/projects", status_code=201)
+    @router.get("/disk")
+    def disk_usage() -> dict:
+        return disk.usage(Path(config.projects_root))
+
+    @router.post("/projects", status_code=201)
     def create_project(body: CreateProject) -> dict:
         # Same slug rule load_project applies to a directory name, so an id
         # survives the round trip host -> agent -> compose project name.
@@ -317,16 +415,35 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
         state.add_project(project_id, str(d), body.domain or config.domain)
         return payload(state.get_project(project_id))
 
-    @app.get("/projects")
+    @router.post("/projects/{project_id}/adopt", status_code=201)
+    def adopt_project(project_id: str) -> dict:
+        if state.get_project(project_id) is not None:
+            raise ApiError("project_exists",
+                           f"project '{project_id}' already exists", 409)
+        folder = project_dir(project_id)
+        if not folder.is_dir():
+            raise ApiError("folder_not_found",
+                           f"no folder '{project_id}' in the projects folder", 404)
+        found = examine(folder)
+        if not found.adoptable:
+            raise ApiError("not_adoptable",
+                           f"'{project_id}' cannot be adopted: {found.reason}", 409)
+        state.add_project(project_id, str(folder), config.domain)
+        return payload(state.get_project(project_id))
+
+    @router.get("/projects")
     def list_projects() -> dict:
         # `omelet status` is the surface users actually read, so a stale
         # diagnosis has to clear here too. payload() only probes a row that
         # carries a stored problem -- normally none -- so an ordinary listing
         # still pays no round trips at all.
-        return {"projects": [payload(row, recheck=True)
-                             for row in state.list_projects()]}
+        rows = state.list_projects()
+        known = {row["id"] for row in rows}
+        return {"projects": [payload(row, recheck=True) for row in rows],
+                "discovered": [asdict(d) for d in
+                               discover(Path(config.projects_root), known)]}
 
-    @app.get("/projects/{project_id}")
+    @router.get("/projects/{project_id}")
     def get_project(project_id: str) -> dict:
         return payload(require_row(project_id), recheck=True)
 
@@ -335,6 +452,82 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
             return files.resolve_within(project_dir(project_id), rel_path)
         except files.PathTraversalError as e:
             raise ApiError("path_traversal", str(e), 400) from e
+
+    def finish_upload(upload_id: str) -> dict:
+        up = uploads.get(upload_id)
+        # The existence check has to happen inside the lock too, not just the
+        # write: checked first and locked after, delete could still finish in
+        # the gap between the two and this would resurrect the folder it
+        # just removed.
+        with locks.held(up.project_id):
+            if state.get_project(up.project_id) is None:
+                uploads.cancel(upload_id)
+                raise ApiError("project_not_found",
+                               f"no project with id '{up.project_id}'", 404)
+            try:
+                uploads.finish(upload_id, resolve_path(up.project_id, up.path))
+            except PermissionError as e:
+                raise ApiError("permission_denied",
+                               "Omelet can't write into that folder; a program "
+                               "in the project owns it. Pick another folder.",
+                               409) from e
+        return {"upload_id": upload_id, "offset": up.size, "size": up.size,
+                "done": True}
+
+    @router.post("/projects/{project_id}/uploads", status_code=201)
+    def start_upload(project_id: str, body: StartUpload) -> dict:
+        require_row(project_id)
+        target = resolve_path(project_id, body.path)
+        if target.is_dir():
+            # `replace` means "overwrite this file", never "delete this
+            # folder and put a file where it was" -- that has no undo.
+            raise ApiError("path_is_folder",
+                           f"'{body.path}' is a folder in the project", 409)
+        if target.exists() and not body.replace:
+            raise ApiError("file_exists",
+                           f"'{body.path}' is already in the project", 409)
+        up = uploads.start(project_id, body.path, body.size, body.fingerprint,
+                           body.replace)
+        if up.size == 0:
+            return finish_upload(up.id)
+        return {"upload_id": up.id, "offset": 0, "size": up.size,
+                "chunk_size": CHUNK_SIZE, "done": False}
+
+    @router.get("/projects/{project_id}/uploads")
+    def pending_uploads(project_id: str) -> dict:
+        require_row(project_id)
+        uploads.sweep()
+        return {"uploads": [u.as_dict() for u in uploads.list_for(project_id)]}
+
+    @router.get("/uploads/{upload_id}")
+    def upload_status(upload_id: str) -> dict:
+        return uploads.get(upload_id).as_dict()
+
+    @router.patch("/uploads/{upload_id}")
+    async def upload_chunk(upload_id: str, request: Request) -> dict:
+        try:
+            offset = int(request.headers.get("upload-offset", ""))
+        except ValueError:
+            raise ApiError("invalid_request", "Upload-Offset must be a number",
+                           400) from None
+        body = bytearray()
+        async for piece in request.stream():
+            body += piece
+            if len(body) > 2 * CHUNK_SIZE:
+                raise ApiError("payload_too_large", "send chunks of at most "
+                               f"{CHUNK_SIZE} bytes", 413)
+        # Both append() and finish() do blocking file I/O; run them off the
+        # event loop so one slow upload can't stall every other request.
+        up = await run_in_threadpool(uploads.append, upload_id, offset, bytes(body))
+        if up.offset == up.size:
+            return await run_in_threadpool(finish_upload, upload_id)
+        return {"upload_id": upload_id, "offset": up.offset, "size": up.size,
+                "done": False}
+
+    @router.delete("/uploads/{upload_id}")
+    def cancel_upload(upload_id: str) -> dict:
+        uploads.cancel(upload_id)
+        return {"upload_id": upload_id, "cancelled": True}
 
     async def _stream_to_tempfile(request: Request, dir_: Path) -> Path:
         # Written next to its destination, never buffered whole in memory -
@@ -357,7 +550,12 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
                             "may be. Remove the large files or folders from it "
                             "-- build output, videos and database files are the "
                             "usual cause -- and try again.", 413)
-                    f.write(chunk)
+                    try:
+                        f.write(chunk)
+                    except OSError as e:
+                        if disk.is_disk_full(e):
+                            raise _disk_full() from e
+                        raise
         except BaseException:
             # A client that disconnects mid-upload, or trips the size cap
             # above, must not leave a temp file behind.
@@ -370,7 +568,7 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
     # starts a project from two different versions of itself. Refused rather
     # than queued, like every other lock holder here -- the host client retries
     # a `project_busy` on its own, where the wait can be bounded and reported.
-    @app.post("/projects/{project_id}/files")
+    @router.post("/projects/{project_id}/files")
     async def upload_files(project_id: str, request: Request) -> dict:
         require_row(project_id)
         d = project_dir(project_id)
@@ -383,16 +581,34 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
                     raise ApiError("path_traversal", str(e), 400) from e
                 except files.BadArchiveError as e:
                     raise ApiError("bad_archive", str(e), 400) from e
+                except OSError as e:
+                    if disk.is_disk_full(e):
+                        raise _disk_full() from e
+                    raise
             finally:
                 tmp.unlink(missing_ok=True)
         return {"id": project_id, "files": files.list_tree(d)}
 
-    @app.get("/projects/{project_id}/files")
-    def list_files(project_id: str) -> dict:
+    @router.get("/projects/{project_id}/files")
+    def list_files(project_id: str, dir: str | None = None) -> dict:
         require_row(project_id)
-        return {"files": files.list_tree(project_dir(project_id))}
+        if dir is None:
+            return {"files": files.list_tree(project_dir(project_id))}
+        try:
+            return {"dir": dir,
+                    "entries": files.list_dir(project_dir(project_id), dir)}
+        except files.PathTraversalError as e:
+            raise ApiError("path_traversal", str(e), 400) from e
+        except FileNotFoundError:
+            raise ApiError("folder_not_found",
+                           f"no folder '{dir}' in project '{project_id}'",
+                           404) from None
+        except PermissionError as e:
+            raise ApiError("permission_denied",
+                           "Omelet can't look inside that folder; a program "
+                           "in the project owns it.", 409) from e
 
-    @app.put("/projects/{project_id}/files/{file_path:path}")
+    @router.put("/projects/{project_id}/files/{file_path:path}")
     async def write_file(project_id: str, file_path: str, request: Request) -> dict:
         require_row(project_id)
         target = resolve_path(project_id, file_path)
@@ -408,7 +624,7 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
                 tmp.unlink(missing_ok=True)
         return {"path": file_path, "size": target.stat().st_size}
 
-    @app.get("/projects/{project_id}/files/{file_path:path}")
+    @router.get("/projects/{project_id}/files/{file_path:path}")
     def read_file(project_id: str, file_path: str):
         require_row(project_id)
         target = resolve_path(project_id, file_path)
@@ -416,9 +632,9 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
             raise ApiError("file_not_found",
                            f"no file '{file_path}' in project '{project_id}'", 404)
         # Starlette streams this from disk; the file is never read whole.
-        return FileResponse(target)
+        return FileResponse(target, filename=target.name)
 
-    @app.delete("/projects/{project_id}/files/{file_path:path}")
+    @router.delete("/projects/{project_id}/files/{file_path:path}")
     def delete_file(project_id: str, file_path: str) -> dict:
         require_row(project_id)
         target = resolve_path(project_id, file_path)
@@ -429,34 +645,75 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
             target.unlink()
         return {"path": file_path, "deleted": True}
 
-    @app.delete("/projects/{project_id}")
-    def delete_project(project_id: str) -> dict:
-        require_row(project_id)
-        # `compose down` is bounded by container stop timeouts, not by an image
-        # build, so this is the one compose call that stays synchronous. The
-        # lock stops it removing the state row under a running `up`.
+    def compose_name_for(row: dict) -> str:
+        return row.get("compose_name") or row["id"]
+
+    def resolve_compose_name(project_id: str, row: dict) -> str:
+        return lifecycle.resolve_compose_name(
+            runner, project_dir(project_id), compose_name_for(row))
+
+    @router.get("/projects/{project_id}/delete-preview")
+    def delete_preview(project_id: str) -> dict:
+        row = require_row(project_id)
+        return {**files.tree_stats(project_dir(project_id)),
+                **lifecycle.project_resources(
+                    runner, resolve_compose_name(project_id, row))}
+
+    @router.delete("/projects/{project_id}")
+    def delete_project(project_id: str, purge: bool = False) -> dict:
+        row = require_row(project_id)
+        folder = project_dir(project_id)
+        # Synchronous: the host CLI, install verification and the desktop's
+        # replace-import all wait on this answer. Removal is by compose label,
+        # not `compose down`, so a broken compose file can never block it.
         with locks.held(project_id):
-            result = lifecycle.compose_down(runner, project_dir(project_id))
+            result = lifecycle.remove_by_label(
+                runner, resolve_compose_name(project_id, row), volumes=purge)
+            if purge:
+                uploads.drop_project(project_id)
+            if purge and folder.exists():
+                shutil.rmtree(folder, ignore_errors=True)
+                if folder.exists():
+                    removed = lifecycle.remove_tree_as_root(runner, folder)
+                    if not removed.ok and result.ok:
+                        result = removed
             state.remove_project(project_id)
         return {"id": project_id, "stopped": result.ok,
                 "detail": "" if result.ok else (result.stderr or result.stdout).strip()}
 
-    @app.post("/projects/{project_id}/up", status_code=202)
-    def project_up(project_id: str) -> dict:
+    def compose_name_of(project_id: str) -> str:
+        data = parse_yaml(project_dir(project_id) / constants.COMPOSE_FILE)
+        return str(data.get("name") or project_id)
+
+    def start_work(project_id: str, *, stop_first: bool):
         row = require_row(project_id)
         # Parsing happens here, not in the job, so a broken compose file comes
         # back as an error code the caller can read instead of a failed job.
         project = load(project_id)
+        name = compose_name_of(project_id)
         domain = row["domain"]
         directory = project_dir(project_id)
 
         def work(write):
             try:
+                if stop_first:
+                    write(f"compose down {project_id}\n")
+                    down_result = lifecycle.compose_down(runner, directory)
+                    if not down_result.ok:
+                        raise JobFailed(
+                            (down_result.stderr or down_result.stdout).strip()
+                            or "compose down failed")
+                # Recorded before compose runs, not after a successful start:
+                # delete must be able to find these containers by name even
+                # when `up` never reaches STARTED_OK.
+                state.set_compose_name(project_id, name)
                 write(f"compose up {project_id}\n")
                 status, detail = lifecycle.compose_up(
-                    runner, project, directory, domain)
+                    runner, project, directory, domain, on_phase=write.phase)
                 diagnosis = None
                 if status == STARTED_OK:
+                    state.mark_started(project_id, time.time())
+                    write.phase("checking")
                     write("waiting for the project to answer through Traefik\n")
                     diagnosis = diagnose(
                         runner, project, domain, directory=directory,
@@ -486,14 +743,25 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
             finally:
                 locks.release(project_id)
 
-        return {"job_id": submit_locked(project_id, work)}
+        return work
 
-    @app.post("/projects/{project_id}/down", status_code=202)
+    @router.post("/projects/{project_id}/up", status_code=202)
+    def project_up(project_id: str) -> dict:
+        return {"job_id": submit_locked(
+            project_id, start_work(project_id, stop_first=False), "up")}
+
+    @router.post("/projects/{project_id}/restart", status_code=202)
+    def project_restart(project_id: str) -> dict:
+        return {"job_id": submit_locked(
+            project_id, start_work(project_id, stop_first=True), "restart")}
+
+    @router.post("/projects/{project_id}/down", status_code=202)
     def project_down(project_id: str) -> dict:
         require_row(project_id)
 
         def work(write):
             try:
+                write.phase("stopping")
                 write(f"compose down {project_id}\n")
                 result = lifecycle.compose_down(runner,
                                                 project_dir(project_id))
@@ -505,9 +773,9 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
             finally:
                 locks.release(project_id)
 
-        return {"job_id": submit_locked(project_id, work)}
+        return {"job_id": submit_locked(project_id, work, "down")}
 
-    @app.get("/projects/{project_id}/logs")
+    @router.get("/projects/{project_id}/logs")
     def project_logs(project_id: str, follow: bool = False,
                      service: str | None = None):
         require_row(project_id)
@@ -522,15 +790,45 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
         argv = lifecycle.logs_argv(project_dir(project_id), service, follow=True)
         return StreamingResponse(runner.stream(argv, root=True), media_type=TEXT)
 
-    @app.get("/jobs/{job_id}")
+    @router.get("/jobs/{job_id}")
     def job_status(job_id: str) -> dict:
         return require_job(job_id).as_dict()
 
-    @app.get("/jobs/{job_id}/logs")
+    @router.get("/jobs/{job_id}/logs")
     def job_logs(job_id: str, follow: bool = False):
         job = require_job(job_id)
         if not follow:
             return PlainTextResponse(job.text(), media_type=TEXT)
         return StreamingResponse(jobs.follow(job_id), media_type=TEXT)
+
+    @app.post("/sessions/handoff")
+    def issue_handoff() -> dict:
+        return {"code": sessions.issue_handoff(), "expires_in": HANDOFF_TTL}
+
+    @app.post("/api/session")
+    def start_session(body: Handoff, response: Response) -> dict:
+        session_id = sessions.redeem(body.code)
+        if session_id is None:
+            raise ApiError("handoff_invalid", "that sign-in link has already "
+                           "been used or has run out; open Omelet from the "
+                           "desktop app again", 401)
+        response.set_cookie(COOKIE, session_id, max_age=SESSION_TTL,
+                            httponly=True, samesite="strict", path="/api")
+        return {"signed_in": True}
+
+    @app.get("/api/session")
+    def read_session() -> dict:
+        # Reaching here means the middleware's own session check already
+        # returned "ok" -- GET is gated like any other /api/* route.
+        return {"signed_in": True}
+
+    @app.delete("/api/session")
+    def end_session(request: Request, response: Response) -> dict:
+        sessions.end(request.cookies.get(COOKIE))
+        response.delete_cookie(COOKIE, path="/api")
+        return {"signed_in": False}
+
+    app.include_router(router)
+    app.include_router(router, prefix="/api")
 
     return app

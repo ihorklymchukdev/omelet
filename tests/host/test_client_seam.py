@@ -21,7 +21,7 @@ from agent.core.config import AgentConfig
 from agent.core.exec import Completed
 from host.client import AgentClient, AgentError
 
-from tests.agent.test_api_routes import COMPOSE_ONE_WEB, FakeProbe, FakeRunner
+from tests.agent.conftest import COMPOSE_ONE_WEB, FakeProbe, FakeRunner
 
 TOKEN = "test-token"
 

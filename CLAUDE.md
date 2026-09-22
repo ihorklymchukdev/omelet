@@ -62,7 +62,7 @@ calls changes incompatibly — that one needs a host release.
 ```bash
 pip install -e ".[dev]"
 
-python3 -m pytest -q                                    # full suite (~640 tests, ~7s)
+python3 -m pytest -q                                    # full suite (~710 tests, ~7s)
 python3 -m pytest tests/agent/test_project.py -q        # one file
 python3 -m pytest -k classify -q                        # one test by name
 ```
@@ -168,6 +168,12 @@ Do not add an `if windows` anywhere else — push the difference into a provider
   the in-process job registry that keeps slow compose work off the request; `__main__.py` is the
   uvicorn entrypoint on `0.0.0.0:39099`. Every non-2xx body is
   `{"error": {"code": ..., "message": ...}}`, produced by one exception handler.
+  Every route is on one `APIRouter` mounted twice: at `/` behind the bearer token
+  (host, in-VM CLI) and at `/api` behind the `omelet_session` cookie plus a
+  `Host`/`Origin` allowlist (the browser UI, reached through Traefik on the edge
+  port). The desktop gets the browser a session through `POST /sessions/handoff`;
+  see `docs/superpowers/specs/2026-09-21-web-ui-agent-prerequisites-design.md`.
+  `DELETE /projects/{id}?purge=true` removes volumes and the folder; plain DELETE keeps them.
 - `agent/core/exec.py` — `LocalRunner`, the in-VM twin of `VmProvider.exec`: same `Completed`
   contract, never raises. `agent/core/config.py` — `AgentConfig`, the only place the domain and
   edge port may come from.
@@ -178,6 +184,10 @@ Do not add an `if windows` anywhere else — push the difference into a provider
   path, `..` escape, symlink/hardlink escaping the tree) via `tarfile`'s `filter="data"` plus an
   explicit absolute-path check, since that filter silently normalizes an absolute name instead
   of refusing it.
+- `agent/core/uploads.py` — resumable chunked uploads staged in `/opt/omelet/uploads`,
+  outside `projects_root`; the staged file's size is the offset.
+  `agent/core/reconcile.py` lists project folders with no state row (made by a
+  coding agent) for the UI's adopt flow.
 
 ### Things that will bite you
 

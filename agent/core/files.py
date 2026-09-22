@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import posixpath
 import tarfile
 from pathlib import Path, PurePosixPath
@@ -88,6 +89,55 @@ def resolve_within(root: Path, rel_path: str) -> Path:
     if candidate != root and root not in candidate.parents:
         raise PathTraversalError(f"'{rel_path}' escapes the project directory")
     return candidate
+
+
+def tree_stats(root: Path) -> dict:
+    """Unreadable folders (root-owned, written by a container) are skipped
+    rather than failing the whole count."""
+    count = size = 0
+    for dirpath, _dirs, names in os.walk(root, onerror=lambda e: None):
+        for name in names:
+            try:
+                size += os.lstat(os.path.join(dirpath, name)).st_size
+                count += 1
+            except OSError:
+                continue
+    return {"files": count, "bytes": size}
+
+
+_HIDDEN = {".omelet"}
+
+
+def list_dir(root: Path, rel: str) -> list[dict]:
+    """One level of `root`/`rel`: folders first, then files, both by name.
+    `.omelet` is the project's own bookkeeping and never shown."""
+    folder = resolve_within(root, rel) if rel else root.resolve()
+    if not folder.is_dir():
+        raise FileNotFoundError(rel)
+    entries = []
+    for entry in os.scandir(folder):
+        if entry.name in _HIDDEN:
+            continue
+        try:
+            info = entry.stat(follow_symlinks=False)
+            is_dir = entry.is_dir(follow_symlinks=False)
+        except OSError:
+            # Removed between the scandir above and this stat, or owned by a
+            # program in the project that leaves it unreadable -- either way
+            # one bad entry must not fail the whole listing.
+            continue
+        if is_dir:
+            try:
+                items = len(os.listdir(entry.path))
+            except OSError:
+                items = None
+            entries.append({"name": entry.name, "kind": "folder", "size": None,
+                            "items": items, "modified": info.st_mtime})
+        else:
+            entries.append({"name": entry.name, "kind": "file",
+                            "size": info.st_size, "items": None,
+                            "modified": info.st_mtime})
+    return sorted(entries, key=lambda e: (e["kind"] != "folder", e["name"].lower()))
 
 
 def list_tree(root: Path) -> list[dict]:

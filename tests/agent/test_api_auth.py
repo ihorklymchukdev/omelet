@@ -102,7 +102,9 @@ def test_every_route_except_health_requires_a_token(tmp_path):
     for route in client.app.routes:
         path = getattr(route, "path", None)
         methods = getattr(route, "methods", None) or set()
-        if not path or path == "/health":
+        # The /api mount answers to the browser allowlist, not the bearer
+        # token; its own sweep lives in test_api_browser_auth.py.
+        if not path or path == "/health" or path.startswith("/api/"):
             continue
         concrete = re.sub(r"\{[^}]+\}", "x", path)
         for method in methods - {"HEAD", "OPTIONS"}:

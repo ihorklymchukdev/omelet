@@ -37,6 +37,9 @@ class AgentConfig:
     # The shared secret the engine installer generates in the guest. Phase 3 replaces
     # it with a service-issued device token; see agent/api/app.py's auth check.
     token_path: Path = Path(f"{constants.GUEST_ROOT}/agent.token")
+    # Partial uploads, outside projects_root so neither a listing, the
+    # reconcile scan nor the coding agent ever sees a half-written file.
+    uploads_root: Path = Path(f"{constants.GUEST_ROOT}/uploads")
     # A runaway/abuse guard on file uploads, not a policy -- generous enough
     # that no real project hits it. Raise via env, no rebuild needed.
     max_upload_bytes: int = 512 * 1024 * 1024
@@ -58,6 +61,8 @@ class AgentConfig:
                                   f"{constants.GUEST_ROOT}/state.db")),
             token_path=Path(env.get("OMELET_AGENT_TOKEN",
                                     f"{constants.GUEST_ROOT}/agent.token")),
+            uploads_root=Path(env.get("OMELET_UPLOADS_ROOT",
+                                      f"{constants.GUEST_ROOT}/uploads")),
             max_upload_bytes=int(env.get("OMELET_MAX_UPLOAD_BYTES",
                                          512 * 1024 * 1024)),
             version=env.get("OMELET_AGENT_VERSION", __version__),
