@@ -41,6 +41,10 @@ class Shell:
         current = self._current()
         return current is not None and current == self._local
 
+    def local_url(self) -> str | None:
+        self._remember()
+        return self._local
+
     def load(self, url: str) -> None:
         self._remember()
         # Leaving before the local page is known would let the next page

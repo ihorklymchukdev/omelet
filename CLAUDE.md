@@ -192,7 +192,8 @@ Do not add an `if windows` anywhere else — push the difference into a provider
   Every route is on one `APIRouter` mounted twice: at `/` behind the bearer token
   (host, in-VM CLI) and at `/api` behind the `omelet_session` cookie plus a
   `Host`/`Origin` allowlist (the browser UI, reached through Traefik on the edge
-  port). The desktop gets the browser a session through `POST /sessions/handoff`;
+  port). The desktop gets the browser a session through `POST /sessions/handoff`, and a
+  signed-in page gets the system browser one through `POST /api/sessions/handoff`;
   see `docs/superpowers/specs/2026-09-21-web-ui-agent-prerequisites-design.md`.
   `DELETE /projects/{id}?purge=true` removes volumes and the folder; plain DELETE keeps them.
 - `runtime/omelet_api/core/exec.py` — `LocalRunner`, the in-VM twin of `VmProvider.exec`: same
@@ -225,6 +226,10 @@ Do not add an `if windows` anywhere else — push the difference into a provider
   `uploads/queue.ts` owns the chunked-upload protocol (resume at the API's offset, busy retry on
   the last chunk, hold on `disk_full`) with no React in it; one instance lives above the router in
   `uploads/QueueProvider.tsx`, so uploads carry on across screens but stop when the page closes.
+  `desktop/desktop.ts` reads the `home=` address the desktop window adds to the handoff link
+  (only `http://127.0.0.1:<port>`), which switches on the shell's Home button and "open in
+  browser"; open external addresses with its `openExternal` (an anchor click), never
+  `window.open` — WKWebView hands only link activations to the system browser.
 
 ### Things that will bite you
 

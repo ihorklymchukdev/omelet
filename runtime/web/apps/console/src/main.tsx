@@ -5,8 +5,19 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import { takeHandoff } from "./boot/boot";
+import { takeDesktopHome } from "./desktop/desktop";
 
-// Taken before anything renders or awaits, so a reload never resends the code.
+function sessionStore(): Storage | null {
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
+// Both read before anything renders or awaits: takeHandoff() clears the
+// fragment, so a reload never resends the code.
+const home = takeDesktopHome(window.location, sessionStore());
 const handoff = takeHandoff(window.location, window.history);
 
 async function start() {
@@ -16,7 +27,7 @@ async function start() {
   }
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
-      <App handoff={handoff} />
+      <App handoff={handoff} home={home} />
     </StrictMode>,
   );
 }

@@ -11,3 +11,25 @@
   .bar { height: 54px; padding: 0 32px; }
   .content { padding: 28px 32px; }
 }
+
+.home {
+  display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px 7px 10px;
+  border: 1px solid var(--line-2); border-radius: 12px; background: var(--surface);
+  font: 600 15px var(--font-body); color: var(--ink); text-decoration: none;
+}
+.home:hover { background: var(--surface-2); }
+.home:focus-visible, .icon:focus-visible { outline: 2px solid var(--yolk-deep); outline-offset: 2px; }
+.divider { width: 1px; height: 26px; background: var(--line-2); margin: 0 6px; }
+.end { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.open {
+  display: inline-flex; align-items: center; gap: 7px; padding: 5px 12px 5px 9px; border-radius: 99px;
+  background: var(--basil-soft); color: var(--basil);
+  font: 700 12px var(--font-body); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap;
+}
+.dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.icon {
+  display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px;
+  border: 1px solid var(--line-2); border-radius: 12px; background: var(--surface); color: var(--ink-2); cursor: pointer;
+}
+.icon:hover:not(:disabled) { background: var(--surface-2); color: var(--ink); }
+.icon:disabled { opacity: .6; cursor: progress; }
