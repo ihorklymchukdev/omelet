@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+from host.core.constants import API_UNCONFIGURED
+
 # Resolved from this module rather than from cli.py: cli.py is the frozen
 # entry script, whose __file__ points at the bundle root instead of at
 # host/, so an entry-script lookup misses the bundled template.
@@ -190,7 +192,7 @@ class ApiNotAccepted(RuntimeError):
 # The API answers one of these when it has no usable token of its own, or
 # when the one this host is holding is not the one it started with. Neither
 # clears with time: the token is read once, at container startup.
-_TOKEN_CODES = frozenset({"api_unconfigured", "unauthorized"})
+_TOKEN_CODES = frozenset({API_UNCONFIGURED, "unauthorized"})
 
 
 class ApiIncompatible(RuntimeError):

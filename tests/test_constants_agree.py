@@ -52,10 +52,13 @@ def test_the_readiness_window_is_the_same_on_both_sides_of_the_seam():
 
 
 def test_the_stack_deploys_the_image_version_the_api_service_reports():
-    # Three files name this version and are bumped together on a runtime
+    # Four files name this version and are bumped together on a runtime
     # release: the stack's image tag (what the VM pulls), the Dockerfile's
-    # SERVICE_VERSION (GET /version's answer) and the package __version__.
+    # SERVICE_VERSION (GET /version's answer), the package __version__ and
+    # the package's own pyproject.toml -- the dist metadata installed inside
+    # the image, which nothing else here reads.
     import re
+    import tomllib
     from pathlib import Path
 
     from omelet_api import __version__ as package_version
@@ -65,9 +68,12 @@ def test_the_stack_deploys_the_image_version_the_api_service_reports():
                       (root / "runtime" / "stack.yml").read_text())
     dockerfile = re.search(r"^ARG SERVICE_VERSION=(\S+)",
                            (root / "runtime" / "omelet_api" / "Dockerfile").read_text(), re.M)
+    pyproject = tomllib.loads(
+        (root / "runtime" / "omelet_api" / "pyproject.toml").read_text())
     assert stack, "stack.yml must default OMELET_API_IMAGE with a tag"
     assert dockerfile, "the Dockerfile must default SERVICE_VERSION"
-    assert stack[1] == dockerfile[1] == package_version
+    pyproject_version = pyproject["project"]["version"]
+    assert stack[1] == dockerfile[1] == pyproject_version == package_version
 
 
 def test_the_debug_image_is_built_on_the_current_release_not_a_stale_one():

@@ -29,6 +29,8 @@ GUEST_PROJECTS = f"{GUEST_ROOT}/projects"
 GUEST_TOKEN = f"{GUEST_ROOT}/api.token"
 GUEST_STACK = f"{GUEST_ROOT}/stack.yml"
 COMPOSE_FILE = "docker-compose.yml"
+# The code the API answers when it has no usable token of its own.
+API_UNCONFIGURED = "api_unconfigured"
 # Compose accepts these too; Omelet does not, so a project written under one of
 # them must be named, not reported as if it had no compose file at all.
 _ALT_COMPOSE_FILES = ("compose.yaml", "compose.yml", "docker-compose.yaml")
@@ -126,7 +128,7 @@ START_STACK = f"sudo /usr/bin/docker compose -f {GUEST_STACK} up -d"
 RESTART_API = f"{START_STACK} --force-recreate api"
 _GUIDANCE = {
     "unauthorized": f"The Omelet service needs a restart. Run: {RESTART_API}",
-    "api_unconfigured": f"The Omelet service needs a restart. Run: {RESTART_API}",
+    API_UNCONFIGURED: f"The Omelet service needs a restart. Run: {RESTART_API}",
 }
 
 

@@ -37,7 +37,7 @@ class ApiConfig:
     # The shared secret the runtime installer generates in the guest. Phase 3
     # replaces it with a service-issued device token; see
     # omelet_api/routes/app.py's auth check.
-    token_path: Path = Path(f"{constants.GUEST_ROOT}/api.token")
+    token_path: Path = Path(constants.GUEST_TOKEN)
     # Partial uploads, outside projects_root so neither a listing, the
     # reconcile scan nor the coding agent ever sees a half-written file.
     uploads_root: Path = Path(f"{constants.GUEST_ROOT}/uploads")
@@ -60,8 +60,7 @@ class ApiConfig:
                                        constants.GUEST_PROJECTS)),
             state_db=Path(env.get("OMELET_STATE_DB",
                                   f"{constants.GUEST_ROOT}/state.db")),
-            token_path=Path(env.get("OMELET_API_TOKEN",
-                                    f"{constants.GUEST_ROOT}/api.token")),
+            token_path=Path(env.get("OMELET_API_TOKEN", constants.GUEST_TOKEN)),
             uploads_root=Path(env.get("OMELET_UPLOADS_ROOT",
                                       f"{constants.GUEST_ROOT}/uploads")),
             max_upload_bytes=int(env.get("OMELET_MAX_UPLOAD_BYTES",

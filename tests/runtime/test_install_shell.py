@@ -2,6 +2,8 @@ import re
 import subprocess
 from pathlib import Path
 
+import yaml
+
 from host.core import constants
 
 # Anchored to this file, never to the working directory: a cwd-relative path
@@ -13,6 +15,7 @@ INSTALL = ROOT / "runtime" / "install" / "install.sh"
 # install.sh still writes this path directly; it stands in for a host
 # constant that no longer exists.
 STACK = f"{constants.GUEST_ROOT}/stack.yml"
+STACK_YML = ROOT / "runtime" / "stack.yml"
 
 
 def test_install_is_valid_bash():
@@ -180,8 +183,16 @@ def test_npx_in_the_account_loop_cannot_swallow_the_account_list():
 
 def test_a_repair_or_a_new_token_recreates_the_api():
     # The API reads its token once at startup; `up -d` leaves it running.
+    # The service key is derived from stack.yml, not hardcoded "api" here too
+    # -- the same way tests/runtime/cli/test_boundaries.py derives the CLI's
+    # RESTART_API -- so a rename of stack.yml's service key alone fails this
+    # test instead of leaving install.sh silently recreating a service that
+    # no longer exists.
+    services = yaml.safe_load(STACK_YML.read_text())["services"]
+    (api_key,) = [name for name, svc in services.items()
+                  if "omelet-api" in svc.get("image", "")]
     commands = _commands()
-    recreate = _index_of("--force-recreate api")
+    recreate = _index_of(f"--force-recreate {api_key}")
     assert recreate > _index_of(" up -d")
     condition = commands[recreate - 1]
     assert "TOKEN_CREATED" in condition and "REPAIR" in condition, condition
@@ -296,3 +307,19 @@ def test_a_github_cli_failure_is_reported_and_stops_the_install():
     gh_block = text.split("dpkg -s gh")[1].split("node_ok()")[0]
     assert gh_block.count("exit 1") == 2, "both the keyring and the apt failure must stop"
     assert "cli.github.com" in gh_block and ">&2" in gh_block
+
+
+def test_install_removes_what_an_engine_v_install_left_behind():
+    # A VM installed from an engine-v* ref keeps /opt/omelet/engine/,
+    # engine.version and agent.token forever otherwise: nothing reads them
+    # any more, engine.version sits beside runtime.version to mislead the
+    # next person who debugs the box, and agent.token is a live 0640
+    # docker-readable secret. The cleanup command spans several
+    # backslash-continued lines, so join them before checking.
+    text = INSTALL.read_text()
+    block = text.split("rm -rf ", 1)[1].split("\nif ", 1)[0]
+    cleanup = block.replace("\\\n", " ")
+    assert "omelet-setup" in cleanup, "sanity check: not the intended block"
+    for stale in ("/opt/omelet/engine ", "/opt/omelet/engine.version",
+                  "/opt/omelet/agent.token"):
+        assert stale in cleanup, f"cleanup no longer removes {stale!r}"

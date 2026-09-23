@@ -260,7 +260,7 @@ def create_app(*, config: ApiConfig | None = None, runner=None, state=None,
         if path == "/health":
             return await call_next(request)
         if not token:
-            return _body("api_unconfigured",
+            return _body(constants.API_UNCONFIGURED,
                          "the API has no token configured; run setup again", 503)
         if not _bearer_ok(request):
             return _body("unauthorized", "missing or invalid bearer token", 401)

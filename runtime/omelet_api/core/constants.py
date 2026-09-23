@@ -12,3 +12,9 @@ VERIFY_PROJECT_ID = "omelet-selftest"
 # Bumped only when a route the host calls changes incompatibly; the host
 # refuses an API whose number it does not list in SUPPORTED_API.
 API_VERSION = 1
+
+# Generated in the guest by the runtime installer, never pushed from the host.
+GUEST_TOKEN = f"{GUEST_ROOT}/api.token"
+
+# The code this service answers when it has no usable token of its own.
+API_UNCONFIGURED = "api_unconfigured"

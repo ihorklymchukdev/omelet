@@ -203,8 +203,13 @@ install -d /etc/claude-code
 install -m 644 "$RUNTIME_DIR/instructions/omelet.md" /etc/claude-code/CLAUDE.md
 
 # 10. copies earlier provisioning made, which npx now owns or nothing reads.
+# The last three are what an engine-v* install left behind: engine.version
+# sits beside runtime.version and would mislead the next person to debug the
+# box, and agent.token is a live 0640 docker-readable secret nothing reads
+# any more.
 rm -rf /etc/codex/skills/omelet-setup /opt/omelet/bin /opt/omelet/agents \
   /opt/omelet/.bootstrapped \
+  /opt/omelet/engine /opt/omelet/engine.version /opt/omelet/agent.token \
   /etc/skel/.claude/skills/omelet-setup /etc/skel/.agents/skills/omelet-setup
 if [[ -f /etc/skel/.codex/AGENTS.md ]]; then
   sed -i '\|^<!-- omelet:begin -->$|,\|^<!-- omelet:end -->$|d' /etc/skel/.codex/AGENTS.md

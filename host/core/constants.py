@@ -44,3 +44,8 @@ GUEST_TOKEN = f"{GUEST_ROOT}/api.token"
 # keeps the routes compatible keeps the number, so it never needs a host
 # release.
 SUPPORTED_API = frozenset({1})
+
+# The code the api service answers when it has no usable token of its own.
+# Declared on both sides so a rename on one side without the other fails
+# test_constants_agree instead of silently breaking connect_step's repair path.
+API_UNCONFIGURED = "api_unconfigured"
