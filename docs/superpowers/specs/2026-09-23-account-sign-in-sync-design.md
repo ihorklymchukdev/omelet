@@ -71,6 +71,7 @@ account(id INTEGER PRIMARY KEY CHECK (id = 1),
         email TEXT, org_id TEXT,
         access_token TEXT, refresh_token TEXT, access_expires_at REAL,
         device_code TEXT, user_code TEXT, verification_url TEXT, code_expires_at REAL,
+        poll_interval REAL, sync_ok_at REAL, sync_error TEXT,
         last_error TEXT)
 cloud_projects(local_id TEXT PRIMARY KEY, cloud_id TEXT NOT NULL, org_id TEXT NOT NULL)
 ```
@@ -110,7 +111,9 @@ Every authenticated service call goes through one helper in `account.py`:
 - a refresh answered `invalid_grant` (device revoked) → `signed_out` with
   `error: "revoked"`;
 - a refresh that fails with `CloudUnavailable` leaves the account signed in
-  (decision 8).
+  (decision 8);
+- account writes that follow a network call re-check the stored token/code under
+  one lock, so a sign-out or a new code landing mid-call is never undone.
 
 Whatever refresh returns replaces both stored tokens.
 
@@ -167,8 +170,9 @@ Mock sign-in URLs are `https:`.
 
 ### Where it runs
 
-- `core/sync.py` — `plan(local_ids, mapping, org_id, cloud_projects) -> list[Action]`,
-  pure, plus `apply(actions, cloud, state)`.
+- `core/sync.py` — `plan(local_ids, mapping, org_id) -> list[Action]`, pure,
+  plus `apply(actions, cloud, state)`. `omelet-selftest` (the install smoke
+  test) is never sent.
 - A daemon thread started by `routes/__main__.py`, not by `create_app()`, so
   importing the app or building it in a test starts no thread. It runs one pass
   every 60 s and at once when a `threading.Event` is set by project create,

@@ -209,6 +209,14 @@ Do not add an `if windows` anywhere else — push the difference into a provider
   outside `projects_root`; the staged file's size is the offset.
   `runtime/omelet_api/core/reconcile.py` lists project folders with no state row (made by a
   coding agent) for the UI's adopt flow.
+- `runtime/omelet_api/core/cloud.py` / `account.py` / `sync.py` — the Omelet service
+  (`OMELET_CLOUD_URL`, default `https://omelet.bridgie.chat/api`). `account.py` runs the
+  device-code sign-in and keeps the tokens in `state.db`; `sync.py` gives each local project
+  a service record (created with `client_ref = <device_id>/<local_id>`, deleted with it) on a
+  thread `routes/__main__.py` starts — `create_app()` never starts one. Only the console is
+  locked until sign-in (`GET /api/account`); the CLI and coding agents never wait on it.
+  Service gaps are not worked around in our code; see
+  `docs/superpowers/specs/2026-09-23-account-sign-in-sync-design.md` section 7.
 - `runtime/web/` — the browser UI at `localhost:<edge>`, shipped as the `omelet-web` nginx image
   and routed by Traefik below the API's `/api` router — a sibling of the API inside `runtime/`,
   never nested in the Python package. `packages/ui` is the kit (tokens, fonts,
