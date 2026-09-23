@@ -108,8 +108,11 @@ So:
   `window.get_current_url()` and raises unless it equals that URL (ignoring
   the fragment). The console can see the method names and run none of them.
   The guard is applied to the class as a whole, not method by method, so a
-  method added later cannot forget it. The facade's members are bound
-  methods, because pywebview before 6.2 exposes nothing else.
+  method added later cannot forget it. The guarded functions are registered
+  with `window.expose()` and `js_api` stays `None`: pywebview resolves a
+  dotted call name from `js_api` with plain `getattr`, with no underscore
+  filter, so any object there lets a page walk `home.__func__.__globals__`
+  into the host process without passing the guard.
 - **What the guard does not cover.** It checks the page showing when the call
   is handled, not the page that sent it; pywebview does not expose the
   sender. The local UI is plain `http://127.0.0.1:<port>`, so a console page

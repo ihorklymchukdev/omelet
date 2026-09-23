@@ -157,7 +157,7 @@ Do not add an `if windows` anywhere else — push the difference into a provider
   `host/core` values to what a screen needs — no provider, no client, nothing reaching the VM or
   the network (it does walk the local filesystem in `inspect_folder()`) — which is what makes
   it the only module here worth unit-testing. `api.py` is the only object JavaScript can reach —
-  through `shell.py`'s `guarded()` facade, which refuses every call unless the local UI is the
+  through `shell.py`'s `guarded()` functions, which refuse every call unless the local UI is the
   page showing — so it stays a thin, fixed list of methods taking scalars, with every real
   decision pushed into `view.py`. When the machine is running the same window shows the projects
   console (`localhost:<edge>`, entered with a handoff code); a native "Omelet" menu switches
@@ -238,11 +238,12 @@ that document is written. Add a new entry here when you hit one.
   checkout, and fails only inside the image build.
 - pywebview injects `window.pywebview.api` into every page the window loads, including the
   console served from the VM. `host/desktop/shell.py` refuses bridge calls and pushed events
-  unless the local UI is showing; a new `DesktopApi` method is covered automatically, but
-  anything handed to `create_window(js_api=...)` other than `guarded(...)` is not. It checks
-  the page showing, not the sender, and the local UI is plain `http://127.0.0.1:<port>`;
-  the spec's "What the guard does not cover" names the residual race. The facade's members
-  must stay bound methods: pywebview before 6.2 exposes nothing else.
+  unless the local UI is showing; a new `DesktopApi` method is covered automatically. Keep
+  `create_window(js_api=None)` and register functions with `window.expose()`: pywebview
+  resolves a dotted call name from `js_api` with plain `getattr`, so any object there lets a
+  page walk `home.__func__.__globals__` past the guard. It checks the page showing, not the
+  sender, and the local UI is plain `http://127.0.0.1:<port>`; the spec's "What the guard
+  does not cover" names the residual race.
 
 ## Testing conventions
 

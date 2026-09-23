@@ -96,7 +96,7 @@ def run(provider, state, *, create=_default_create, start=_default_start,
 
     try:
         window = create(title=WINDOW_TITLE, url=str(ui_dir() / "index.html"),
-                        js_api=guarded(api, shell), width=WINDOW_SIZE[0],
+                        js_api=None, width=WINDOW_SIZE[0],
                         height=WINDOW_SIZE[1], min_size=MIN_SIZE)
     except Exception as e:
         # Deliberately broad: a missing runtime surfaces differently on each
@@ -109,6 +109,7 @@ def run(provider, state, *, create=_default_create, start=_default_start,
         return 3
 
     shell.window = window
+    window.expose(*guarded(api, shell))
     start(debug=False, menu=menu(menu_items(api, shell)))
     return 0
 

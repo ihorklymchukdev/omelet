@@ -6,7 +6,6 @@ root. These pin that such a page can see the bridge and use none of it.
 """
 from __future__ import annotations
 
-import inspect
 import json
 
 import pytest
@@ -92,28 +91,29 @@ def test_events_never_reach_the_console():
     assert window.evaluated == []
 
 
+def _bridge(tmp_path, shell):
+    return {f.__name__: f for f in guarded(_api(tmp_path), shell)}
+
+
 def test_every_public_method_is_refused_from_the_console(tmp_path):
     shell = Shell(FakeWindow(LOCAL))
-    bridge = guarded(_api(tmp_path), shell)
+    bridge = _bridge(tmp_path, shell)
     shell.load(CONSOLE)
     names = public_methods(DesktopApi)
     assert "reboot_now" in names and "start_import" in names
     for name in names:
         with pytest.raises(NotLocalPage):
-            getattr(bridge, name)()
+            bridge[name]()
 
 
 def test_the_bridge_exposes_only_the_public_methods(tmp_path):
-    # JobRegistry sits on DesktopApi as .jobs; pywebview exposes nested
-    # objects, so the facade must not carry it (or anything else) along.
-    bridge = guarded(_api(tmp_path), Shell(FakeWindow(LOCAL)))
-    exposed = {n for n in dir(bridge) if not n.startswith("_")}
-    assert exposed == set(public_methods(DesktopApi))
+    # JobRegistry sits on DesktopApi as .jobs; nothing but the guarded
+    # public methods may reach pywebview.
+    assert sorted(_bridge(tmp_path, Shell(FakeWindow(LOCAL)))) == public_methods(DesktopApi)
 
 
 def test_the_local_page_reaches_the_real_method(tmp_path):
-    bridge = guarded(_api(tmp_path), Shell(FakeWindow(LOCAL)))
-    assert bridge.reset_install() == {"ok": True}
+    assert _bridge(tmp_path, Shell(FakeWindow(LOCAL)))["reset_install"]() == {"ok": True}
 
 
 def test_load_local_leaves_an_already_local_page_alone():
@@ -132,12 +132,3 @@ def test_nothing_is_recorded_before_the_local_page_has_loaded(before_first_load)
     shell = Shell(window)
     shell.load(CONSOLE)
     assert window.loaded == []
-
-
-def test_pywebview_discovers_every_bridge_method(tmp_path):
-    # Before 6.2, pywebview exposes only what inspect.ismethod accepts.
-    bridge = guarded(_api(tmp_path), Shell(FakeWindow(LOCAL)))
-    for name in public_methods(DesktopApi):
-        attr = getattr(bridge, name)
-        assert inspect.ismethod(attr), name
-        inspect.getfullargspec(attr)

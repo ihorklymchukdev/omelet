@@ -66,16 +66,19 @@ def public_methods(cls: type) -> list[str]:
                   if callable(value) and not name.startswith("_"))
 
 
-def guarded(api: object, shell: Shell) -> object:
-    # Methods on a class, not functions on an instance: pywebview before 6.2
-    # exposes only what inspect.ismethod() accepts.
-    methods = {name: _guard(getattr(api, name), name, shell)
-               for name in public_methods(type(api))}
-    return type("DesktopBridge", (), methods)()
+def guarded(api: object, shell: Shell) -> list:
+    """Functions for window.expose(), never an object for js_api.
+
+    pywebview resolves a call name like "home.__func__.__globals__.clear"
+    from js_api with plain getattr, which would walk past the guard into the
+    host process. Exposed functions are matched by exact name only.
+    """
+    return [_guard(getattr(api, name), name, shell)
+            for name in public_methods(type(api))]
 
 
 def _guard(method, name: str, shell: Shell):
-    def call(self, *args, **kwargs):
+    def call(*args, **kwargs):
         if not shell.is_local():
             raise NotLocalPage(f"{name} is only available to Omelet's own screens")
         return method(*args, **kwargs)
