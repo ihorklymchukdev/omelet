@@ -116,6 +116,20 @@ def test_approval_stores_the_tokens_reads_who_it_is_and_wakes_sync(tmp_path):
     assert woken == [True]
 
 
+def test_a_stale_identity_left_by_a_previous_account_does_not_survive_a_new_sign_in(tmp_path):
+    account, _, _ = make(tmp_path, FakeCloud(
+        device_code=[CODE], device_token=[TOKENS], me=[ME]))
+    # Leftover from a race predating today's fix: an old account's identity
+    # sitting on an otherwise signed-out row.
+    account._state.update_account(email="old@example.com", org_id="org-old")
+    account.start_sign_in()
+
+    assert account.poll_once() is None
+    status = account.status()
+    assert (status["state"], status["email"]) == ("signed_in", "ada@example.com")
+    assert account._state.get_account()["org_id"] == "org-1"
+
+
 def test_resume_starts_a_poller_only_for_a_pending_code(tmp_path):
     account, _, spawned = make(tmp_path, FakeCloud(device_code=[CODE]))
     account.resume()
@@ -203,6 +217,43 @@ def test_a_sign_out_during_polling_is_not_undone_by_the_late_approval(tmp_path):
 
     assert account.poll_once() is None
     assert account.status()["state"] == "signed_out"
+
+
+def test_a_sign_out_during_load_identity_leaves_no_email_or_org_written(tmp_path):
+    class Wrapped(FakeCloud):
+        def me(self, token):
+            account._forget(None)
+            return super().me(token)
+
+    cloud = Wrapped(me=[ME])
+    account, _ = signed_in(tmp_path, cloud)
+    account._state.update_account(org_id=None)  # force load_identity to call out
+
+    with pytest.raises(NotSignedIn):
+        account.load_identity()
+
+    row = account._state.get_account()
+    assert row["email"] is None
+    assert row["org_id"] is None
+    assert account.signed_in is False
+
+
+def test_starting_sign_in_skips_the_write_if_already_signed_in_by_the_time_the_code_arrives(tmp_path):
+    class Wrapped(FakeCloud):
+        def device_code(self, client_name):
+            out = super().device_code(client_name)
+            account._state.update_account(access_token="at-1", refresh_token="rt-1",
+                                          access_expires_at=10**12)
+            return out
+
+    cloud = Wrapped(device_code=[CODE])
+    account, _, spawned = make(tmp_path, cloud)
+
+    status = account.start_sign_in()
+
+    assert status["state"] == "signed_in"
+    assert account._state.get_account()["device_code"] is None
+    assert spawned == []
 
 
 def test_a_refresh_finding_the_token_already_replaced_does_not_spend_it_again(tmp_path):

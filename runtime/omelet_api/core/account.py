@@ -68,6 +68,10 @@ class Account:
         if not (row["device_code"] and row["code_expires_at"] > self._clock()):
             out = self._cloud.device_code(CLIENT_NAME)
             with self._write_lock:
+                # A sign-in may have landed while the service call was in
+                # flight; a fresh code must not overwrite a signed-in row.
+                if self._state.get_account()["access_token"]:
+                    return self.status()
                 self._state.update_account(
                     device_code=out["device_code"], user_code=out["user_code"],
                     verification_url=out["verification_uri_complete"],
@@ -141,7 +145,7 @@ class Account:
                     return None
                 return interval
             self._state.update_account(
-                **_CLEARED_CODE, last_error=None,
+                **_CLEARED_CODE, last_error=None, email=None, org_id=None,
                 access_token=tokens["access_token"],
                 refresh_token=tokens["refresh_token"],
                 access_expires_at=self._clock() + tokens["expires_in"])
@@ -159,9 +163,20 @@ class Account:
         row = self._state.get_account()
         if row["org_id"]:
             return row["org_id"]
-        me = self.authed(self._cloud.me)
-        self._state.update_account(email=me["user"]["email"],
-                                   org_id=me["current_org_id"])
+        used: list[str] = []
+
+        def call(token: str):
+            used.append(token)
+            return self._cloud.me(token)
+
+        me = self.authed(call)
+        with self._write_lock:
+            # A sign-out (or a sign-in as someone else) during the call means
+            # this reply belongs to a session that is no longer the stored one.
+            if self._state.get_account()["access_token"] != used[-1]:
+                raise NotSignedIn()
+            self._state.update_account(email=me["user"]["email"],
+                                       org_id=me["current_org_id"])
         return me["current_org_id"]
 
     def authed(self, fn):
@@ -215,6 +230,15 @@ class Account:
                     refresh_token=out["refresh_token"],
                     access_expires_at=self._clock() + out["expires_in"])
                 return out["access_token"]
+
+    def record_sync(self, *, ok_at: float | None = None, error: str | None = None) -> None:
+        with self._write_lock:
+            if not self._state.get_account()["access_token"]:
+                return
+            fields = {"sync_error": error}
+            if ok_at is not None:
+                fields["sync_ok_at"] = ok_at
+            self._state.update_account(**fields)
 
     def sign_out(self) -> dict:
         token = self._state.get_account()["access_token"]
