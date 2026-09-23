@@ -27,8 +27,13 @@ def test_the_codex_block_is_replaced_and_the_users_own_text_kept(tmp_path):
     (home / ".codex").mkdir(parents=True)
     agents_md = home / ".codex" / "AGENTS.md"
     agents_md.write_text("# my notes\nkeep me")  # no trailing newline on purpose
+    # SOURCE is the whole runtime/ tree now (node_modules included); the script
+    # only ever reads instructions/omelet.md, so build just that much rather
+    # than copying everything to exercise one file.
     source = tmp_path / "src"
-    shutil.copytree(SOURCE, source)
+    (source / "instructions").mkdir(parents=True)
+    shutil.copy(SOURCE / "instructions" / "omelet.md",
+                source / "instructions" / "omelet.md")
 
     _install(home, source)
     (source / "instructions" / "omelet.md").write_text("new instructions\n")
