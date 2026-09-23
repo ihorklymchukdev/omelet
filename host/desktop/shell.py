@@ -52,12 +52,6 @@ class Shell:
         if self._local is not None:
             self.window.load_url(url)
 
-    def load_local(self) -> None:
-        # A reload mid-job redraws Home and strands the job's events.
-        self._remember()
-        if self._local is not None and not self.is_local():
-            self.window.load_url(self._local)
-
     def push(self, event: dict) -> None:
         # json.dumps, never a format string: a message carrying a quote would
         # otherwise close the call and inject whatever followed.

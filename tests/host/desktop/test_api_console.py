@@ -81,7 +81,7 @@ def test_a_running_machine_enters_the_console_at_launch(tmp_path):
 
 
 def test_the_launch_flag_is_spent_by_the_first_home_call(tmp_path):
-    # The Machine menu item reloads the local UI, which calls home() again;
+    # The console's Home link reloads the local UI, which calls home() again;
     # a second True would bounce the user straight back into the console.
     api = _api(tmp_path)
     api.home()

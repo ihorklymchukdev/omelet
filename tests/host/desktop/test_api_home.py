@@ -17,11 +17,10 @@ class FakeProvider:
     pass
 
 
-def _api(tmp_path, readiness, *, opened=None):
+def _api(tmp_path, readiness):
     state = InstallState(tmp_path / "install-state.json")
     return DesktopApi(FakeProvider(), state, push=lambda event: None,
-                      probe_fn=lambda provider: readiness,
-                      browser_open=(opened.append if opened is not None else lambda url: None))
+                      probe_fn=lambda provider: readiness)
 
 
 def test_a_virgin_machine_is_first_run(tmp_path):
@@ -82,46 +81,3 @@ def test_the_resume_flag_is_consumed_by_the_first_home_call(tmp_path):
     api.resumed = True
     assert api.home()["resumed"] is True
     assert api.home()["resumed"] is False
-
-
-def test_open_omelet_opens_the_edge_port_not_the_api_port(tmp_path):
-    from host.core import constants
-    opened = []
-    _api(tmp_path, READY, opened=opened).open_omelet()
-    assert opened == [f"http://localhost:{constants.EDGE_PORT}"]
-
-
-class _HandoffClient:
-    def __init__(self, code=None, error=None):
-        self._code, self._error = code, error
-
-    def handoff_code(self):
-        if self._error:
-            raise self._error
-        return self._code
-
-
-def _api_with_client(tmp_path, client, opened):
-    state = InstallState(tmp_path / "install-state.json")
-    return DesktopApi(FakeProvider(), state, push=lambda event: None,
-                      probe_fn=lambda provider: READY,
-                      browser_open=opened.append,
-                      client_factory=lambda provider: client)
-
-
-def test_open_omelet_carries_a_handoff_code_in_the_fragment(tmp_path):
-    from host.core import constants
-    opened = []
-    _api_with_client(tmp_path, _HandoffClient(code="abc"), opened).open_omelet()
-    assert opened == [f"http://localhost:{constants.EDGE_PORT}/#handoff=abc"]
-
-
-def test_open_omelet_still_opens_the_page_on_an_api_without_handoff(tmp_path):
-    # An API older than the route answers 404; the page must still open and
-    # show its own sign-in screen.
-    from host.client import ApiError
-    from host.core import constants
-    opened = []
-    client = _HandoffClient(error=ApiError("not_found", "no route", 404))
-    _api_with_client(tmp_path, client, opened).open_omelet()
-    assert opened == [f"http://localhost:{constants.EDGE_PORT}"]

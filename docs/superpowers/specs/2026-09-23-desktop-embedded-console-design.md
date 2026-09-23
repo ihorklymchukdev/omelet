@@ -3,6 +3,12 @@
 Date: 2026-09-23
 Issue: #14
 
+> **Update (same day):** the native "Omelet" menu (§3) was removed once the
+> console's own top bar (§7) shipped with runtime 0.2.0: **‹ Home** replaces
+> *Machine*, **↗** replaces *Open in browser*, and `DesktopApi.open_omelet`
+> and `Shell.load_local` went with it. Sections below that mention the menu
+> describe the first iteration.
+
 ## 1. Why
 
 A user today meets two interfaces: the desktop app (install, start/stop, ports,

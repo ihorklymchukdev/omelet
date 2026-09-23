@@ -364,9 +364,6 @@ ACTIONS['do-uninstall'] = async () => {
   await api().start_uninstall(purge);
 };
 
-// Pushed by the Omelet menu when it can't open the projects console.
-window.omelet.handlers.notice = (event) => showNotice(event.message);
-
 window.omelet.handlers.vm = (event) => {
   if (event.type === 'progress') return;
   if (event.type === 'crashed') showNotice(event.message);
