@@ -7,7 +7,7 @@ HOST = Path(__file__).resolve().parents[2] / "host"
 
 # `exec()` survives the thinning for three jobs: getting the VM provisioned,
 # reading the token that lets the host talk to the API over HTTP, and the
-# readiness probe's own cheap reachability check (`exec(["true"])`) and engine
+# readiness probe's own cheap reachability check (`exec(["true"])`) and runtime
 # marker read (`exec(["cat", ...])`) -- both facts the probe must establish
 # itself, before there is a client to ask anything of. Every other use is
 # project logic reaching across the boundary by shelling into the guest, which

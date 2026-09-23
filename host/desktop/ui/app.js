@@ -32,8 +32,8 @@ function fill(root, data) {
     const value = data[node.dataset.field];
     if (value !== undefined && value !== null) node.textContent = String(value);
   });
-  // A section that only makes sense when its field has a value -- the engine
-  // version is empty on every machine where the engine never installed, and
+  // A section that only makes sense when its field has a value -- the runtime
+  // version is empty on every machine where the runtime never installed, and
   // its separator would otherwise render as a trailing " · ".
   root.querySelectorAll('[data-when]').forEach((node) => {
     node.hidden = !data[node.dataset.when];

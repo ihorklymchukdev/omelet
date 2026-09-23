@@ -8,8 +8,8 @@ from host.core.status import Readiness, probe
 
 
 class FakeProvider:
-    def __init__(self, *, exists=True, reachable=True, engine="0.1.0", running=True):
-        self._exists, self._reachable, self._engine = exists, reachable, engine
+    def __init__(self, *, exists=True, reachable=True, runtime="0.1.0", running=True):
+        self._exists, self._reachable, self._runtime = exists, reachable, runtime
         self._running = running
         self.calls = []
 
@@ -24,7 +24,7 @@ class FakeProvider:
         if not self._reachable:
             return Completed(1, "", "the VM is not running")
         if argv[0] == "cat":
-            return (Completed(0, self._engine, "") if self._engine
+            return (Completed(0, self._runtime, "") if self._runtime
                     else Completed(1, "", "No such file or directory"))
         return Completed(0, "", "")
 
@@ -32,7 +32,7 @@ class FakeProvider:
 class RaisingExecProvider:
     """A provider that exists, but blows up on one particular `exec` call --
     for the escape paths past `exists()` returning True, which the fixed
-    `_reachable`/`_engine` knobs on `FakeProvider` can't reach."""
+    `_reachable`/`_runtime` knobs on `FakeProvider` can't reach."""
 
     def __init__(self, *, fail_on: str):
         self._fail_on = fail_on
@@ -98,8 +98,8 @@ def test_a_vm_that_is_not_running_is_not_ready():
     assert not result.ready
 
 
-def test_a_vm_without_the_engine_is_not_ready():
-    result = probe(FakeProvider(engine=""), client_factory=_client())
+def test_a_vm_without_the_runtime_is_not_ready():
+    result = probe(FakeProvider(runtime=""), client_factory=_client())
     assert result.vm_reachable and result.runtime_version is None
     assert not result.ready
 

@@ -18,7 +18,7 @@ class FakeProvider:
     def destroy(self): pass
     def exec(self, argv, *, root=False):
         self.execs.append(argv)
-        # the engine marker exists, so bootstrap is a no-op
+        # the runtime marker exists, so bootstrap is a no-op
         if argv[:2] == ["test", "-s"]:
             return Completed(0, "", "")
         return Completed(0, "", "")

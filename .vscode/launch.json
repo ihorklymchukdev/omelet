@@ -1,5 +1,5 @@
 {
-  // Three debug targets, easiest first. See .vscode/README-debugging.md.
+  // Debug targets, easiest first.
   "version": "0.2.0",
   "configurations": [
     {
@@ -60,8 +60,11 @@
     },
     {
       // The real API, in its container, in the VM. Requires the debug image
-      // and the compose override -- see the README. Breakpoints only bind if
-      // pathMappings is right; a hollow breakpoint means it is not.
+      // (runtime/omelet_api/Dockerfile.debug) and the compose override
+      // (runtime/stack.debug.yml -- its own header comment has the
+      // `docker compose -f stack.yml -f stack.debug.yml up -d` command).
+      // Breakpoints only bind if pathMappings is right; a hollow breakpoint
+      // means it is not.
       "name": "API: attach to the VM",
       "type": "debugpy",
       "request": "attach",

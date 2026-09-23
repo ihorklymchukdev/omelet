@@ -148,12 +148,26 @@ one is free today and frozen after the first shipped host.
 | `OMELET_AGENT_IMAGE` | `OMELET_API_IMAGE` | `stack.yml:40` |
 | compose service `agent` | `api` | `stack.yml:39`, `install.sh:138` |
 | `ARG AGENT_VERSION` | `ARG SERVICE_VERSION` | `Dockerfile`, `build.sh` |
+| `ENV OMELET_AGENT_VERSION` | `ENV OMELET_SERVICE_VERSION` | `Dockerfile:20` |
 | `$ENGINE_DIR/skills` | `$OMELET_SKILLS_SOURCE` (§6) | `install.sh:223` |
+| `Readiness.engine_version` | `Readiness.runtime_version` | `host/core/status.py:25` |
+| `Readiness.agent_api` | `Readiness.api_version` | `host/core/status.py:26` |
+| image account `agent` | `api` | `Dockerfile` `useradd`/`USER` |
 
 **`AGENT_VERSION` must not become `API_VERSION`.** `agent/core/constants.py`
 already defines `API_VERSION` as the wire protocol number, which is a different
 thing on a different release cadence; reusing the name would collapse two
-independent versions into one word. `SERVICE_VERSION` keeps them apart.
+independent versions into one word. `SERVICE_VERSION` keeps them apart. The
+`ENV` companion to the Dockerfile's `ARG SERVICE_VERSION` follows the same
+rule.
+
+**The image's Linux account renames `agent` → `api` alongside everything
+else.** `Dockerfile.debug` builds `FROM` a published release tag rather than
+the working tree, so an unbumped default there pins debugging to a stale
+image -- and because Docker never validates `USER` at build time, a debug
+image built before this account rename would fail only at `docker run`, not
+at build. `test_the_debug_image_is_built_on_the_current_release_not_a_stale_one`
+(`tests/test_constants_agree.py`) exists to catch exactly that.
 
 `OMELET_WEB_IMAGE` and `omelet-web` are already correct and do not change.
 
@@ -385,8 +399,8 @@ repositories of this shape, or something else — and the answer depends on how
 
 ## 14. As-built
 
-Execution (Tasks 1-6) matched this spec with four additions, none of which change
-the decisions above:
+Execution (Tasks 1-6) matched this spec with seven additions, none of which
+change the decisions above:
 
 - **`agent_unconfigured` → `api_unconfigured` joined the rename inventory (§5).**
   The table missed this wire error code; it is renamed everywhere the API returns
@@ -401,3 +415,14 @@ the decisions above:
 - **`test_stack_recipes.py` left with the skills**, not just `test_skills.py`
   (§6). It tested the compose recipes bundled in `omelet-stack/references/`, so
   it belongs with the skill content it exercises, not with this repository.
+- **`Readiness.engine_version` → `runtime_version` and `Readiness.agent_api` →
+  `api_version`** (§5). Also missing from the table; these are the status
+  probe's own field names, read by both the desktop UI markup and
+  `DesktopApi.home()`.
+- **`OMELET_AGENT_VERSION` → `OMELET_SERVICE_VERSION`** (§5), the `ENV`
+  companion to `ARG SERVICE_VERSION` that the table listed on its own.
+- **The image's Linux account `agent` → `api`** (§5), which is why
+  `Dockerfile.debug`'s `USER api` and the version guard in
+  `test_the_debug_image_is_built_on_the_current_release_not_a_stale_one` had
+  to exist: a stale debug image built before this rename would fail only at
+  `docker run`, since Docker never validates `USER` at build time.

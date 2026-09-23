@@ -18,7 +18,7 @@ dist/
 # Subagent-driven-development scratch (ledger, briefs, review packages)
 .superpowers/
 
-# web/ workspace
+# runtime/web/ workspace (its dist/ output is already caught by line 13's
+# unanchored dist/)
 node_modules/
-web/**/dist/
 .vitest

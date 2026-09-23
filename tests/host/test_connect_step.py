@@ -39,7 +39,7 @@ def test_an_api_on_another_version_is_reported_and_never_repaired():
         connect_step(None, client=FakeClient(health={"status": "ok", "api": unsupported}),
                      reconnect=lambda: reconnects.append("reconnect"))
     assert str(unsupported) in str(excinfo.value), "support needs the number"
-    assert reconnects == [], "reinstalling the same engine cannot change its API"
+    assert reconnects == [], "reinstalling the same runtime cannot change its API"
 
 
 def test_an_api_from_before_the_api_number_counts_as_api_1():

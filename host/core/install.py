@@ -221,7 +221,7 @@ def connect_step(provider, *, client=None, reconnect=None, sleep=time.sleep):
     """Check the API speaks a version this host supports and accepts this
     host's token.
 
-    `reconnect` reinstalls the engine in repair mode -- recreating the API so
+    `reconnect` reinstalls the runtime in repair mode -- recreating the API so
     it re-reads its token -- and returns a client holding the token the VM has
     now. Returning None keeps the current client.
     """
