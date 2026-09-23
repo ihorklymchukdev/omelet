@@ -149,12 +149,25 @@ def test_install_has_no_early_exit_of_its_own():
     assert "exit 0" not in _commands()
 
 
-def test_skills_come_from_the_unpacked_engine_through_a_pinned_cli():
+def test_skills_cli_is_pinned():
     assert re.search(r"^SKILLS_CLI=skills@\d+\.\d+\.\d+$", INSTALL.read_text(), re.M), \
         "an unpinned skills CLI changes the install without a release"
-    (add,) = [l for l in _commands() if '"$SKILLS_CLI" add' in l]
-    assert '"$ENGINE_DIR/skills"' in add
-    assert "github.com" not in add, "skills install from the same ref get.sh unpacked"
+
+
+def test_the_skills_install_from_their_own_repository():
+    # Shipping them in the tarball is what kept the skills entangled with the
+    # runtime: `add` was doing the filing while the tarball did the
+    # distributing. The argument must be a remote source, not a local path.
+    script = (ROOT / "runtime" / "install" / "install.sh").read_text()
+    assert "ihorklymchukdev/omelet-skills" in script
+    assert "$RUNTIME_DIR/skills" not in script
+    assert "$INSTALL_DIR/skills" not in script
+
+
+def test_the_skills_source_is_overridable():
+    # Pinning a ref must be a value change, not a code change.
+    script = (ROOT / "runtime" / "install" / "install.sh").read_text()
+    assert "${OMELET_SKILLS_SOURCE:-" in script
 
 
 def test_npx_in_the_account_loop_cannot_swallow_the_account_list():

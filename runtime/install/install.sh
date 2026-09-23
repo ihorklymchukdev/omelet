@@ -5,10 +5,6 @@ set -euo pipefail
 
 INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUNTIME_DIR="$(dirname "$INSTALL_DIR")"
-# Skills still live in the repo's separate top-level engine/ directory, which
-# this script does not unpack -- Task 4 moves them under runtime/ and updates
-# this reference together with the tarball's contents.
-ENGINE_DIR="$INSTALL_DIR"
 
 REF="${1:?usage: install.sh <runtime ref> [--repair]}"
 REPAIR=0
@@ -16,6 +12,9 @@ if [[ "${2:-}" == --repair ]]; then
   REPAIR=1
 fi
 SKILLS_CLI=skills@1.5.26
+# Unpinned on purpose: pinning a tag here is a value change, not a code change.
+# Until it is pinned, a box's skills are not identifiable from runtime.version.
+SKILLS_SOURCE="${OMELET_SKILLS_SOURCE:-ihorklymchukdev/omelet-skills}"
 # skills@1.5.26 declares node >=22.20.0; Ubuntu 24.04's own nodejs is 18.
 NODE_MIN=22.20.0
 TOKEN_CREATED=0
@@ -225,8 +224,8 @@ while IFS=: read -r name uid gid home; do
   fi
   bash "$INSTALL_DIR/lib/install-agents.sh" "$RUNTIME_DIR" "$home" "$uid:$gid"
   # stdin is the account list this loop is reading.
-  if ! runuser -u "$name" -- env HOME="$home" DISABLE_TELEMETRY=1 npx -y "$SKILLS_CLI" add "$ENGINE_DIR/skills" -s '*' -g -a claude-code codex -y </dev/null; then
-    echo "could not install Omelet's skills for $name: the npm registry may be unreachable" >&2
+  if ! runuser -u "$name" -- env HOME="$home" DISABLE_TELEMETRY=1 npx -y "$SKILLS_CLI" add "$SKILLS_SOURCE" -s '*' -g -a claude-code codex -y </dev/null; then
+    echo "could not install Omelet's skills for $name: the npm registry or GitHub may be unreachable" >&2
     exit 1
   fi
 done < <(accounts)
