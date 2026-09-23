@@ -4,8 +4,8 @@ import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "engine" / "lib" / "install-agents.sh"
-SOURCE = ROOT / "engine"
+SCRIPT = ROOT / "runtime" / "install" / "lib" / "install-agents.sh"
+SOURCE = ROOT / "runtime"
 
 
 def _install(home: Path, source: Path = SOURCE) -> subprocess.CompletedProcess:

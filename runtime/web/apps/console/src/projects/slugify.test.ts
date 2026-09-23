@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { slugify } from "./slugify";
 
 const CASES: { name: string; slug: string }[] = JSON.parse(
-  readFileSync(new URL("../../../../../tests/fixtures/slugify-cases.json", import.meta.url), "utf-8"),
+  readFileSync(new URL("../../../../../../tests/fixtures/slugify-cases.json", import.meta.url), "utf-8"),
 );
 
 describe("slugify", () => {

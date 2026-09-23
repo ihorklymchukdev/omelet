@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-GET = ROOT / "engine" / "get.sh"
+GET = ROOT / "runtime" / "install" / "get.sh"
 REPO = "https://example.invalid/omelet"
 
 

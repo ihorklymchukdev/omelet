@@ -3,7 +3,7 @@ import os
 import pytest
 
 from tests.agent.conftest import COMPOSE_ONE_WEB
-from tests.engine.cli.loader import load
+from tests.runtime.cli.loader import load
 
 cli = load()
 

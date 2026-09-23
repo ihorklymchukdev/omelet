@@ -4,7 +4,7 @@ import urllib.error
 
 import pytest
 
-from tests.engine.cli.loader import load
+from tests.runtime.cli.loader import load
 
 cli = load()
 

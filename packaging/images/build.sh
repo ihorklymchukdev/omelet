@@ -35,8 +35,8 @@ done
 
 version="$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' "$repo/agent/__init__.py")"
 dockerfile_version="$(sed -n 's/^ARG AGENT_VERSION=//p' "$repo/agent/Dockerfile")"
-stack_agent="$(sed -n 's/.*omelet-agent:\([^}]*\)}.*/\1/p' "$repo/engine/stack.yml")"
-stack_web="$(sed -n 's/.*omelet-web:\([^}]*\)}.*/\1/p' "$repo/engine/stack.yml")"
+stack_agent="$(sed -n 's/.*omelet-agent:\([^}]*\)}.*/\1/p' "$repo/runtime/stack.yml")"
+stack_web="$(sed -n 's/.*omelet-web:\([^}]*\)}.*/\1/p' "$repo/runtime/stack.yml")"
 
 # A mismatch here publishes an image no engine tag will ever pull, or an
 # agent whose /version disagrees with the tag the VM asked for.
@@ -69,7 +69,7 @@ build() {
 }
 
 [[ "$only" == web ]] || build omelet-agent "$repo/agent" --build-arg "AGENT_VERSION=$version"
-[[ "$only" == agent ]] || build omelet-web "$repo/web" --build-context "fixtures=$repo/tests/fixtures"
+[[ "$only" == agent ]] || build omelet-web "$repo/runtime/web" --build-context "fixtures=$repo/tests/fixtures"
 
 if (( push )); then
   echo

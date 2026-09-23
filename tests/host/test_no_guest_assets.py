@@ -14,4 +14,4 @@ def test_host_provision_holds_only_the_smoke_test_project():
                     for p in PROVISION.rglob("*")
                     if p.is_file() and p.suffix in GUEST_SHAPED
                     and HOST_OWNED not in p.parents)
-    assert not strays, f"guest assets under host/provision belong in engine/: {strays}"
+    assert not strays, f"guest assets under host/provision belong in runtime/: {strays}"

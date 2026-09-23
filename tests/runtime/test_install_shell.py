@@ -9,7 +9,7 @@ from host.core import constants
 # elsewhere. Same rule as tests/test_no_platform_leak.py and the two
 # import-boundary tests.
 ROOT = Path(__file__).resolve().parents[2]
-INSTALL = ROOT / "engine" / "install.sh"
+INSTALL = ROOT / "runtime" / "install" / "install.sh"
 # install.sh still writes this path directly; it stands in for a host
 # constant that no longer exists.
 STACK = f"{constants.GUEST_ROOT}/stack.yml"

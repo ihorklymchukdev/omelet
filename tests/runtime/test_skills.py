@@ -6,7 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SKILLS = ROOT / "engine" / "skills"
-INSTRUCTIONS = ROOT / "engine" / "instructions" / "omelet.md"
+INSTRUCTIONS = ROOT / "runtime" / "instructions" / "omelet.md"
 
 _FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n", re.S)
 _SKILL_REF = re.compile(r"\bomelet-[a-z]+(?:-[a-z]+)*\b")

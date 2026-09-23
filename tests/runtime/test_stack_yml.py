@@ -4,8 +4,8 @@ import yaml
 
 from pathlib import Path
 
-STACK = Path(__file__).resolve().parents[2] / "engine" / "stack.yml"
-NGINX_CONF = Path(__file__).resolve().parents[2] / "web" / "nginx.conf"
+STACK = Path(__file__).resolve().parents[2] / "runtime" / "stack.yml"
+NGINX_CONF = Path(__file__).resolve().parents[2] / "runtime" / "web" / "nginx.conf"
 
 # Compose interpolation: ${VAR} or ${VAR:-default}. Stripping the whole
 # expression, not just the default, is what makes the "no bare literal" test

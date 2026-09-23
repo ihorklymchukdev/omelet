@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from agent.api.app import create_app
 from agent.core.config import AgentConfig
 from tests.agent.conftest import FakeProbe, FakeRunner
-from tests.engine.cli.loader import load
+from tests.runtime.cli.loader import load
 from tests.host.test_client_seam import TOKEN, AppOpener
 
 cli = load()

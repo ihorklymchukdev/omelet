@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 GUEST_CLI = (Path(__file__).resolve().parents[3]
-             / "engine" / "cli" / "omelet.py")
+             / "runtime" / "cli" / "omelet.py")
 _NAME = "omelet_guest_cli"
 
 

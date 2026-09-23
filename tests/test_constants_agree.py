@@ -52,7 +52,7 @@ def test_the_stack_deploys_the_image_version_the_agent_reports():
 
     root = Path(__file__).resolve().parent.parent
     stack = re.search(r"\$\{OMELET_AGENT_IMAGE:-[^}]+:([^}:]+)\}",
-                      (root / "engine" / "stack.yml").read_text())
+                      (root / "runtime" / "stack.yml").read_text())
     dockerfile = re.search(r"^ARG AGENT_VERSION=(\S+)",
                            (root / "agent" / "Dockerfile").read_text(), re.M)
     assert stack, "stack.yml must default OMELET_AGENT_IMAGE with a tag"
@@ -67,7 +67,7 @@ def test_the_host_speaks_the_api_the_agent_serves():
 def test_the_guest_cli_holds_the_same_values_as_the_host_and_the_agent():
     # The guest CLI is copied into the VM on its own and can import neither
     # side, so its copies of the shared names are held equal here.
-    from tests.engine.cli.loader import load
+    from tests.runtime.cli.loader import load
 
     guest = _public(load())
     for side, other in (("agent", _public(agent_constants)),
@@ -86,8 +86,8 @@ def test_the_web_page_speaks_the_api_the_agent_serves():
     import re
     from pathlib import Path
 
-    source = (Path(__file__).resolve().parent.parent / "web" / "apps" / "console"
-              / "src" / "api" / "version.ts").read_text()
+    source = (Path(__file__).resolve().parent.parent / "runtime" / "web"
+              / "apps" / "console" / "src" / "api" / "version.ts").read_text()
     match = re.search(r"SUPPORTED_API[^=]*=\s*\[([^\]]*)\]", source)
     assert match, "version.ts must declare SUPPORTED_API as an array literal"
     supported = {int(n) for n in re.findall(r"\d+", match[1])}
@@ -101,7 +101,7 @@ def test_the_web_image_ships_with_the_agent_it_was_built_against():
 
     from agent import __version__ as package_version
 
-    stack = (Path(__file__).resolve().parent.parent / "engine" / "stack.yml").read_text()
+    stack = (Path(__file__).resolve().parent.parent / "runtime" / "stack.yml").read_text()
     web = re.search(r"\$\{OMELET_WEB_IMAGE:-[^}]+:([^}:]+)\}", stack)
     assert web, "stack.yml must default OMELET_WEB_IMAGE with a tag"
     assert web[1] == package_version
