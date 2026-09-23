@@ -281,7 +281,7 @@ package-dir = {"omelet_api" = "."}
 packages = ["omelet_api", "omelet_api.core", "omelet_api.routes"]
 ```
 
-In `runtime/omelet_api/Dockerfile` and `Dockerfile.debug`, change every `agent` path and the uvicorn module target to `omelet_api` (`agent.api` → `omelet_api.routes`). In `packaging/images/build.sh`, change `"$repo/agent"` to `"$repo/runtime/omelet_api"` and the two `agent/__init__.py` / `agent/Dockerfile` sed paths likewise.
+In `runtime/omelet_api/Dockerfile` and `Dockerfile.debug`, change every `agent` path and the uvicorn module target to `omelet_api` (`agent.api` → `omelet_api.routes`). The `COPY api /app/api` layer must become `COPY routes /app/routes` to match the directory rename — miss it and the image builds but the package installs incomplete, which only shows up at container start. Prove the image is whole by importing `omelet_api`, `omelet_api.core`, `omelet_api.routes` and `omelet_api.__version__` inside it, not by a successful build. In `packaging/images/build.sh`, change `"$repo/agent"` to `"$repo/runtime/omelet_api"` and the two `agent/__init__.py` / `agent/Dockerfile` sed paths likewise.
 
 - [ ] **Step 5: Re-anchor the platform-leak test**
 
@@ -330,7 +330,7 @@ def test_host_never_imports_from_the_api():
 `tests/runtime/api/test_no_host_import.py` — the anchor moves, and so does the name it is read by inside the test body (the module currently calls it `AGENT` in both places):
 
 ```python
-API = Path(__file__).resolve().parents[2] / "runtime" / "omelet_api"
+API = Path(__file__).resolve().parents[3] / "runtime" / "omelet_api"
 
 
 def test_the_api_never_imports_from_the_host():
@@ -340,10 +340,12 @@ def test_the_api_never_imports_from_the_host():
     ...
 ```
 
-`tests/runtime/api/test_no_host_import.py` is three levels below the root, so `parents[2]` now lands on the root. Verify rather than trust:
+`tests/runtime/api/test_no_host_import.py` sits three directories below the root, so the root is `parents[3]` — `parents[0]` is its own directory, not its parent. Do not trust that arithmetic; run it:
 
-Run: `python3 -c "from pathlib import Path; p = Path('tests/runtime/api/test_no_host_import.py').resolve().parents[2] / 'runtime' / 'omelet_api'; print(p, p.is_dir())"`
+Run: `python3 -c "from pathlib import Path; p = Path('tests/runtime/api/test_no_host_import.py').resolve().parents[3] / 'runtime' / 'omelet_api'; print(p, p.is_dir())"`
 Expected: an absolute path ending `runtime/omelet_api` and `True`.
+
+**The same off-by-one hides in every other anchored path under `tests/runtime/api/`**, which gained a directory level in this task's move. `tests/runtime/api/test_dockerfile.py` and `tests/runtime/api/test_slug_cases.py` both anchor this way and are not otherwise listed in this task. Re-derive each one with the command above rather than adjusting it by eye.
 
 - [ ] **Step 8: Prove both import-boundary tests are not vacuous**
 
