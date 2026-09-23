@@ -45,7 +45,7 @@ def test_a_marker_read_that_threw_is_wrong_not_unreachable():
     assert route_for(readiness) == ("home", "wrong")
 
 
-def test_agent_refused_is_the_only_unreachable():
+def test_api_refused_is_the_only_unreachable():
     # The one state where the board's copy is literally true: the VM answers
     # `true`, the runtime marker is there, and only /health is silent.
     readiness = Readiness(vm_exists=True, vm_reachable=True,
@@ -56,11 +56,11 @@ def test_agent_refused_is_the_only_unreachable():
 
 def test_unsupported_api_is_wrong_not_unreachable():
     readiness = Readiness(vm_exists=True, vm_reachable=True,
-                          runtime_version="runtime-v9.0.0", agent_api=99)
+                          runtime_version="runtime-v9.0.0", api_version=99)
     assert route_for(readiness) == ("home", "wrong")
 
 
 def test_ready_is_running():
     readiness = Readiness(vm_exists=True, vm_reachable=True,
-                          runtime_version="runtime-v0.1.0", agent_api=1)
+                          runtime_version="runtime-v0.1.0", api_version=1)
     assert route_for(readiness) == ("home", "running")

@@ -5,7 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from omelet_api.routes.app import create_app
-from omelet_api.core.config import AgentConfig
+from omelet_api.core.config import ApiConfig
 from omelet_api.core.exec import Completed
 from omelet_api.core.state import State
 
@@ -112,7 +112,7 @@ AUTH = {"Authorization": "Bearer test-token"}
 def env(tmp_path):
     token_path = tmp_path / "api.token"
     token_path.write_text("test-token")
-    config = AgentConfig(
+    config = ApiConfig(
         domain="test.local",
         edge_port=41080,
         projects_root=tmp_path / "projects",

@@ -10,7 +10,7 @@ FROM ${SERVICE_IMAGE}
 
 USER root
 RUN pip install --no-cache-dir debugpy==1.8.5
-USER agent
+USER api
 
 # No --wait-for-client: the container starts and serves normally, and the
 # debugger attaches whenever you want it. Waiting would hang the HEALTHCHECK

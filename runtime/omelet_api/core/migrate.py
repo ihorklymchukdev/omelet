@@ -1,8 +1,8 @@
-"""The state database's schema, as an ordered list applied at agent startup.
+"""The state database's schema, as an ordered list applied at API startup.
 
 Each entry is applied exactly once, in order, and the version it produces is
 recorded as soon as it finishes. Every step is written so that re-running it is
-harmless: the first agents shipped without a `schema_version` table at all, so
+harmless: the first APIs shipped without a `schema_version` table at all, so
 their databases arrive here looking like version 0 with the tables already in
 place.
 """
@@ -12,7 +12,7 @@ import sqlite3
 
 
 class SchemaTooNew(RuntimeError):
-    """The database was written by a newer agent than this one."""
+    """The database was written by a newer API than this one."""
 
 
 def _columns(conn: sqlite3.Connection, table: str) -> set[str]:
@@ -81,13 +81,13 @@ def _write_version(conn: sqlite3.Connection, version: int) -> None:
 
 def migrate(conn: sqlite3.Connection) -> int:
     """Brings `conn` to `SCHEMA_VERSION` and returns it. Raises `SchemaTooNew`
-    without touching anything if the database is ahead of this agent."""
+    without touching anything if the database is ahead of this API."""
     version = _read_version(conn)
     if version > SCHEMA_VERSION:
         raise SchemaTooNew(
             f"the state database is at schema version {version}, but this "
-            f"agent only knows version {SCHEMA_VERSION}. It was written by a "
-            f"newer agent; run the newer one, or delete the database — the "
+            f"API only knows version {SCHEMA_VERSION}. It was written by a "
+            f"newer API; run the newer one, or delete the database — the "
             f"project list is rebuilt from the projects directory.")
     if version == SCHEMA_VERSION:
         return version

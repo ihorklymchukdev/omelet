@@ -20,7 +20,7 @@ class FakeProvider:
 
 
 def test_compose_argv_uses_both_files_in_order():
-    # The directory comes from the caller, never from a constant: the agent
+    # The directory comes from the caller, never from a constant: the API
     # uploads to config.projects_root, and a second source of truth here would
     # run compose against a directory nothing was ever written to.
     argv = _compose_argv(DIR)

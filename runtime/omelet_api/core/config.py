@@ -10,15 +10,15 @@ from .. import __version__
 
 
 @dataclass(frozen=True)
-class AgentConfig:
-    """Everything the agent is allowed to vary at run time. Nothing else may
+class ApiConfig:
+    """Everything the API is allowed to vary at run time. Nothing else may
     hardcode the domain or the entry port.
 
     `projects_root` is the single source of truth for where projects live:
     uploads land there and `core/lifecycle.py` builds every compose `-f` path
     from the directory the API hands it, never from a constant of its own.
     In production it must stay under `/opt/omelet`, which is bind-mounted into
-    the agent container at the identical path -- compose files are parsed here
+    the API container at the identical path -- compose files are parsed here
     but the bind-mount paths inside them are resolved by dockerd on the VM.
     """
 
@@ -29,7 +29,7 @@ class AgentConfig:
     # The name Traefik answers to on the `edge` network. Phase 5 moves the
     # proxy off this VM, where it stops being a sibling container.
     traefik_host: str = "traefik"
-    # How long a project may take to answer through Traefik before the agent
+    # How long a project may take to answer through Traefik before the API
     # goes looking for a reason.
     ready_timeout: float = READY_TIMEOUT
     projects_root: Path = Path(constants.GUEST_PROJECTS)
@@ -47,7 +47,7 @@ class AgentConfig:
     version: str = __version__
 
     @classmethod
-    def from_env(cls, env: dict | None = None) -> "AgentConfig":
+    def from_env(cls, env: dict | None = None) -> "ApiConfig":
         env = os.environ if env is None else env
         return cls(
             bind_host=env.get("OMELET_API_HOST", "0.0.0.0"),

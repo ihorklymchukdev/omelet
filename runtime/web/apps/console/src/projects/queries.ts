@@ -39,7 +39,7 @@ export function useJob(jobId: string) {
     queryFn: () => api.get<Job>(`/api/jobs/${encodeURIComponent(jobId)}`),
     refetchInterval: (q) => (q.state.error || (q.state.data && q.state.data.state !== "running") ? false : JOB_MS),
   });
-  // A finished or forgotten job (the agent restarted) means the project has
+  // A finished or forgotten job (the API restarted) means the project has
   // moved on; refetch it now rather than at the next poll.
   const settled = query.isError || (query.data !== undefined && query.data.state !== "running");
   useEffect(() => {

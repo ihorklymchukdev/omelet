@@ -3,7 +3,7 @@ import hashlib
 from fastapi.testclient import TestClient
 
 from omelet_api.routes.app import create_app
-from omelet_api.core.config import AgentConfig
+from omelet_api.core.config import ApiConfig
 from omelet_api.core.sessions import COOKIE, SESSION_TTL, Sessions
 from omelet_api.core.state import State
 from tests.runtime.api.conftest import AUTH, BROWSER
@@ -91,7 +91,7 @@ def test_use_slides_the_expiry_forward(tmp_path):
     assert sessions.check(sid) == "ok"
 
 
-def test_a_session_survives_an_agent_restart(env):
+def test_a_session_survives_an_api_restart(env):
     browser = _signed_in(env)
     cookie = browser.cookies[COOKIE]
     env.state.close()
@@ -125,7 +125,7 @@ def test_the_cookie_is_not_reissued_right_after_sign_in(tmp_path):
     clock = Clock()
     token_path = tmp_path / "api.token"
     token_path.write_text("test-token")
-    config = AgentConfig(projects_root=tmp_path / "projects",
+    config = ApiConfig(projects_root=tmp_path / "projects",
                          state_db=tmp_path / "state.db", token_path=token_path,
                          edge_port=41080)
     state = State(config.state_db)
@@ -144,7 +144,7 @@ def test_the_cookie_is_reissued_once_the_slide_window_is_crossed(tmp_path):
     clock = Clock()
     token_path = tmp_path / "api.token"
     token_path.write_text("test-token")
-    config = AgentConfig(projects_root=tmp_path / "projects",
+    config = ApiConfig(projects_root=tmp_path / "projects",
                          state_db=tmp_path / "state.db", token_path=token_path,
                          edge_port=41080)
     state = State(config.state_db)

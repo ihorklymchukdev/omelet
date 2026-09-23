@@ -50,7 +50,7 @@ def test_a_folder_name_with_nothing_usable_is_refused(root):
         cli.require_id(folder)
 
 
-def test_the_agent_can_write_its_overlay_after_a_root_session_made_the_files(root):
+def test_the_api_can_write_its_overlay_after_a_root_session_made_the_files(root):
     project = root / "blog"
     omelet_dir = project / ".omelet"
     omelet_dir.mkdir(parents=True)

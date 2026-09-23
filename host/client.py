@@ -1,11 +1,11 @@
-"""The host's side of the host/agent seam: the token read, and the HTTP client.
+"""The host's side of the host/API seam: the token read, and the HTTP client.
 
 Built on `urllib.request` deliberately. The host ships as a PyInstaller-frozen
-binary, so every dependency it declares lands in that binary; the agent, which
+binary, so every dependency it declares lands in that binary; the API, which
 ships as a Docker image, is the side that is free to grow one.
 
-Nothing here imports `agent/` -- the agent is reached over HTTP, and its API is
-the only contract between the two.
+Nothing here imports `omelet_api/` -- the API is reached over HTTP, and its
+routes are the only contract between the two.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from pathlib import Path
 from .core import constants
 from .core.provider import VmProvider
 
-# WSL2's localhostForwarding (and Lima's portForwards) surface the agent's
+# WSL2's localhostForwarding (and Lima's portForwards) surface the API's
 # guest socket on the host at the same port, so the host always dials loopback.
 API_URL = f"http://127.0.0.1:{constants.API_PORT}"
 
@@ -43,13 +43,13 @@ BUSY_RETRY_INTERVAL = 1.0
 
 
 class ApiUnavailableError(RuntimeError):
-    """The agent could not be reached at all: no token to authenticate with,
+    """The API could not be reached at all: no token to authenticate with,
     or nothing listening. Raised instead of a socket error or a bare 401 so
     the first symptom a user sees names the VM, not the transport."""
 
 
 class ApiError(RuntimeError):
-    """A structured failure from the agent: its own code and its own sentence."""
+    """A structured failure from the API: its own code and its own sentence."""
 
     def __init__(self, code: str, message: str, status: int):
         super().__init__(message)
@@ -87,7 +87,7 @@ def read_token(provider: VmProvider) -> str:
     token = result.stdout.strip() if result.ok else ""
     if not token:
         raise ApiUnavailableError(
-            "the VM has no agent token -- it may not be provisioned yet; "
+            "the VM has no API token -- it may not be provisioned yet; "
             "run setup and try again")
     return token
 
@@ -97,16 +97,16 @@ def auth_header(token: str) -> dict[str, str]:
 
 
 def project_id_for(name: str) -> str:
-    """The same slug rule the agent applies to an id or a directory name.
-    Duplicated rather than imported (nothing under `host/` imports `agent/`)
-    and held equal by a test: the host needs the id before it can ask for the
-    project it just tried to create."""
+    """The same slug rule the API applies to an id or a directory name.
+    Duplicated rather than imported (nothing under `host/` imports
+    `omelet_api/`) and held equal by a test: the host needs the id before it
+    can ask for the project it just tried to create."""
     return re.sub(r"[^a-z0-9-]+", "-", name.strip().lower()).strip("-")
 
 
-# Two agent codes have a known real-world cause the agent cannot know about,
-# and their own wording ("missing or invalid bearer token") tells a
-# non-technical user nothing they can act on.
+# Two of the API's error codes have a known real-world cause the API cannot
+# know about, and their own wording ("missing or invalid bearer token") tells
+# a non-technical user nothing they can act on.
 _GUIDANCE = {
     "unauthorized": "The VM no longer accepts this token, which usually means "
                     "the VM was rebuilt. Run `omelet setup` to reconnect.",
@@ -115,8 +115,8 @@ _GUIDANCE = {
 }
 
 
-def _agent_error(exc: urllib.error.HTTPError) -> ApiError:
-    """Every non-2xx body from the agent is `{"error": {"code", "message"}}`.
+def _api_error(exc: urllib.error.HTTPError) -> ApiError:
+    """Every non-2xx body from the API is `{"error": {"code", "message"}}`.
     Anything else answering on this port (a proxy, a crashed server) must
     still come out as a readable failure rather than a JSONDecodeError."""
     try:
@@ -124,11 +124,11 @@ def _agent_error(exc: urllib.error.HTTPError) -> ApiError:
         code, message = str(error["code"]), str(error["message"])
         guidance = _GUIDANCE.get(code)
         if guidance:
-            message = f"{guidance} (the agent said: {message})"
+            message = f"{guidance} (the API said: {message})"
         return ApiError(code, message, exc.code)
     except (OSError, ValueError, KeyError, TypeError):
         return ApiError("http_error",
-                          f"the agent answered HTTP {exc.code} ({exc.reason})",
+                          f"the API answered HTTP {exc.code} ({exc.reason})",
                           exc.code)
 
 
@@ -139,7 +139,7 @@ def _agent_error(exc: urllib.error.HTTPError) -> ApiError:
 EXCLUDED_DIRS = frozenset({".git", "node_modules", ".venv", "__pycache__"})
 # The overlay is generated inside the VM on every `compose_up`. `.omelet/` as a
 # whole is NOT excluded: `.omelet/project.yml` is the user's own configuration
-# and the agent reads it to resolve web services.
+# and the API reads it to resolve web services.
 EXCLUDED_FILES = frozenset({".omelet/overlay.yml"})
 
 
@@ -206,11 +206,11 @@ class ApiClient:
         try:
             return self._opener.open(request, timeout=timeout)
         except urllib.error.HTTPError as e:
-            raise _agent_error(e) from None
+            raise _api_error(e) from None
         except (urllib.error.URLError, OSError) as e:
             reason = getattr(e, "reason", e)
             raise ApiUnavailableError(
-                f"could not reach the Omelet agent at {self._base} ({reason}). "
+                f"could not reach the Omelet API at {self._base} ({reason}). "
                 "The VM may be stopped -- run `omelet vm start`, or run setup "
                 "again if this is a new machine.") from e
 
@@ -279,7 +279,7 @@ class ApiClient:
         return self._call("GET", f"/projects/{project_id}")
 
     def delete_project(self, project_id: str) -> dict:
-        """Synchronous by design on the agent side: `compose down` is bounded
+        """Synchronous by design on the API side: `compose down` is bounded
         by container stop timeouts, not by an image build."""
         return self._while_busy(
             lambda: self._call("DELETE", f"/projects/{project_id}",

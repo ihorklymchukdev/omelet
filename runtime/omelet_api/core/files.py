@@ -7,7 +7,7 @@ from pathlib import Path, PurePosixPath
 
 # No size cap here on an uploaded archive or a single file: removing the old
 # ~24 KB command-line ceiling is this module's entire purpose. The runaway/
-# abuse cap lives where the bytes are streamed in, agent/api/app.py's
+# abuse cap lives where the bytes are streamed in, omelet_api/routes/app.py's
 # `_stream_to_tempfile`, so it can abort mid-stream instead of after the
 # fact.
 

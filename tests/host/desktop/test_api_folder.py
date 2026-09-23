@@ -2,7 +2,7 @@
 
 "Replace" deletes a project outright, so the UI may only offer it when a
 project genuinely exists. Every failure to find out must answer "no
-conflict" -- an unreachable agent must never put a destructive option in
+conflict" -- an unreachable API must never put a destructive option in
 front of the user.
 """
 from __future__ import annotations
@@ -43,7 +43,7 @@ def test_an_existing_project_is_reported_as_a_conflict(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("failure", [
-    RuntimeError("could not reach the Omelet agent"),
+    RuntimeError("could not reach the Omelet API"),
     OSError("connection refused"),
     ValueError("nonsense"),
 ])

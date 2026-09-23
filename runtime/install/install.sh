@@ -61,21 +61,21 @@ systemctl enable --now docker
 /usr/bin/docker network inspect edge >/dev/null 2>&1 || /usr/bin/docker network create edge
 
 # 4. project root, group-writable before anything starts.
-# The agent container runs as a non-root user, and its only shared credential
+# The API container runs as a non-root user, and its only shared credential
 # with this VM is the docker group it joins via stack.yml's group_add -- so the
 # group, not an image-specific uid the host would have to keep in sync, is what
 # /opt/omelet opens up to. Anything in the docker group is already root-
 # equivalent here, so this grants no access it did not have. setgid makes the
-# project directories the agent creates later inherit the group; without it the
-# agent cannot even open /opt/omelet/state.db and restart:always loops it.
+# project directories the API creates later inherit the group; without it the
+# API cannot even open /opt/omelet/state.db and restart:always loops it.
 mkdir -p /opt/omelet/projects
 chgrp -R docker /opt/omelet
 chmod -R g+rwX /opt/omelet
 find /opt/omelet -type d -exec chmod g+s {} +
 
 # 5. this VM's real docker GID, for stack.yml's group_add.
-# The chgrp above used whatever GID this VM's docker group has, while the agent
-# image bakes in 999 -- where those differ the agent can write neither
+# The chgrp above used whatever GID this VM's docker group has, while the API
+# image bakes in 999 -- where those differ the API can write neither
 # /opt/omelet nor the socket. Compose reads .env from the directory holding the
 # compose file, so writing it here is all the wiring needed.
 if ! DOCKER_GID="$(getent group docker | cut -d: -f3)" || [[ -z "$DOCKER_GID" ]]; then
@@ -84,10 +84,10 @@ if ! DOCKER_GID="$(getent group docker | cut -d: -f3)" || [[ -z "$DOCKER_GID" ]]
 fi
 printf 'OMELET_DOCKER_GID=%s\n' "$DOCKER_GID" > /opt/omelet/.env
 
-# 6. the shared secret between the host and the agent.
+# 6. the shared secret between the host and the API.
 # Only if absent: bootstrap re-runs are normal, and regenerating it every
 # time would invalidate a token the host is already holding. Must land
-# before the agent starts, and after the chmod sweep above or its mode gets
+# before the API starts, and after the chmod sweep above or its mode gets
 # widened along with everything else.
 # The pipeline reads exactly 32 bytes from /dev/urandom before anything
 # downstream sees them: bounding an infinite `tr < /dev/urandom` with a
@@ -102,16 +102,16 @@ if [[ ! -s /opt/omelet/api.token ]]; then
   install -m 640 /dev/null /opt/omelet/api.token
   head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > /opt/omelet/api.token
 fi
-# Root-owned but group-readable: the agent's own uid is non-root, and docker
+# Root-owned but group-readable: the API's own uid is non-root, and docker
 # group membership is already root-equivalent here (it owns the socket), so
-# it is the group a credential the agent itself must read has to grant.
+# it is the group a credential the API itself must read has to grant.
 # Reasserted every run, not just on first creation, so a pre-existing file
 # from before this ever ran still ends up correct.
 chgrp docker /opt/omelet/api.token
 chmod 640 /opt/omelet/api.token
 
-# 7. traefik, the agent and the web page, as one compose stack.
-# Always pull: this is how an agent update reaches an already-provisioned VM,
+# 7. traefik, the API and the web page, as one compose stack.
+# Always pull: this is how an API update reaches an already-provisioned VM,
 # so both the first install and every update need the network.
 install -m 644 "$RUNTIME_DIR/stack.yml" /opt/omelet/stack.yml
 # The output is kept as well as shown. An image with no build for this VM's
@@ -136,7 +136,7 @@ if ! /usr/bin/docker compose -f /opt/omelet/stack.yml pull 2>&1 | tee "$PULL_LOG
 fi
 rm -f "$PULL_LOG"
 /usr/bin/docker compose -f /opt/omelet/stack.yml up -d
-# The agent reads its token once, at startup, and `up -d` leaves an unchanged
+# The API reads its token once, at startup, and `up -d` leaves an unchanged
 # container running.
 if (( TOKEN_CREATED || REPAIR )); then
   /usr/bin/docker compose -f /opt/omelet/stack.yml up -d --force-recreate api

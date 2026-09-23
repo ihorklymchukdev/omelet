@@ -172,7 +172,7 @@ def diagnose(runner, project: Project, domain: str, *,
         return None
     web = project.webs[0]
     # By container name with an explicit Host header: the public hostname
-    # resolves to 127.0.0.1, which inside the agent container is the agent.
+    # resolves to 127.0.0.1, which inside the API container is the API.
     status = _settle(f"http://{traefik_host}:{edge_port}/",
                      host_for(project.id, web, domain),
                      http_probe=http_probe, timeout=timeout,

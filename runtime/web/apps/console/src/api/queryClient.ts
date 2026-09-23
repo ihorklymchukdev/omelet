@@ -10,7 +10,7 @@ export function createQueryClient(onSessionLost: (reason: SessionLoss) => void):
     mutationCache: new MutationCache({ onError }),
     defaultOptions: {
       queries: {
-        // A 4xx is the agent's final word; only a missing or 5xx answer is worth retrying.
+        // A 4xx is the API's final word; only a missing or 5xx answer is worth retrying.
         retry: (failures, error) =>
           failures < 2 && !(error instanceof ApiError && error.status >= 400 && error.status < 500),
       },

@@ -8,7 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from omelet_api.routes.app import create_app
-from omelet_api.core.config import AgentConfig
+from omelet_api.core.config import ApiConfig
 from tests.runtime.api.conftest import FakeProbe, FakeRunner
 from tests.runtime.cli.loader import load
 from tests.host.test_client_seam import TOKEN, AppOpener
@@ -17,7 +17,7 @@ cli = load()
 
 
 class Guest:
-    """The guest CLI wired to the real agent app, in-process, over the fake
+    """The guest CLI wired to the real API app, in-process, over the fake
     Docker runner -- the same seam tests/host/test_client_seam.py uses."""
 
     def __init__(self, root: Path, client: TestClient, runner: FakeRunner):
@@ -38,13 +38,13 @@ class Guest:
                 (target / name).write_text(text)
         return subprocess.CompletedProcess(argv, code, "", stderr)
 
-    def _agent(self):
-        return cli.Agent(TOKEN, opener=AppOpener(self._client),
-                         sleep=lambda _s: time.sleep(0.01))
+    def _api_client(self):
+        return cli.ApiClient(TOKEN, opener=AppOpener(self._client),
+                             sleep=lambda _s: time.sleep(0.01))
 
     def run(self, *argv, cwd: Path) -> tuple[int, str, str]:
         out, err = io.StringIO(), io.StringIO()
-        env = cli.Env(root=self.root, cwd=cwd, agent=self._agent,
+        env = cli.Env(root=self.root, cwd=cwd, client=self._api_client,
                       gid=os.getgid, git=self._git, out=out, err=err)
         code = cli.main(list(argv), env)
         return code, out.getvalue(), err.getvalue()
@@ -55,7 +55,7 @@ def guest(tmp_path):
     (tmp_path / "api.token").write_text(TOKEN)
     root = tmp_path / "projects"
     root.mkdir()
-    config = AgentConfig(domain="test.local", edge_port=41080,
+    config = ApiConfig(domain="test.local", edge_port=41080,
                          projects_root=root, state_db=tmp_path / "state.db",
                          token_path=tmp_path / "api.token", ready_timeout=0.0)
     runner = FakeRunner()

@@ -6,7 +6,7 @@ export type SignedOutReason = "not_signed_in" | "session_expired" | "handoff_spe
 export type BootResult =
   | { kind: "signedIn" }
   | { kind: "signedOut"; reason: SignedOutReason }
-  | { kind: "needsUpdate"; agentApi: number | null }
+  | { kind: "needsUpdate"; apiVersion: number | null }
   | { kind: "notAnswering" }
   | { kind: "wrongHost" };
 
@@ -43,9 +43,9 @@ export async function boot({
   } catch (error) {
     return isWrongHost(error) ? { kind: "wrongHost" } : { kind: "notAnswering" };
   }
-  const agentApi = typeof health?.api === "number" ? health.api : null;
-  if (agentApi === null || !SUPPORTED_API.includes(agentApi)) {
-    return { kind: "needsUpdate", agentApi };
+  const apiVersion = typeof health?.api === "number" ? health.api : null;
+  if (apiVersion === null || !SUPPORTED_API.includes(apiVersion)) {
+    return { kind: "needsUpdate", apiVersion };
   }
 
   let spent = false;

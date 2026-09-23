@@ -32,10 +32,10 @@ COMPOSE_FILE = "docker-compose.yml"
 # Compose accepts these too; Omelet does not, so a project written under one of
 # them must be named, not reported as if it had no compose file at all.
 _ALT_COMPOSE_FILES = ("compose.yaml", "compose.yml", "docker-compose.yaml")
-# The agent container's only credential shared with this VM.
+# The API container's only credential shared with this VM.
 DOCKER_GROUP = "docker"
 # Reserved for the setup smoke test; install.verify_step deletes the project
-# through the agent but leaves its folder behind, so this keeps it out of the
+# through the API but leaves its folder behind, so this keeps it out of the
 # "Not set up yet" list on every fresh VM.
 VERIFY_PROJECT_ID = "omelet-selftest"
 
@@ -69,7 +69,7 @@ def require_id(folder: Path) -> str:
             f"The folder name '{folder.name}' cannot be a project name. "
             "Rename it using letters, digits and dashes.")
     if project_id != folder.name:
-        # The agent derives the folder from the slugged id, so any other name
+        # The API derives the folder from the slugged id, so any other name
         # would register a different, empty folder.
         raise OmeletError(
             f"Rename the folder '{folder.name}' to '{project_id}' first, "
@@ -87,7 +87,7 @@ def docker_gid() -> int:
 
 
 def prepare_overlay_dir(project: Path, gid: int) -> None:
-    """Let the agent write .omelet/overlay.yml, the one file it writes here.
+    """Let the API write .omelet/overlay.yml, the one file it writes here.
 
     It runs as a non-root member of the docker group, while a coding agent
     working as root leaves directories 755 and files 644.
@@ -122,11 +122,11 @@ BUSY_RETRY_TIMEOUT = 60.0
 BUSY_RETRY_INTERVAL = 1.0
 
 START_STACK = f"sudo /usr/bin/docker compose -f {GUEST_STACK} up -d"
-# The agent reads its token once, at startup, so only a recreate picks up a new one.
-RESTART_AGENT = f"{START_STACK} --force-recreate api"
+# The API reads its token once, at startup, so only a recreate picks up a new one.
+RESTART_API = f"{START_STACK} --force-recreate api"
 _GUIDANCE = {
-    "unauthorized": f"The Omelet service needs a restart. Run: {RESTART_AGENT}",
-    "api_unconfigured": f"The Omelet service needs a restart. Run: {RESTART_AGENT}",
+    "unauthorized": f"The Omelet service needs a restart. Run: {RESTART_API}",
+    "api_unconfigured": f"The Omelet service needs a restart. Run: {RESTART_API}",
 }
 
 
@@ -157,8 +157,8 @@ def read_token(path: Path) -> str:
     return token
 
 
-def _agent_error(exc: urllib.error.HTTPError) -> ApiError:
-    """Every non-2xx body from the agent is {"error": {"code", "message"}};
+def _api_error(exc: urllib.error.HTTPError) -> ApiError:
+    """Every non-2xx body from the API is {"error": {"code", "message"}};
     anything else on this port must still read as a sentence."""
     try:
         error = json.loads(exc.read().decode("utf-8", "replace"))["error"]
@@ -171,8 +171,8 @@ def _agent_error(exc: urllib.error.HTTPError) -> ApiError:
                       if guidance else message)
 
 
-class Agent:
-    """The agent API over the same HTTP contract host/client.py speaks."""
+class ApiClient:
+    """The same HTTP contract host/client.py speaks, from inside the VM."""
 
     def __init__(self, token: str, *, base_url: str = f"http://127.0.0.1:{API_PORT}",
                  opener=None, sleep=time.sleep, monotonic=time.monotonic):
@@ -193,7 +193,7 @@ class Agent:
             with self._opener.open(request, timeout=timeout) as response:
                 return response.read().decode("utf-8", "replace")
         except urllib.error.HTTPError as e:
-            raise _agent_error(e) from None
+            raise _api_error(e) from None
         except (urllib.error.URLError, OSError):
             raise OmeletError("The Omelet service in this VM is not answering. "
                               f"Start it with: {START_STACK}") from None
@@ -259,8 +259,8 @@ class Agent:
         return self._open("GET", path, timeout=LOGS_TIMEOUT)
 
 
-def _default_agent() -> Agent:
-    return Agent(read_token(Path(GUEST_TOKEN)))
+def _default_client() -> ApiClient:
+    return ApiClient(read_token(Path(GUEST_TOKEN)))
 
 
 def _run_git(argv: list[str], env: dict) -> subprocess.CompletedProcess:
@@ -270,10 +270,10 @@ def _run_git(argv: list[str], env: dict) -> subprocess.CompletedProcess:
 @dataclass
 class Env:
     """Everything a command touches besides its arguments, so tests can point
-    it at a temporary projects root and an in-process agent."""
+    it at a temporary projects root and an in-process client."""
     root: Path = Path(GUEST_PROJECTS)
     cwd: Path = field(default_factory=Path.cwd)
-    agent: Callable[[], Agent] = _default_agent
+    client: Callable[[], ApiClient] = _default_client
     gid: Callable[[], int] = docker_gid
     git: Callable[[list[str], dict], subprocess.CompletedProcess] = _run_git
     out: TextIO = field(default_factory=lambda: sys.stdout)
@@ -309,11 +309,11 @@ def _start(env: Env, folder: Path, project_id: str) -> None:
                 f"{COMPOSE_FILE}. Rename it and run the command again.")
         raise OmeletError(f"There is no {COMPOSE_FILE} in {folder}.")
     prepare_overlay_dir(folder, env.gid())
-    agent = env.agent()
-    agent.ensure_project(project_id)
+    client = env.client()
+    client.ensure_project(project_id)
     print(f"Starting {project_id}…", file=env.out)
     try:
-        job = agent.up(project_id)
+        job = client.up(project_id)
     except JobFailed as e:
         status = e.result.get("status", "failed")
         raise OmeletError(f"{project_id} did not start (status: {status}).\n{e}\n"
@@ -351,19 +351,19 @@ def cmd_up(env: Env, directory: str | None) -> None:
 
 
 def cmd_status(env: Env, directory: str | None) -> None:
-    agent = env.agent()
+    client = env.client()
     found = _project_here(env, directory)
     if found is not None:
         project_id = found[1]
         try:
-            _print_project(env, agent.project(project_id))
+            _print_project(env, client.project(project_id))
         except ApiError as e:
             if e.code != "project_not_found":
                 raise
             print(f"{project_id} is not set up yet. Run `omelet up` in it.",
                   file=env.out)
         return
-    projects = agent.projects()
+    projects = client.projects()
     for project in projects:
         _print_project(env, project)
     known = {project["id"] for project in projects}
@@ -379,12 +379,12 @@ def cmd_status(env: Env, directory: str | None) -> None:
 
 
 def cmd_logs(env: Env, service: str | None) -> None:
-    print(env.agent().logs(_require_project(env), service), end="", file=env.out)
+    print(env.client().logs(_require_project(env), service), end="", file=env.out)
 
 
 def cmd_down(env: Env) -> None:
     project_id = _require_project(env)
-    env.agent().down(project_id)
+    env.client().down(project_id)
     print(f"{project_id} stopped.", file=env.out)
 
 
@@ -407,8 +407,8 @@ def _new_folder(env: Env, name: str) -> Path:
 
 def cmd_new(env: Env, name: str) -> None:
     # Reads the token first, so a user without docker-group access gets that
-    # sentence instead of an empty folder no agent call can ever use.
-    env.agent()
+    # sentence instead of an empty folder no API call can ever use.
+    env.client()
     folder = _new_folder(env, name)
     try:
         folder.mkdir()
@@ -422,7 +422,7 @@ def cmd_new(env: Env, name: str) -> None:
 def cmd_clone(env: Env, url: str, name: str | None) -> None:
     # Same reason as cmd_new: fail on the docker-group sentence before git
     # ever runs, rather than have git's own permission error read as "private".
-    env.agent()
+    env.client()
     folder = _new_folder(env, name or repo_name(url))
     # A coding agent's shell has no terminal to answer a credential prompt,
     # so a private repository must fail instead of hanging.

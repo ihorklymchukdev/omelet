@@ -18,7 +18,7 @@ HOST = Path(__file__).resolve().parents[2] / "host"
 
 def test_host_never_imports_from_the_api():
     # The phase's whole point: the host ships as a frozen binary and reaches
-    # the agent over HTTP. An import of API code would drag FastAPI, pyyaml
+    # the API over HTTP. An import of API code would drag FastAPI, pyyaml
     # and the guest's own logic into that binary, and would go on working in
     # this repo long after the two are deployed apart.
     offenders = []

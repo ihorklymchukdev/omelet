@@ -10,5 +10,5 @@ DEFAULT_DOMAIN = "127-0-0-1.sslip.io"
 VERIFY_PROJECT_ID = "omelet-selftest"
 
 # Bumped only when a route the host calls changes incompatibly; the host
-# refuses an agent whose number it does not list in SUPPORTED_API.
+# refuses an API whose number it does not list in SUPPORTED_API.
 API_VERSION = 1

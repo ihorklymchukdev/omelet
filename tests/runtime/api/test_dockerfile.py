@@ -8,7 +8,7 @@ def _text() -> str:
 
 
 def test_dockerfile_never_pins_latest():
-    # A moving tag defeats the whole point of pinning the CLI and the agent
+    # A moving tag defeats the whole point of pinning the CLI and the API
     # version -- a rebuild months later would silently pick up a new major.
     assert ":latest" not in _text()
 

@@ -39,7 +39,7 @@ describe("projectView", () => {
     expect([view.kind, view.badge]).toEqual(["gone", "wrong"]);
   });
 
-  it("treats an empty folder as waiting even though the agent reports compose_missing", () => {
+  it("treats an empty folder as waiting even though the API reports compose_missing", () => {
     const view = projectView(project({ empty: true, problem: problem("compose_missing") }));
     expect([view.kind, view.badge]).toEqual(["waiting", "stopped"]);
   });
@@ -55,7 +55,7 @@ describe("projectView", () => {
     }
   });
 
-  it("groups files Omelet can't read under 'unreadable' and keeps the agent's message", () => {
+  it("groups files Omelet can't read under 'unreadable' and keeps the API's message", () => {
     for (const code of ["invalid_compose", "invalid_project", "compose_missing"]) {
       expect(projectView(project({ problem: problem(code) }))).toEqual({
         kind: "wrong",
@@ -66,7 +66,7 @@ describe("projectView", () => {
     }
   });
 
-  it("shows an unknown problem code as unreachable with the agent's message", () => {
+  it("shows an unknown problem code as unreachable with the API's message", () => {
     expect(projectView(project({ status: "started_ok", problem: problem("brand_new_code") }))).toEqual({
       kind: "wrong",
       badge: "wrong",

@@ -28,13 +28,13 @@ export interface Api {
   text(path: string): Promise<string>;
 }
 
-interface AgentError {
+interface ApiErrorBody {
   code: string;
   message: string;
   details: Record<string, unknown>;
 }
 
-function agentError(body: unknown): AgentError | null {
+function parseApiError(body: unknown): ApiErrorBody | null {
   if (typeof body !== "object" || body === null) return null;
   const error = (body as { error?: unknown }).error;
   if (typeof error !== "object" || error === null) return null;
@@ -86,8 +86,8 @@ export function createApi(fetchImpl: typeof fetch, { timeoutMs = 10_000 }: { tim
     let ok: boolean;
     let text: string;
     try {
-      // Origin is left to the browser: the agent refuses a non-GET without it.
-      // A hung agent must not hang the page: an aborted fetch rejects and
+      // Origin is left to the browser: the API refuses a non-GET without it.
+      // A hung API must not hang the page: an aborted fetch rejects and
       // falls into the same "unreachable" mapping below as a refused one.
       const response = await fetchImpl(path, {
         method,
@@ -106,7 +106,7 @@ export function createApi(fetchImpl: typeof fetch, { timeoutMs = 10_000 }: { tim
     }
     if (!ok) {
       const parsed = parse(text);
-      const error = parsed.ok ? agentError(parsed.value) : null;
+      const error = parsed.ok ? parseApiError(parsed.value) : null;
       if (error) throw new ApiError(error.code, error.message, status, error.details);
       throw new ApiError("unexpected", `unexpected answer (${status})`, status);
     }

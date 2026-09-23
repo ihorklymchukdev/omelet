@@ -12,7 +12,7 @@ export function StartingBody({ project, job }: { project: Project; job: ActiveJo
   // still moving; let its phase win instead of freezing on the last one seen.
   const phase = live.isError ? job.phase : (live.data?.phase ?? job.phase);
 
-  // The agent flips first_run before the job settles into "checking", which
+  // The API flips first_run before the job settles into "checking", which
   // would otherwise swap this paragraph mid-start. Latch it per job.
   const jobId = useRef(job.id);
   const [firstRun, setFirstRun] = useState(project.first_run);

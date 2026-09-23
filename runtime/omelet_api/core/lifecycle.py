@@ -14,10 +14,10 @@ from .project import Project, FAILED_TO_START, STARTED_OK, classify, overlay_yam
 PROJECT_LABEL = "com.docker.compose.project"
 
 # Every path here comes from the caller's project directory, never from
-# constants: the agent writes uploads to `config.projects_root`, and a second
+# constants: the API writes uploads to `config.projects_root`, and a second
 # source of truth would upload into one directory and run compose against
 # another, silently. The directory is valid on both sides because /opt/omelet
-# is bind-mounted into the agent at the identical path.
+# is bind-mounted into the API at the identical path.
 
 
 def _compose_argv(directory) -> list[str]:
@@ -127,9 +127,9 @@ def remove_by_label(runner, name: str, *, volumes: bool) -> Completed:
 
 
 def remove_tree_as_root(runner, path) -> Completed:
-    """The agent runs as uid 1000, and containers write root-owned files into
+    """The API runs as uid 1000, and containers write root-owned files into
     bind-mounted project folders. Removes `path` from a throwaway container of
-    this agent's own image (already on the VM, so no pull) running as root."""
+    this API's own image (already on the VM, so no pull) running as root."""
     me = os.environ.get("HOSTNAME", "")
     image = runner.exec([DOCKER, "inspect", "--format", "{{.Config.Image}}", me],
                         root=True)

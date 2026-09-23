@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from omelet_api.routes.app import create_app
 from omelet_api.core import files
-from omelet_api.core.config import AgentConfig
+from omelet_api.core.config import ApiConfig
 from omelet_api.core.exec import Completed
 
 
@@ -180,7 +180,7 @@ def test_list_dir_skips_an_entry_whose_stat_raises(tmp_path, monkeypatch):
 def env(tmp_path):
     token_path = tmp_path / "api.token"
     token_path.write_text("test-token")
-    config = AgentConfig(projects_root=tmp_path / "projects",
+    config = ApiConfig(projects_root=tmp_path / "projects",
                          state_db=tmp_path / "state.db", token_path=token_path)
     app = create_app(config=config)
     with TestClient(app, headers={"Authorization": "Bearer test-token"}) as client:
@@ -349,7 +349,7 @@ def capped_env(tmp_path):
     exercise it."""
     token_path = tmp_path / "api.token"
     token_path.write_text("test-token")
-    config = AgentConfig(projects_root=tmp_path / "projects",
+    config = ApiConfig(projects_root=tmp_path / "projects",
                          state_db=tmp_path / "state.db", token_path=token_path,
                          max_upload_bytes=1024)
     app = create_app(config=config)
@@ -381,7 +381,7 @@ def test_the_upload_cap_is_reported_in_a_size_a_person_can_read(tmp_path):
     # loud; the people this tool is for do not count bytes.
     token_path = tmp_path / "api.token"
     token_path.write_text("test-token")
-    config = AgentConfig(projects_root=tmp_path / "projects",
+    config = ApiConfig(projects_root=tmp_path / "projects",
                          state_db=tmp_path / "state.db", token_path=token_path,
                          max_upload_bytes=1024 * 1024)
     app = create_app(config=config)

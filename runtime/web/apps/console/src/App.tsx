@@ -65,7 +65,7 @@ export function App({ handoff }: { handoff: string | null }) {
     case "signedOut":
       return <SignedOut reason={result.reason} onRetry={run} />;
     case "needsUpdate":
-      return <NeedsUpdate agentApi={result.agentApi} onRetry={run} />;
+      return <NeedsUpdate apiVersion={result.apiVersion} onRetry={run} />;
     case "notAnswering":
       return <NotAnswering onRetry={run} />;
     case "wrongHost":

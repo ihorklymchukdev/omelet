@@ -1,7 +1,7 @@
-"""The host client driven against the real agent app.
+"""The host client driven against the real API app.
 
 The fake-opener tests in `test_client.py` assert the requests the client builds;
-this file proves those requests are the ones the agent actually serves. A route
+this file proves those requests are the ones the API actually serves. A route
 renamed, a verb changed, or an error body reshaped fails here rather than on a
 real VM. Nothing spawns a process or opens a socket: the app runs in-process
 behind an opener adapter, over a fake Docker runner.
@@ -17,7 +17,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from omelet_api.routes.app import create_app
-from omelet_api.core.config import AgentConfig
+from omelet_api.core.config import ApiConfig
 from omelet_api.core.exec import Completed
 from host.client import ApiClient, ApiError
 
@@ -58,7 +58,7 @@ class AppOpener:
 @pytest.fixture
 def seam(tmp_path):
     (tmp_path / "api.token").write_text(TOKEN)
-    config = AgentConfig(domain="test.local", edge_port=41080,
+    config = ApiConfig(domain="test.local", edge_port=41080,
                          projects_root=tmp_path / "projects",
                          state_db=tmp_path / "state.db",
                          token_path=tmp_path / "api.token",
@@ -75,7 +75,7 @@ def seam(tmp_path):
         yield client, runner, tmp_path
 
 
-def test_the_whole_up_flow_works_against_the_real_agent(seam, tmp_path):
+def test_the_whole_up_flow_works_against_the_real_api(seam, tmp_path):
     client, _runner, _root = seam
     local = tmp_path / "blog"
     local.mkdir()
@@ -94,7 +94,7 @@ def test_the_whole_up_flow_works_against_the_real_agent(seam, tmp_path):
     assert client.get_project("blog")["status"] == "started_ok"
 
 
-def test_an_unknown_project_comes_back_as_the_agents_own_message(seam):
+def test_an_unknown_project_comes_back_as_the_apis_own_message(seam):
     client, _runner, _root = seam
     with pytest.raises(ApiError) as excinfo:
         client.get_project("nope")
@@ -112,7 +112,7 @@ def test_a_logs_failure_reaches_the_caller_with_the_guests_stderr(seam):
     assert "no such service: web" in str(excinfo.value)
 
 
-def test_the_connect_step_accepts_the_real_agent(seam):
+def test_the_connect_step_accepts_the_real_api(seam):
     # Pins the contract: /health carries an api number this host speaks, and
     # /version accepts the host's token.
     from host.core import constants

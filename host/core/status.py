@@ -23,14 +23,14 @@ class Readiness:
     vm_exists: bool = False
     vm_reachable: bool = False
     runtime_version: str | None = None
-    agent_api: int | None = None
+    api_version: int | None = None
     problem: str = ""
 
     @property
     def ready(self) -> bool:
         return (self.vm_exists and self.vm_reachable
                 and bool(self.runtime_version)
-                and self.agent_api in constants.SUPPORTED_API)
+                and self.api_version in constants.SUPPORTED_API)
 
 
 def _default_client_factory(provider):
@@ -95,4 +95,4 @@ def probe(provider, *, client_factory=None) -> Readiness:
         return Readiness(vm_exists=True, vm_reachable=True,
                           runtime_version=runtime, problem=f"{e}")
     return Readiness(vm_exists=True, vm_reachable=True,
-                      runtime_version=runtime, agent_api=api)
+                      runtime_version=runtime, api_version=api)

@@ -16,7 +16,7 @@ def _browser(env, **headers):
     return TestClient(env.app, headers={**BROWSER, **headers})
 
 
-def test_the_api_mount_refuses_the_agent_port_host(env):
+def test_the_api_mount_refuses_the_api_port_host(env):
     # Cookies ignore the port: without this check a page could replay the
     # session cookie straight at localhost:39099.
     resp = _browser(env, Host="localhost:39099").get("/api/projects")

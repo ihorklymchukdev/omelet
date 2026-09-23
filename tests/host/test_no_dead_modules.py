@@ -49,7 +49,7 @@ def _host_imports(py: Path, module: str) -> set[str]:
 def test_every_host_module_is_reachable_from_the_entry_point():
     """A module nothing imports is the most expensive kind of dead code: it
     still compiles, so the next reader cannot tell which copy is authoritative.
-    Phase 2 moved project logic into the agent; anything left behind here that
+    Phase 2 moved project logic into the API; anything left behind here that
     nobody calls should have gone with it."""
     files = sorted(HOST.rglob("*.py"))
     assert files, f"scanned nothing under {HOST}"
@@ -75,4 +75,4 @@ def test_every_host_module_is_reachable_from_the_entry_point():
     orphans = sorted(set(modules) - reachable)
     assert not orphans, (
         f"nothing under host/ imports these modules: {orphans}. If their "
-        "responsibility moved to the agent, delete them and their tests.")
+        "responsibility moved to the API, delete them and their tests.")

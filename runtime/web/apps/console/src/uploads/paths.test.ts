@@ -8,7 +8,7 @@ describe("upload paths", () => {
     expect(joinPath("")).toBe("");
   });
 
-  it("refuses a new folder name the agent would reject as a traversal or a nested path", () => {
+  it("refuses a new folder name the API would reject as a traversal or a nested path", () => {
     expect(folderNameError("dumps")).toBeNull();
     expect(folderNameError("  ")).not.toBeNull();
     expect(folderNameError("a/b")).not.toBeNull();

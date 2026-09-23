@@ -51,8 +51,8 @@ def test_migrating_an_already_current_database_is_a_no_op(tmp_path):
     assert conn.execute("SELECT COUNT(*) FROM schema_version").fetchone()[0] == 1
 
 
-def test_a_database_from_a_newer_agent_refuses_to_open(tmp_path):
-    # An older agent meeting a newer database after a downgrade. Running the
+def test_a_database_from_a_newer_api_refuses_to_open(tmp_path):
+    # An older API meeting a newer database after a downgrade. Running the
     # list backwards, or writing to it at all, is unrecoverable.
     conn = connect(tmp_path)
     migrate.migrate(conn)

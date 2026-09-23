@@ -31,7 +31,7 @@ class Verdict(str):
 
 class Sessions:
     """Browser sign-in. Handoff codes live in memory only: one that outlives an
-    agent restart would be a bearer credential sitting in the database."""
+    API restart would be a bearer credential sitting in the database."""
 
     def __init__(self, state, *, clock=time.time):
         self._state = state

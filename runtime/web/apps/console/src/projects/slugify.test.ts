@@ -11,7 +11,7 @@ describe("slugify", () => {
     expect(CASES.length).toBeGreaterThan(0);
   });
 
-  it("previews the same id the agent creates for every shared case", () => {
+  it("previews the same id the API creates for every shared case", () => {
     for (const { name, slug } of CASES) expect(slugify(name), name).toBe(slug);
   });
 });

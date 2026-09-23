@@ -101,7 +101,7 @@ def test_the_version_tiles_bind_fields_desktop_api_home_actually_returns():
         pass
 
     readiness = Readiness(vm_exists=True, vm_reachable=True,
-                          runtime_version="runtime-v0.1.0", agent_api=1)
+                          runtime_version="runtime-v0.1.0", api_version=1)
     state = InstallState(UI / "does-not-exist" / "install-state.json")
     home = DesktopApi(FakeProvider(), state, push=lambda event: None,
                       probe_fn=lambda provider: readiness).home()

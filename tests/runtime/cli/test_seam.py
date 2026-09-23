@@ -64,7 +64,7 @@ def test_a_compose_file_under_another_name_is_named_not_reported_missing(guest, 
     assert "Omelet reads only docker-compose.yml" in err
 
 
-def test_a_broken_compose_file_is_reported_in_the_agents_own_words(guest):
+def test_a_broken_compose_file_is_reported_in_the_apis_own_words(guest):
     folder = _project(guest, compose=COMPOSE_MALFORMED)
     code, _out, err = guest.run("up", cwd=folder)
     assert code == 1
@@ -107,7 +107,7 @@ def test_status_names_folders_that_are_not_set_up_yet(guest):
 
 
 def test_a_leftover_selftest_folder_is_never_listed_as_not_set_up(guest):
-    # install.verify_step deletes the self-test project through the agent but
+    # install.verify_step deletes the self-test project through the API but
     # leaves its folder behind; every fresh VM would otherwise offer it to the
     # first agent that runs `omelet status`.
     (guest.root / cli.VERIFY_PROJECT_ID).mkdir()

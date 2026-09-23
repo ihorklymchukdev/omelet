@@ -19,7 +19,7 @@ def test_a_stopped_service_is_named_with_the_command_that_starts_it(tmp_path):
     (root / "blog").mkdir(parents=True)
     out, err = io.StringIO(), io.StringIO()
     env = cli.Env(root=root, cwd=root / "blog",
-                  agent=lambda: cli.Agent("t", opener=_Refused()),
+                  client=lambda: cli.ApiClient("t", opener=_Refused()),
                   out=out, err=err)
     assert cli.main(["status"], env) == 1
     assert "not answering" in err.getvalue()

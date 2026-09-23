@@ -7,7 +7,7 @@ COPY packages/ui/package.json packages/ui/
 COPY apps/console/package.json apps/console/
 RUN npm ci
 COPY . .
-# slugify.test.ts shares its cases with the agent's tests, from outside
+# slugify.test.ts shares its cases with the API's tests, from outside
 # runtime/web/; build with `--build-context fixtures=tests/fixtures`.
 COPY --from=fixtures slugify-cases.json /tests/fixtures/
 RUN npm run typecheck && npm test && npm run build && npm run check-offline

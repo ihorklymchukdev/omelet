@@ -6,7 +6,7 @@ from pathlib import Path
 HOST = Path(__file__).resolve().parents[2] / "host"
 
 # The Protocol describes one idea: make a Linux VM exist, and let me reach it.
-# A method that carries project data across the boundary belongs to the agent,
+# A method that carries project data across the boundary belongs to the API,
 # and adding one here must break this test rather than pass unnoticed.
 LIFECYCLE_SURFACE = {
     "is_supported",

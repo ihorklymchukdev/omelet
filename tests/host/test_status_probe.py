@@ -1,7 +1,7 @@
 """Is this machine set up? Asked cheaply, and answered without raising.
 
 The window calls this before it draws anything, so a provider that throws, a
-VM that is gone and an agent that is silent all have to come back as facts.
+VM that is gone and an API that is silent all have to come back as facts.
 """
 from host.core.provider import Completed
 from host.core.status import Readiness, probe
@@ -79,7 +79,7 @@ def _client_returning(health):
 def test_a_provisioned_machine_is_ready():
     result = probe(FakeProvider(), client_factory=_client())
     assert result == Readiness(vm_exists=True, vm_reachable=True,
-                               runtime_version="0.1.0", agent_api=1)
+                               runtime_version="0.1.0", api_version=1)
     assert result.ready
 
 
@@ -104,10 +104,10 @@ def test_a_vm_without_the_engine_is_not_ready():
     assert not result.ready
 
 
-def test_a_silent_agent_is_not_ready_and_the_reason_is_kept():
+def test_a_silent_api_is_not_ready_and_the_reason_is_kept():
     result = probe(FakeProvider(), client_factory=_client(error=OSError("refused")))
     assert result.runtime_version == "0.1.0"
-    assert result.agent_api is None
+    assert result.api_version is None
     assert "refused" in result.problem
     assert not result.ready
 
@@ -151,7 +151,7 @@ def test_probe_never_raises_when_the_client_factory_itself_throws():
     assert not result.ready
     assert result.vm_exists and result.vm_reachable
     assert result.runtime_version == "0.1.0"
-    assert result.agent_api is None
+    assert result.api_version is None
     assert "no route to host" in result.problem
 
 
@@ -161,15 +161,15 @@ def test_probe_never_raises_when_health_answers_with_no_usable_api_field():
         assert not result.ready
         assert result.vm_exists and result.vm_reachable
         assert result.runtime_version == "0.1.0"
-        assert result.agent_api is None
+        assert result.api_version is None
         assert result.problem, f"expected a problem recorded for {shapeless!r}"
 
 
-def test_an_unsupported_agent_api_is_not_ready():
+def test_an_unsupported_api_version_is_not_ready():
     from host.core import constants
     unsupported = max(constants.SUPPORTED_API) + 1
     result = probe(FakeProvider(), client_factory=_client(health={"api": unsupported}))
-    assert result.agent_api == unsupported
+    assert result.api_version == unsupported
     assert not result.ready
 
 

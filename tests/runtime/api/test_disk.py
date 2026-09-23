@@ -11,7 +11,7 @@ def _fake_statvfs(_path):
 
 
 def test_free_space_excludes_blocks_reserved_for_root(tmp_path):
-    # f_bfree counts the root reserve; the agent runs as uid 1000 and cannot
+    # f_bfree counts the root reserve; the API runs as uid 1000 and cannot
     # write into it, so reporting it would let an upload start that must fail.
     assert disk.usage(tmp_path, statvfs=_fake_statvfs) == {
         "free_bytes": 200 * 4096, "total_bytes": 1000 * 4096}

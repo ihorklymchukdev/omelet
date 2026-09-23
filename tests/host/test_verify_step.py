@@ -1,4 +1,4 @@
-"""The installer's smoke test, driven against the real agent app.
+"""The installer's smoke test, driven against the real API app.
 
 `verify_step` is the last thing setup does before it tells a non-technical user
 everything works, so it is worth proving through the whole seam rather than
@@ -14,7 +14,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from omelet_api.routes.app import create_app
-from omelet_api.core.config import AgentConfig
+from omelet_api.core.config import ApiConfig
 from omelet_api.core.exec import Completed
 from host.client import ApiClient, ApiError
 from host.core.constants import DEFAULT_DOMAIN, EDGE_PORT
@@ -37,13 +37,13 @@ def template(tmp_path):
 
 
 @pytest.fixture
-def agent(tmp_path):
-    """The real agent app behind a real `ApiClient`."""
+def api(tmp_path):
+    """The real API app behind a real `ApiClient`."""
     (tmp_path / "api.token").write_text(TOKEN)
-    config = AgentConfig(projects_root=tmp_path / "projects",
+    config = ApiConfig(projects_root=tmp_path / "projects",
                          state_db=tmp_path / "state.db",
                          token_path=tmp_path / "api.token",
-                         # The agent's own readiness window is covered in
+                         # The API's own readiness window is covered in
                          # test_health.py; this file is about the host's.
                          ready_timeout=0.0)
     runner = FakeRunner()
@@ -55,8 +55,8 @@ def agent(tmp_path):
         yield client, runner, probe
 
 
-def test_verify_passes_on_200_and_removes_the_smoke_test_project(agent, template):
-    client, runner, _probe = agent
+def test_verify_passes_on_200_and_removes_the_smoke_test_project(api, template):
+    client, runner, _probe = api
     seen = []
 
     verify_step(None, template, DEFAULT_DOMAIN, client=client,
@@ -71,16 +71,16 @@ def test_verify_passes_on_200_and_removes_the_smoke_test_project(agent, template
         "the smoke-test containers must not be left running"
 
 
-def test_verify_fails_on_a_non_200_status(agent, template):
-    client, _runner, _probe = agent
+def test_verify_fails_on_a_non_200_status(api, template):
+    client, _runner, _probe = api
     with pytest.raises(VerificationFailed, match="502"):
         verify_step(None, template, DEFAULT_DOMAIN, client=client,
                     http_get=lambda url: 502, ready_timeout=0)
 
 
-def test_verify_fails_without_requesting_when_the_stack_is_crash_looping(agent,
+def test_verify_fails_without_requesting_when_the_stack_is_crash_looping(api,
                                                                         template):
-    client, runner, _probe = agent
+    client, runner, _probe = api
     runner.ps = Completed(0, PS_RESTARTING, "")
     requested = []
 
@@ -93,8 +93,8 @@ def test_verify_fails_without_requesting_when_the_stack_is_crash_looping(agent,
     assert client.list_projects() == []
 
 
-def test_verify_tears_down_even_when_the_request_fails(agent, template):
-    client, _runner, _probe = agent
+def test_verify_tears_down_even_when_the_request_fails(api, template):
+    client, _runner, _probe = api
 
     def http_get(url):
         raise OSError("connection refused")
@@ -105,14 +105,14 @@ def test_verify_tears_down_even_when_the_request_fails(agent, template):
     assert client.list_projects() == []
 
 
-def test_verify_waits_out_the_404_before_traefik_publishes_the_router(agent,
+def test_verify_waits_out_the_404_before_traefik_publishes_the_router(api,
                                                                      template):
     # Traefik registers a new router a beat after the container starts. A
     # single-shot request fails a healthy stack with
     # "...did not respond: HTTP Error 404: Not Found".
     from urllib.error import HTTPError
 
-    client, _runner, _probe = agent
+    client, _runner, _probe = api
     codes = iter([404, 404, 200])
 
     def http_get(url):
@@ -137,33 +137,33 @@ class RefusesTeardown:
         return getattr(self._client, name)
 
     def delete_project(self, project_id):
-        raise ApiError("http_error", "the agent answered HTTP 500", 500)
+        raise ApiError("http_error", "the API answered HTTP 500", 500)
 
 
 def test_a_teardown_failure_on_the_success_path_is_reported_not_swallowed(
-        agent, template):
+        api, template):
     # Otherwise setup says "finished successfully" while the smoke-test
     # containers keep running and omelet-selftest sits in `omelet status`
     # with nothing to explain it.
-    client, _runner, _probe = agent
+    client, _runner, _probe = api
     with pytest.raises(VerificationFailed, match="could not be removed"):
         verify_step(None, template, DEFAULT_DOMAIN, client=RefusesTeardown(client),
                     http_get=lambda url: 200)
 
 
 def test_a_teardown_failure_never_replaces_the_reason_verification_failed(
-        agent, template):
-    client, _runner, _probe = agent
+        api, template):
+    client, _runner, _probe = api
     with pytest.raises(VerificationFailed, match="502"):
         verify_step(None, template, DEFAULT_DOMAIN, client=RefusesTeardown(client),
                     http_get=lambda url: 502, ready_timeout=0)
 
 
-def test_a_failure_leads_with_a_sentence_and_keeps_the_detail_below(agent,
+def test_a_failure_leads_with_a_sentence_and_keeps_the_detail_below(api,
                                                                    template):
     # These are the words someone reads at the moment their install failed.
     # The status enum and the HTTP code are for whoever they send it to.
-    client, runner, _probe = agent
+    client, runner, _probe = api
 
     with pytest.raises(VerificationFailed) as excinfo:
         verify_step(None, template, DEFAULT_DOMAIN, client=client,
@@ -179,12 +179,12 @@ def test_a_failure_leads_with_a_sentence_and_keeps_the_detail_below(agent,
     assert "crash_looping" not in first and "crash_looping" in rest
 
 
-def test_verify_reports_the_agents_diagnosis_instead_of_polling_a_dead_url(
-        agent, template):
+def test_verify_reports_the_apis_diagnosis_instead_of_polling_a_dead_url(
+        api, template):
     # The containers start, but the routed service is bound to 127.0.0.1, so
-    # the URL will never answer. The agent already knows why; waiting out the
+    # the URL will never answer. The API already knows why; waiting out the
     # readiness window and reporting "did not respond" would throw that away.
-    client, _runner, probe = agent
+    client, _runner, probe = api
     probe.status = 502
     requested = []
 

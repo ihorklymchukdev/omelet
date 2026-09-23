@@ -21,7 +21,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from ..core import constants, disk, files, lifecycle
-from ..core.config import AgentConfig
+from ..core.config import ApiConfig
 from ..core.detect import AmbiguousError
 from ..core.exec import LocalRunner
 # Imported by name: the /health route below shadows a module named `health`.
@@ -35,7 +35,7 @@ from ..core.uploads import CHUNK_SIZE, UploadError, UploadStore
 from .jobs import JobFailed, JobRegistry
 
 TEXT = "text/plain; charset=utf-8"
-log = logging.getLogger("omelet.agent")
+log = logging.getLogger("omelet.api")
 
 
 class ApiError(Exception):
@@ -134,17 +134,17 @@ def _read_token(path: Path) -> str:
     """Empty string for "missing", "unreadable", and "unparseable" alike --
     callers only need to know whether they have a credential to compare
     against, and this must fail closed on anything unexpected rather than
-    crash-loop the agent."""
+    crash-loop the API."""
     try:
         return path.read_text().strip()
     except (OSError, UnicodeDecodeError):
         return ""
 
 
-def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
+def create_app(*, config: ApiConfig | None = None, runner=None, state=None,
                jobs: JobRegistry | None = None, http_probe=None,
                sessions: Sessions | None = None) -> FastAPI:
-    config = config or AgentConfig.from_env()
+    config = config or ApiConfig.from_env()
     runner = runner or LocalRunner()
     http_probe = http_probe or default_probe
     state = state if state is not None else State(config.state_db)
@@ -185,7 +185,7 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
 
     @app.exception_handler(Exception)
     async def _unexpected(_request, exc: Exception):
-        # The traceback goes to the agent's log, never into the response: the
+        # The traceback goes to the API's log, never into the response: the
         # host client only needs a code it can act on.
         log.exception("unhandled error serving a request")
         return _body("internal_error",
@@ -195,9 +195,9 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
                      f"(unexpected {type(exc).__name__}; the details are in the "
                      "service's own log)", 500)
 
-    # Read once at startup, not per request. The agent binds 0.0.0.0 inside
+    # Read once at startup, not per request. The API binds 0.0.0.0 inside
     # the VM (WSL2's localhostForwarding needs that), so every container in
-    # the VM can otherwise reach an agent holding the Docker socket. A missing
+    # the VM can otherwise reach an API holding the Docker socket. A missing
     # or empty token file must close every authenticated route, never open
     # one -- Phase 3 replaces this shared, VM-wide token with a service-issued
     # device token per host.
@@ -261,7 +261,7 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
             return await call_next(request)
         if not token:
             return _body("api_unconfigured",
-                         "the agent has no token configured; run setup again", 503)
+                         "the API has no token configured; run setup again", 503)
         if not _bearer_ok(request):
             return _body("unauthorized", "missing or invalid bearer token", 401)
         return await call_next(request)
@@ -396,7 +396,7 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
     @router.post("/projects", status_code=201)
     def create_project(body: CreateProject) -> dict:
         # Same slug rule load_project applies to a directory name, so an id
-        # survives the round trip host -> agent -> compose project name.
+        # survives the round trip host -> API -> compose project name.
         project_id = _slug(body.id)
         if not project_id:
             raise ApiError("invalid_project",

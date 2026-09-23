@@ -3,7 +3,7 @@ import { SUPPORTED_API } from "../api/version";
 import { StatusScreen } from "./StatusScreen";
 import s from "./StatusScreen.module.css";
 
-export function NeedsUpdate({ agentApi, onRetry }: { agentApi: number | null; onRetry: () => void }) {
+export function NeedsUpdate({ apiVersion, onRetry }: { apiVersion: number | null; onRetry: () => void }) {
   return (
     <StatusScreen
       tone="yolk"
@@ -16,7 +16,7 @@ export function NeedsUpdate({ agentApi, onRetry }: { agentApi: number | null; on
         talk to each other. Update Omelet from the desktop app, then try again.
       </p>
       <p className={s.detail}>
-        page speaks api {SUPPORTED_API.join(", ")} · service speaks {agentApi === null ? "an older api" : `api ${agentApi}`}
+        page speaks api {SUPPORTED_API.join(", ")} · service speaks {apiVersion === null ? "an older api" : `api ${apiVersion}`}
       </p>
     </StatusScreen>
   );

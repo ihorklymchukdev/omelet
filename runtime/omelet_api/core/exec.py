@@ -17,7 +17,7 @@ class Completed:
 
 
 class LocalRunner:
-    """Runs commands where they belong once the agent is inside the VM: here.
+    """Runs commands where they belong once the API is inside the VM: here.
 
     Mirrors the host `VmProvider.exec` contract on purpose — a failure comes
     back as a `Completed` with `.ok` False and is never raised — so the
@@ -26,7 +26,7 @@ class LocalRunner:
 
     def exec(self, argv: list[str], *, root: bool = False) -> Completed:
         # `root` is accepted and ignored: it exists only for signature
-        # compatibility with the host's `VmProvider.exec`. The agent runs as
+        # compatibility with the host's `VmProvider.exec`. The API runs as
         # a non-root user (Task 5) -- its ability to reach the daemon comes
         # from the mounted socket and docker-group membership, not from uid 0.
         try:

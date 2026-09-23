@@ -3,7 +3,7 @@ import { boot, takeHandoff } from "./boot";
 
 type Reply = { status: number; body?: unknown; raw?: string } | "refused";
 
-function agent(routes: Record<string, Reply>) {
+function api(routes: Record<string, Reply>) {
   const calls: string[] = [];
   const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const key = `${init?.method ?? "GET"} ${String(input)}`;
@@ -24,35 +24,35 @@ const refusal = (status: number, code: string): Reply => ({
 });
 
 describe("boot", () => {
-  it("is notAnswering when the agent refuses the connection", async () => {
-    const { fetch } = agent({ "GET /api/health": "refused" });
+  it("is notAnswering when the API refuses the connection", async () => {
+    const { fetch } = api({ "GET /api/health": "refused" });
     expect(await boot({ fetch, handoff: null })).toEqual({ kind: "notAnswering" });
   });
 
-  it("is notAnswering when something other than the agent answers /api/health", async () => {
-    const { fetch } = agent({ "GET /api/health": { status: 200, raw: "<!doctype html>" } });
+  it("is notAnswering when something other than the API answers /api/health", async () => {
+    const { fetch } = api({ "GET /api/health": { status: 200, raw: "<!doctype html>" } });
     expect(await boot({ fetch, handoff: null })).toEqual({ kind: "notAnswering" });
   });
 
   it("stops at needsUpdate for an api number the page doesn't speak, before any session call", async () => {
-    const { fetch, calls } = agent({ "GET /api/health": { status: 200, body: { api: 2 } } });
-    expect(await boot({ fetch, handoff: "code" })).toEqual({ kind: "needsUpdate", agentApi: 2 });
+    const { fetch, calls } = api({ "GET /api/health": { status: 200, body: { api: 2 } } });
+    expect(await boot({ fetch, handoff: "code" })).toEqual({ kind: "needsUpdate", apiVersion: 2 });
     expect(calls).toEqual(["GET /api/health"]);
   });
 
   it("treats a health answer without an api number as needing an update", async () => {
-    const { fetch } = agent({ "GET /api/health": { status: 200, body: { status: "ok" } } });
-    expect(await boot({ fetch, handoff: null })).toEqual({ kind: "needsUpdate", agentApi: null });
+    const { fetch } = api({ "GET /api/health": { status: 200, body: { status: "ok" } } });
+    expect(await boot({ fetch, handoff: null })).toEqual({ kind: "needsUpdate", apiVersion: null });
   });
 
   it("signs in with a fresh handoff code without asking for the session again", async () => {
-    const { fetch, calls } = agent({ "GET /api/health": HEALTHY, "POST /api/session": OK });
+    const { fetch, calls } = api({ "GET /api/health": HEALTHY, "POST /api/session": OK });
     expect(await boot({ fetch, handoff: "code" })).toEqual({ kind: "signedIn" });
     expect(calls).toEqual(["GET /api/health", "POST /api/session"]);
   });
 
   it("is still signed in when the handoff was spent but the cookie is good", async () => {
-    const { fetch } = agent({
+    const { fetch } = api({
       "GET /api/health": HEALTHY,
       "POST /api/session": refusal(401, "handoff_invalid"),
       "GET /api/session": OK,
@@ -61,7 +61,7 @@ describe("boot", () => {
   });
 
   it("says the link was spent when the handoff fails and there is no session", async () => {
-    const { fetch } = agent({
+    const { fetch } = api({
       "GET /api/health": HEALTHY,
       "POST /api/session": refusal(401, "handoff_invalid"),
       "GET /api/session": refusal(401, "not_signed_in"),
@@ -71,33 +71,33 @@ describe("boot", () => {
 
   it("passes on why the session is gone", async () => {
     for (const code of ["not_signed_in", "session_expired"] as const) {
-      const { fetch } = agent({ "GET /api/health": HEALTHY, "GET /api/session": refusal(401, code) });
+      const { fetch } = api({ "GET /api/health": HEALTHY, "GET /api/session": refusal(401, code) });
       expect(await boot({ fetch, handoff: null })).toEqual({ kind: "signedOut", reason: code });
     }
   });
 
   it("is notAnswering for any other refusal of the session check", async () => {
-    const { fetch } = agent({ "GET /api/health": HEALTHY, "GET /api/session": refusal(500, "internal_error") });
+    const { fetch } = api({ "GET /api/health": HEALTHY, "GET /api/session": refusal(500, "internal_error") });
     expect(await boot({ fetch, handoff: null })).toEqual({ kind: "notAnswering" });
   });
 
-  it("is wrongHost when the agent refuses the page's address", async () => {
-    const { fetch } = agent({ "GET /api/health": refusal(403, "forbidden_host") });
+  it("is wrongHost when the API refuses the page's address", async () => {
+    const { fetch } = api({ "GET /api/health": refusal(403, "forbidden_host") });
     expect(await boot({ fetch, handoff: null })).toEqual({ kind: "wrongHost" });
   });
 
-  it("is wrongHost when the agent refuses the page's origin on sign-in", async () => {
-    const { fetch } = agent({ "GET /api/health": HEALTHY, "POST /api/session": refusal(403, "forbidden_origin") });
+  it("is wrongHost when the API refuses the page's origin on sign-in", async () => {
+    const { fetch } = api({ "GET /api/health": HEALTHY, "POST /api/session": refusal(403, "forbidden_origin") });
     expect(await boot({ fetch, handoff: "code" })).toEqual({ kind: "wrongHost" });
   });
 
   it("is wrongHost when the session check is refused for the address", async () => {
-    const { fetch } = agent({ "GET /api/health": HEALTHY, "GET /api/session": refusal(403, "forbidden_host") });
+    const { fetch } = api({ "GET /api/health": HEALTHY, "GET /api/session": refusal(403, "forbidden_host") });
     expect(await boot({ fetch, handoff: null })).toEqual({ kind: "wrongHost" });
   });
 
   it("is notAnswering when the handoff fails for a reason other than a spent code", async () => {
-    const { fetch } = agent({ "GET /api/health": HEALTHY, "POST /api/session": refusal(500, "internal") });
+    const { fetch } = api({ "GET /api/health": HEALTHY, "POST /api/session": refusal(500, "internal") });
     expect(await boot({ fetch, handoff: "code" })).toEqual({ kind: "notAnswering" });
   });
 });

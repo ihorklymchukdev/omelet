@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from omelet_api.routes.app import create_app
-from omelet_api.core.config import AgentConfig
+from omelet_api.core.config import ApiConfig
 
 
 def _app(tmp_path, token: str | None) -> FastAPI:
@@ -14,7 +14,7 @@ def _app(tmp_path, token: str | None) -> FastAPI:
     token_path = tmp_path / "api.token"
     if token is not None:
         token_path.write_text(token)
-    config = AgentConfig(projects_root=tmp_path / "projects",
+    config = ApiConfig(projects_root=tmp_path / "projects",
                          state_db=tmp_path / "state.db", token_path=token_path)
     return create_app(config=config)
 
@@ -28,7 +28,7 @@ def test_health_answers_with_no_authorization_header(tmp_path):
     assert client.get("/health").status_code == 200
 
 
-def test_health_answers_even_when_the_agent_has_no_token_configured(tmp_path):
+def test_health_answers_even_when_the_api_has_no_token_configured(tmp_path):
     client = _client(tmp_path, None)
     assert client.get("/health").status_code == 200
 

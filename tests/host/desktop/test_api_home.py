@@ -10,7 +10,7 @@ from host.core.status import Readiness
 from host.desktop.api import DesktopApi
 
 READY = Readiness(vm_exists=True, vm_reachable=True,
-                  runtime_version="runtime-v0.1.0", agent_api=1)
+                  runtime_version="runtime-v0.1.0", api_version=1)
 
 
 class FakeProvider:
@@ -84,7 +84,7 @@ def test_the_resume_flag_is_consumed_by_the_first_home_call(tmp_path):
     assert api.home()["resumed"] is False
 
 
-def test_open_omelet_opens_the_edge_port_not_the_agent_port(tmp_path):
+def test_open_omelet_opens_the_edge_port_not_the_api_port(tmp_path):
     from host.core import constants
     opened = []
     _api(tmp_path, READY, opened=opened).open_omelet()
@@ -116,8 +116,8 @@ def test_open_omelet_carries_a_handoff_code_in_the_fragment(tmp_path):
     assert opened == [f"http://localhost:{constants.EDGE_PORT}/#handoff=abc"]
 
 
-def test_open_omelet_still_opens_the_page_on_an_agent_without_handoff(tmp_path):
-    # An agent older than the route answers 404; the page must still open and
+def test_open_omelet_still_opens_the_page_on_an_api_without_handoff(tmp_path):
+    # An API older than the route answers 404; the page must still open and
     # show its own sign-in screen.
     from host.client import ApiError
     from host.core import constants

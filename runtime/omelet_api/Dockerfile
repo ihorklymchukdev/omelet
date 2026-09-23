@@ -40,7 +40,7 @@ RUN if getent group "${DOCKER_GID}" >/dev/null; then \
     else \
         groupadd -g "${DOCKER_GID}" docker; \
     fi \
-    && useradd -m -u 1000 -g docker agent
+    && useradd -m -u 1000 -g docker api
 
 WORKDIR /app
 
@@ -52,13 +52,13 @@ COPY core /app/core
 COPY routes /app/routes
 RUN pip install --no-cache-dir .
 
-USER agent
+USER api
 
 EXPOSE 39099
 
 # python:3.12-slim has no curl/wget worth relying on; /health is designed to
 # answer even when the Docker socket is unreachable, so a failing healthcheck
-# means the agent process itself is down, not that a project failed to start.
+# means the API process itself is down, not that a project failed to start.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD python -c "import os, urllib.request as u; u.urlopen('http://127.0.0.1:%s/health' % os.environ.get('OMELET_API_PORT', '39099'), timeout=3)"
 

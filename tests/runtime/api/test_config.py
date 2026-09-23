@@ -1,11 +1,11 @@
 from pathlib import Path
 
-from omelet_api.core.config import AgentConfig
+from omelet_api.core.config import ApiConfig
 
 
 def test_from_env_reads_the_names_the_container_will_set():
     # These names are the contract with the api service's compose file.
-    config = AgentConfig.from_env({
+    config = ApiConfig.from_env({
         "OMELET_DOMAIN": "box.local",
         "OMELET_EDGE_PORT": "8080",
         "OMELET_PROJECTS_ROOT": "/srv/projects",

@@ -8,7 +8,7 @@ from .migrate import migrate
 
 
 class State:
-    """The agent's project list, on one connection shared by every thread.
+    """The API's project list, on one connection shared by every thread.
 
     FastAPI serves sync routes from a threadpool and jobs run on threads of
     their own, so a thread-bound connection fails as soon as a second thread

@@ -3,7 +3,7 @@ import type { PendingUpload, UploadApi } from "./uploadApi";
 
 type Method = "start" | "patch" | "status";
 
-export function fakeAgent() {
+export function fakeApi() {
   const calls: string[] = [];
   const sleeps: number[] = [];
   const uploads = new Map<string, { size: number; offset: number; path: string }>();
@@ -47,13 +47,13 @@ export function fakeAgent() {
       }
       const done = up.offset === up.size;
       if (done) uploads.delete(id);
-      // The agent took the chunk, but the client gave up waiting (a pause).
+      // The API took the chunk, but the client gave up waiting (a pause).
       if (state.hangAfterApplyAt === counts.patch) {
         return new Promise((_resolve, reject) => {
           signal.addEventListener("abort", () => reject(new ApiError("aborted", "cancelled", 0)));
         });
       }
-      // The chunk lands on the agent, but its answer never makes it back.
+      // The chunk lands on the API, but its answer never makes it back.
       if (state.loseResponseAt === counts.patch) return Promise.reject(new ApiError("unreachable", "down", 0));
       return Promise.resolve({ upload_id: id, offset: up.offset, size: up.size, done });
     },

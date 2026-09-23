@@ -8,7 +8,7 @@ FORBIDDEN = re.compile(r"sys\.platform|platform\.system\(\)|os\.name")
 ROOT = Path(__file__).resolve().parents[1]
 
 # The one place the host platform is resolved. Matched on the exact path, not
-# on the word "providers" anywhere in it, so a future agent/providers/ package
+# on the word "providers" anywhere in it, so a future omelet_api/providers/ package
 # cannot inherit the exemption by name.
 EXEMPT = ROOT / "host" / "providers"
 

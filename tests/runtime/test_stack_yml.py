@@ -34,7 +34,7 @@ def test_stack_yml_hardcodes_no_domain_or_port_outside_a_default():
 
 
 def test_the_api_service_binds_the_port_it_is_published_on():
-    # AgentConfig already reads OMELET_API_PORT; publishing a fixed port
+    # ApiConfig already reads OMELET_API_PORT; publishing a fixed port
     # while the process binds a configured one forwards the host to nothing.
     api = yaml.safe_load(_text())["services"]["api"]
     assert api["ports"] == ["${OMELET_API_PORT:-39099}:"

@@ -21,14 +21,14 @@ async function failure(promise: Promise<unknown>): Promise<ApiError> {
 }
 
 describe("the API client", () => {
-  it("turns the agent's error body into an ApiError with its code and status", async () => {
+  it("turns the API's error body into an ApiError with its code and status", async () => {
     const { api } = answering(409, JSON.stringify({ error: { code: "project_busy", message: "busy" } }));
     const error = await failure(api.get("/api/projects"));
     expect([error.code, error.message, error.status]).toEqual(["project_busy", "busy", 409]);
   });
 
   it("calls an error in any other shape 'unexpected' and keeps the status", async () => {
-    // Traefik answers 502 with an HTML page when the agent is down.
+    // Traefik answers 502 with an HTML page when the API is down.
     const { api } = answering(502, "<html>Bad Gateway</html>");
     const error = await failure(api.get("/api/health"));
     expect([error.code, error.status]).toEqual(["unexpected", 502]);
@@ -86,13 +86,13 @@ describe("the API client", () => {
     expect(await api.text("/api/projects/a/logs")).toBe("11:04:19 web  listening on 127.0.0.1:8000\n");
   });
 
-  it("still turns an agent error into an ApiError from text()", async () => {
+  it("still turns an API error into an ApiError from text()", async () => {
     const { api } = answering(409, JSON.stringify({ error: { code: "logs_unavailable", message: "no logs" } }));
     const error = await failure(api.text("/api/projects/a/logs"));
     expect([error.code, error.status]).toEqual(["logs_unavailable", 409]);
   });
 
-  it("keeps the agent's extra error fields so an upload can resume from the real offset", async () => {
+  it("keeps the API's extra error fields so an upload can resume from the real offset", async () => {
     const { api } = answering(409, JSON.stringify({ error: { code: "offset_mismatch", message: "m", offset: 8388608 } }));
     const error = await failure(api.get("/api/uploads/x"));
     expect(error.details).toEqual({ offset: 8388608 });

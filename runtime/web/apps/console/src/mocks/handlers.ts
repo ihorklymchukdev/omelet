@@ -8,7 +8,7 @@ export const SCENARIOS = [
   "empty",
   "expired",
   "handoff-spent",
-  "old-agent",
+  "old-api",
   "down",
   "lost-mid-use",
   "wrong-host",
@@ -57,7 +57,7 @@ const LOGS = `11:04:19 photo-sorter_web  listening on 127.0.0.1:8000
 11:04:27 proxy  health check failed 3/3
 `;
 
-// Same codes and wording as the agent's own refusals.
+// Same codes and wording as the API's own refusals.
 const refuse = (code: string, message: string, status: number) =>
   HttpResponse.json({ error: { code, message } }, { status });
 const notSignedIn = () => refuse("not_signed_in", "open Omelet from the desktop app to sign in", 401);
@@ -109,7 +109,7 @@ export function handlersFor(scenario: Scenario) {
       // photo-sorter never gets better, so "Try again" can be walked.
       target.problem = target.id === "photo-sorter" ? LOOPBACK : null;
       // started_ok with a diagnosed problem still finishes the job as done,
-      // same as the real agent; the problem lives on the project, in result.
+      // same as the real API; the problem lives on the project, in result.
       job.state = "done";
       job.detail = "";
       job.result = { status: target.status, urls: target.urls, problem: target.problem };
@@ -227,7 +227,7 @@ export function handlersFor(scenario: Scenario) {
       return HttpResponse.json({
         status: "ok",
         version: "0.2.0",
-        api: scenario === "old-agent" ? 2 : 1,
+        api: scenario === "old-api" ? 2 : 1,
         docker: { reachable: true, version: "29.0.0", detail: "" },
       });
     }),

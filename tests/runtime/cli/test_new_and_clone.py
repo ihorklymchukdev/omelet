@@ -71,22 +71,22 @@ def test_new_and_clone_never_reuse_an_existing_folder(guest):
     assert guest.git_calls == []
 
 
-def _deny_agent():
+def _deny_api():
     raise cli.OmeletError(
         "This user can't reach Omelet: it must be in the docker group. "
         "Run `sudo usermod -aG docker $USER` and start a new session.")
 
 
-def test_new_creates_nothing_when_this_user_cannot_reach_the_agent(guest):
-    guest._agent = _deny_agent
+def test_new_creates_nothing_when_this_user_cannot_reach_the_api(guest):
+    guest._api_client = _deny_api
     code, _out, err = guest.run("new", "Blog", cwd=guest.root)
     assert code == 1
     assert "docker group" in err
     assert not (guest.root / "blog").exists()
 
 
-def test_clone_never_calls_git_when_this_user_cannot_reach_the_agent(guest):
-    guest._agent = _deny_agent
+def test_clone_never_calls_git_when_this_user_cannot_reach_the_api(guest):
+    guest._api_client = _deny_api
     code, _out, err = guest.run("clone", "https://github.com/org/blog.git", cwd=guest.root)
     assert code == 1
     assert "docker group" in err

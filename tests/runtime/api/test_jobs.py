@@ -83,7 +83,7 @@ def test_unknown_job_is_not_found():
 
 
 def test_finished_jobs_are_evicted_oldest_first():
-    # Every job holds its whole log buffer; a long-lived agent would otherwise
+    # Every job holds its whole log buffer; a long-lived API would otherwise
     # keep one per compose operation forever.
     reg = JobRegistry(max_finished=2)
     done = []

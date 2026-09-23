@@ -91,7 +91,7 @@ class JobRegistry:
     """Slow work runs on its own thread so the request that started it returns
     at once — a first image build takes minutes.
 
-    Jobs live in memory only and are deliberately not persisted: an agent
+    Jobs live in memory only and are deliberately not persisted: an API
     restart loses them, and the host re-reads project status from the API.
     """
 
@@ -120,7 +120,7 @@ class JobRegistry:
             job.finish(DONE, result=result)
 
     def _evict_finished(self) -> None:
-        """Finished jobs keep their whole log buffer alive; a long-lived agent
+        """Finished jobs keep their whole log buffer alive; a long-lived API
         would grow one per compose operation forever. Runs when a job is
         submitted, so the newest finished job always survives. Caller holds the
         lock."""

@@ -27,7 +27,7 @@ export interface UploadItem {
   message: string | null;
   busy: boolean;
   // A finishing PATCH (chunk ending at size, including the empty busy-retry
-  // one) can finish on the agent unanswered; a 404 after it means it landed.
+  // one) can finish on the API unanswered; a 404 after it means it landed.
   finishing: boolean;
   fromReload: boolean;
   freeBytes: number | null;
@@ -138,7 +138,7 @@ export class UploadQueue {
     this.abort(key);
     this.items = this.items.filter((i) => i.key !== key);
     this.emit();
-    // A failed cancel is left for the agent's seven-day sweep.
+    // A failed cancel is left for the API's seven-day sweep.
     if (item.uploadId !== null && item.state !== "done") void this.api.cancel(item.uploadId).catch(() => {});
     this.kick();
   }
@@ -161,7 +161,7 @@ export class UploadQueue {
 
   adoptPending(projectId: string, uploads: readonly PendingUpload[]): void {
     const held = new Set(this.items.map((i) => i.uploadId));
-    // An upload whose start is still in flight has no id here yet, but the agent already lists it.
+    // An upload whose start is still in flight has no id here yet, but the API already lists it.
     const starting = new Set(
       this.items.filter((i) => i.state === "going" && i.uploadId === null).map((i) => `${joinPath(i.dir, i.name)}\0${i.fingerprint}`),
     );

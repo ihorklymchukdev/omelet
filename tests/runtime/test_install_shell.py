@@ -71,7 +71,7 @@ def _index_of(needle: str) -> int:
 
 
 def test_install_brings_the_stack_up_with_compose_not_an_inline_container():
-    # Traefik and the agent are one compose stack now; an inline `docker run`
+    # Traefik and the API are one compose stack now; an inline `docker run`
     # would start a Traefik outside it that compose can never upgrade or stop.
     commands = _commands()
     assert any(f"compose -f {STACK}" in l and " up -d" in l
@@ -82,7 +82,7 @@ def test_install_brings_the_stack_up_with_compose_not_an_inline_container():
 
 
 def test_a_missing_architecture_is_not_reported_as_a_network_problem():
-    # The failure an Apple Silicon user hits first: the agent image is published
+    # The failure an Apple Silicon user hits first: the API image is published
     # for amd64 only, the arm64 VM cannot pull it, and the daemon says "no
     # matching manifest". Reporting that as "the registry was unreachable.
     # Check the network connection or proxy" points at the one part of the
@@ -105,24 +105,24 @@ def test_the_pull_still_shows_its_progress_while_being_recorded():
 
 
 def test_install_always_pulls_before_bringing_the_stack_up():
-    # Always pulling is the delivery decision: it is how an agent update reaches
+    # Always pulling is the delivery decision: it is how an API update reaches
     # an already-bootstrapped VM. `up -d` alone would keep running a stale image.
     assert _index_of(f"compose -f {STACK} pull") < _index_of(" up -d")
 
 
-def test_install_makes_opt_omelet_writable_before_the_agent_starts():
-    # The agent runs as a non-root user whose only shared credential with the VM
+def test_install_makes_opt_omelet_writable_before_the_api_starts():
+    # The API runs as a non-root user whose only shared credential with the VM
     # is the docker group. Root-owned 0755 here means it cannot create
     # /opt/omelet/state.db, and `restart: always` then loops it forever.
     up = _index_of(" up -d")
     assert _index_of("chgrp") < up
     assert any("docker" in l for l in _commands() if "chgrp" in l), \
-        "the group the agent actually belongs to"
+        "the group the API actually belongs to"
     # g+rwX is the line that grants the access; chgrp alone leaves 0755 and the
-    # agent still cannot create state.db. X, not x, so files stay non-executable.
+    # API still cannot create state.db. X, not x, so files stay non-executable.
     assert _index_of("g+rwX") < up
     assert _index_of("g+s") < up, \
-        "setgid, or project directories the agent creates lose the group"
+        "setgid, or project directories the API creates lose the group"
     assert _index_of("mkdir -p " + constants.GUEST_PROJECTS) < _index_of("chgrp")
 
 
@@ -178,8 +178,8 @@ def test_npx_in_the_account_loop_cannot_swallow_the_account_list():
     assert all("</dev/null" in l for l in runuser)
 
 
-def test_a_repair_or_a_new_token_recreates_the_agent():
-    # The agent reads its token once at startup; `up -d` leaves it running.
+def test_a_repair_or_a_new_token_recreates_the_api():
+    # The API reads its token once at startup; `up -d` leaves it running.
     commands = _commands()
     recreate = _index_of("--force-recreate api")
     assert recreate > _index_of(" up -d")
@@ -239,7 +239,7 @@ def test_install_creates_the_token_at_a_narrow_mode_from_the_start():
 def test_install_chgrps_the_token_to_docker():
     # The other half of the 640/docker permission model: without this, the
     # token's group stays whatever `install`/root's process defaults to,
-    # which the agent's own group membership may not be.
+    # which the API's own group membership may not be.
     commands = _commands()
     chgrp = _index_of(f"chgrp docker {constants.GUEST_TOKEN}")
     assert chgrp < _index_of(" up -d")
@@ -249,7 +249,7 @@ def test_install_chgrps_the_token_to_docker():
 def test_install_writes_this_vms_real_docker_gid_for_the_stack():
     # stack.yml's group_add defaults to 999 and the image bakes in 999, but the
     # chgrp above uses whatever GID this VM's docker group actually has. On a VM
-    # where they differ the agent can write neither /opt/omelet nor the socket
+    # where they differ the API can write neither /opt/omelet nor the socket
     # -- the same crash-loop the chgrp exists to prevent, one step over.
     commands = _commands()
     env_line = _index_of(f"{constants.GUEST_ROOT}/.env")

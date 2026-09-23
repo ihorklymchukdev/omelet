@@ -130,8 +130,8 @@ def test_a_502_that_clears_inside_the_window_is_not_a_fault():
 
 
 def test_the_probe_reaches_traefik_by_name_with_the_projects_host_header():
-    # The real URL resolves to 127.0.0.1, which inside the agent container is
-    # the agent itself -- probing it would report nonsense for every project.
+    # The real URL resolves to 127.0.0.1, which inside the API container is
+    # the API itself -- probing it would report nonsense for every project.
     clock, probe = Clock(), Probe(200)
     diagnose(FakeRunner(), probe, clock)
 
@@ -184,7 +184,7 @@ def test_a_missing_container_id_still_answers_instead_of_raising():
 
 
 def test_traefik_being_unreachable_is_never_blamed_on_the_project():
-    # Every probe raising means the agent cannot reach the proxy at all. That
+    # Every probe raising means the API cannot reach the proxy at all. That
     # is not the user's compose file, and stamping every project with a
     # problem would bury the real one.
     clock, probe, runner = Clock(), Probe(ConnectionRefusedError("no route")), FakeRunner()
