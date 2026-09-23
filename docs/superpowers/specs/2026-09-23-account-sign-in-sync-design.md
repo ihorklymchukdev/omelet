@@ -63,7 +63,8 @@ The required service changes are listed in section 7.
 
 ### Storage
 
-Migration `_v4_account` adds to `state.db` (already under `/opt/omelet`, owner-only):
+Migration `_v4_account` adds to `state.db` (already under `/opt/omelet`, readable by the
+docker group — root-equivalent already):
 
 ```
 account(id INTEGER PRIMARY KEY CHECK (id = 1),
