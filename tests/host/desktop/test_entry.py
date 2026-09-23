@@ -8,12 +8,33 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from host.core.install import InstallState
 from host.desktop.__main__ import WEBVIEW_MISSING, run, ui_dir
 
 
 class FakeProvider:
     pass
+
+
+LOCAL = "file:///ui/index.html"
+
+
+class FakeWindow:
+    def __init__(self, url=LOCAL):
+        self.url = url
+        self.loaded = []
+
+    def get_current_url(self):
+        return self.url
+
+    def load_url(self, url):
+        self.loaded.append(url)
+        self.url = url
+
+    def evaluate_js(self, script):
+        pass
 
 
 def test_ui_dir_points_at_the_bundled_assets():
@@ -38,10 +59,10 @@ def test_the_fallback_names_the_headless_command():
 
 def test_a_working_window_starts_the_loop_and_returns_zero(tmp_path):
     started = []
-    window = object()
     code = run(FakeProvider(), InstallState(tmp_path / "s.json"),
-               create=lambda **kwargs: window,
-               start=lambda **kwargs: started.append(kwargs))
+               create=lambda **kwargs: FakeWindow(),
+               start=lambda **kwargs: started.append(kwargs),
+               menu=lambda items: items)
 
     assert code == 0
     # debug must be off in a shipped build: it exposes devtools and a context
@@ -72,9 +93,51 @@ def test_a_resumed_launch_is_recorded_for_the_install_screen(tmp_path):
 
     def create(**kwargs):
         captured["api"] = kwargs["js_api"]
-        return object()
+        return FakeWindow()
 
     run(FakeProvider(), InstallState(tmp_path / "s.json"),
-        create=create, start=lambda **kwargs: None, resumed=True)
+        create=create, start=lambda **kwargs: None, resumed=True,
+        menu=lambda items: items)
 
-    assert captured["api"].resumed is True
+    assert captured["api"].home()["resumed"] is True
+
+
+def test_javascript_gets_the_guarded_bridge_not_the_api(tmp_path):
+    from host.desktop.shell import NotLocalPage
+    captured = {}
+    window = FakeWindow()
+
+    def create(**kwargs):
+        captured["api"] = kwargs["js_api"]
+        return window
+
+    run(FakeProvider(), InstallState(tmp_path / "s.json"),
+        create=create, start=lambda **kwargs: None, menu=lambda items: items)
+    captured["api"].reset_install()
+    window.url = "http://localhost:39080/"
+    with pytest.raises(NotLocalPage):
+        captured["api"].reset_install()
+
+
+def test_the_menu_offers_projects_machine_and_the_browser(tmp_path):
+    started = []
+    run(FakeProvider(), InstallState(tmp_path / "s.json"),
+        create=lambda **kwargs: FakeWindow(),
+        start=lambda **kwargs: started.append(kwargs), menu=lambda items: items)
+    assert [title for title, _ in started[0]["menu"]] == \
+        ["Projects", "Machine", "Open in browser"]
+
+
+def test_machine_returns_the_window_to_the_local_ui(tmp_path):
+    started = []
+    window = FakeWindow()
+    run(FakeProvider(), InstallState(tmp_path / "s.json"),
+        create=lambda **kwargs: window,
+        start=lambda **kwargs: started.append(kwargs), menu=lambda items: items)
+    machine = dict(started[0]["menu"])["Machine"]
+    # The first machine() records the page the window opened with as local.
+    window.url = LOCAL
+    machine()
+    window.url = "http://localhost:39080/"
+    machine()
+    assert window.url == LOCAL

@@ -49,30 +49,43 @@ def _default_start(**kwargs):
     webview.start(**kwargs)
 
 
+def menu_items(api, shell) -> list:
+    return [
+        ("Projects", api.enter_console),
+        ("Machine", shell.load_local),
+        ("Open in browser", api.open_omelet),
+    ]
+
+
+def _default_menu(items):
+    import threading
+
+    from webview.menu import Menu, MenuAction
+
+    def detached(fn):
+        # Menu callbacks run on the UI thread; a handoff reads the token
+        # through the provider, which would freeze the window meanwhile.
+        return lambda: threading.Thread(target=fn, daemon=True).start()
+
+    return [Menu("Omelet", [MenuAction(title, detached(fn)) for title, fn in items])]
+
+
 def run(provider, state, *, create=_default_create, start=_default_start,
-        resumed: bool = False, steps_factory=None) -> int:
+        menu=_default_menu, resumed: bool = False, steps_factory=None) -> int:
     from .api import DesktopApi
+    from .shell import Shell, guarded
 
-    holder: dict = {}
-
-    def push(event: dict) -> None:
-        # Events cross into JS as one JSON argument. json.dumps, never a
-        # format string: a message carrying a quote would otherwise close the
-        # call and inject whatever followed.
-        import json
-        window = holder.get("window")
-        if window is not None:
-            window.evaluate_js(f"window.omelet.on({json.dumps(event)})")
-
-    api = DesktopApi(provider, state, push=push, steps_factory=steps_factory)
+    shell = Shell()
+    api = DesktopApi(provider, state, push=shell.push, steps_factory=steps_factory,
+                     navigate=shell.load)
     # Surfaced by a later task: the install screen reads this to show
     # host.core.install.RESUME_NOTICE when RunOnce reopened the window.
     api.resumed = resumed
 
     try:
         window = create(title=WINDOW_TITLE, url=str(ui_dir() / "index.html"),
-                        js_api=api, width=WINDOW_SIZE[0], height=WINDOW_SIZE[1],
-                        min_size=MIN_SIZE)
+                        js_api=guarded(api, shell), width=WINDOW_SIZE[0],
+                        height=WINDOW_SIZE[1], min_size=MIN_SIZE)
     except Exception as e:
         # Deliberately broad: a missing runtime surfaces differently on each
         # backend, and pywebview cannot be imported here to catch its own
@@ -83,8 +96,8 @@ def run(provider, state, *, create=_default_create, start=_default_start,
         print(f"(technical detail: {e!r})", file=sys.stderr)
         return 3
 
-    holder["window"] = window
-    start(debug=False)
+    shell.window = window
+    start(debug=False, menu=menu(menu_items(api, shell)))
     return 0
 
 
