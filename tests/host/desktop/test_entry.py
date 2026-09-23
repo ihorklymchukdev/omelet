@@ -18,13 +18,14 @@ class FakeProvider:
     pass
 
 
-LOCAL = "file:///ui/index.html"
+LOCAL = "http://127.0.0.1:53817/index.html"
 
 
 class FakeWindow:
     def __init__(self, url=LOCAL):
         self.url = url
         self.loaded = []
+        self.evaluated = []
 
     def get_current_url(self):
         return self.url
@@ -34,7 +35,7 @@ class FakeWindow:
         self.url = url
 
     def evaluate_js(self, script):
-        pass
+        self.evaluated.append(script)
 
 
 def test_ui_dir_points_at_the_bundled_assets():
@@ -141,3 +142,36 @@ def test_machine_returns_the_window_to_the_local_ui(tmp_path):
     window.url = "http://localhost:39080/"
     machine()
     assert window.url == LOCAL
+
+
+def _launch(tmp_path, window):
+    captured = {}
+
+    def create(**kwargs):
+        captured["bridge"] = kwargs["js_api"]
+        return window
+
+    # FakeProvider has no exec(), so every handoff fails, as on a stopped VM.
+    run(FakeProvider(), InstallState(tmp_path / "s.json"), create=create,
+        start=lambda **kwargs: captured.update(menu=dict(kwargs["menu"])),
+        menu=lambda items: items)
+    return captured
+
+
+def test_projects_says_why_when_the_console_is_out_of_reach(tmp_path):
+    window = FakeWindow()
+    _launch(tmp_path, window)["menu"]["Projects"]()
+    assert window.loaded == []
+    assert len(window.evaluated) == 1 and '"kind": "notice"' in window.evaluated[0]
+
+
+def test_projects_from_a_dead_console_returns_to_the_machine_screen(tmp_path):
+    # The console can't show a desktop notice; Home re-probes and its state
+    # (stopped, something's wrong) is the explanation.
+    window = FakeWindow()
+    launched = _launch(tmp_path, window)
+    launched["bridge"].reset_install()
+    window.url = "http://localhost:39080/"
+    launched["menu"]["Projects"]()
+    assert window.url == LOCAL
+    assert window.evaluated == []

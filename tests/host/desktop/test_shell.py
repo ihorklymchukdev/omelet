@@ -6,6 +6,7 @@ root. These pin that such a page can see the bridge and use none of it.
 """
 from __future__ import annotations
 
+import inspect
 import json
 
 import pytest
@@ -14,7 +15,8 @@ from host.core.install import InstallState
 from host.desktop.api import DesktopApi
 from host.desktop.shell import NotLocalPage, Shell, guarded, public_methods
 
-LOCAL = "file:///opt/omelet/host/desktop/ui/index.html"
+# pywebview serves an absolute local path through its own bottle server.
+LOCAL = "http://127.0.0.1:53817/index.html"
 CONSOLE = "http://localhost:39080/#handoff=abc"
 
 
@@ -112,3 +114,30 @@ def test_the_bridge_exposes_only_the_public_methods(tmp_path):
 def test_the_local_page_reaches_the_real_method(tmp_path):
     bridge = guarded(_api(tmp_path), Shell(FakeWindow(LOCAL)))
     assert bridge.reset_install() == {"ok": True}
+
+
+def test_load_local_leaves_an_already_local_page_alone():
+    # Reloading mid-job redraws Home and strands the job's events.
+    window = FakeWindow(LOCAL)
+    shell = Shell(window)
+    shell.load_local()
+    assert window.loaded == []
+
+
+@pytest.mark.parametrize("before_first_load", [None, "None", "about:blank"])
+def test_nothing_is_recorded_before_the_local_page_has_loaded(before_first_load):
+    # WebView2 reports None and WKWebView the string "None" until the first
+    # load; recording either would make the console's first call "ours".
+    window = FakeWindow(before_first_load)
+    shell = Shell(window)
+    shell.load(CONSOLE)
+    assert window.loaded == []
+
+
+def test_pywebview_discovers_every_bridge_method(tmp_path):
+    # Before 6.2, pywebview exposes only what inspect.ismethod accepts.
+    bridge = guarded(_api(tmp_path), Shell(FakeWindow(LOCAL)))
+    for name in public_methods(DesktopApi):
+        attr = getattr(bridge, name)
+        assert inspect.ismethod(attr), name
+        inspect.getfullargspec(attr)

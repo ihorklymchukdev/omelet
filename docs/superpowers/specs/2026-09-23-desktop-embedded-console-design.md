@@ -31,7 +31,9 @@ runtime version are untouched, so this ships as a host release alone.
 Rejected:
 
 - **Console in an iframe inside a desktop strip.** The top document is a
-  `file://` page and the console is `http://localhost:39080`, so the console's
+  `http://127.0.0.1:<random>` page (pywebview serves an absolute local path
+  through its own bottle server) and the console is `http://localhost:39080`,
+  so the console's
   session cookie is a cross-site cookie inside the frame and is not sent. It
   also needs a `postMessage` protocol between the two.
 - **Two windows, one shown at a time** (the console window created without
@@ -99,16 +101,22 @@ container. Unguarded, a page from the VM could call `reboot_now`,
 
 So:
 
-- **Every public `DesktopApi` method is guarded.** `run()` records the local
-  UI's URL from the first `loaded` event. A guarded method reads
+- **Every public `DesktopApi` method is guarded.** The shell records the
+  local UI's URL the first time it sees an `http(s)` URL — before the first
+  navigation away, the only page the window has shown is the local UI, and
+  navigation is refused until that URL is known. A guarded method reads
   `window.get_current_url()` and raises unless it equals that URL (ignoring
   the fragment). The console can see the method names and run none of them.
   The guard is applied to the class as a whole, not method by method, so a
-  method added later cannot forget it.
-- **`file://` stays disallowed for navigation** (pywebview's
-  `ALLOW_FILE_URLS` default is off), so a console page cannot navigate the
-  window back to the local UI and inherit the bridge. Only the *Machine* menu
-  item — Python — does that.
+  method added later cannot forget it. The facade's members are bound
+  methods, because pywebview before 6.2 exposes nothing else.
+- **What the guard does not cover.** It checks the page showing when the call
+  is handled, not the page that sent it; pywebview does not expose the
+  sender. The local UI is plain `http://127.0.0.1:<port>`, so a console page
+  that finds the port can navigate the window there itself. Landing on the
+  genuine local UI gains it nothing — its own script is gone — but a call
+  posted just before that navigation commits and handled just after would
+  pass. Closing that needs the rejected two-window shape.
 - **Job events are pushed only to the local UI.** `push` checks the current
   URL the same way before `evaluate_js`, so a console page that defines its
   own `window.omelet.on` never receives progress events.
@@ -125,8 +133,9 @@ So:
 - **Links to a user's app** (`*.localhost:39080`). The console opens them with
   `target="_blank"` and `window.open(..., "_blank")`; pywebview's
   `OPEN_EXTERNAL_LINKS_IN_BROWSER` (default on) sends them to the system
-  browser. The docs name links only, so `window.open` is a manual acceptance
-  check on both WebView2 and WKWebView.
+  browser. On WKWebView pywebview forwards only link activations, so the
+  console's `window.open` buttons do nothing there until the console renders
+  them as `<a target="_blank">` — a runtime-side change.
 - **Install finishing.** The install screen returns to Home as today; there is
   no automatic jump into the console after an install (the launch flag is
   already spent). The user presses **Open Omelet**.

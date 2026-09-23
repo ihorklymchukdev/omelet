@@ -7,7 +7,6 @@ refuses every call unless the local UI is the page on screen.
 """
 from __future__ import annotations
 
-import functools
 import json
 from typing import Any
 from urllib.parse import urldefrag
@@ -31,8 +30,11 @@ class Shell:
     def _remember(self) -> None:
         # Until the first load() the window has only ever shown the local UI,
         # so the first URL seen is ours. load() calls this before leaving.
+        # Before its first load WebView2 reports None and WKWebView "None".
         if self._local is None:
-            self._local = self._current()
+            current = self._current()
+            if current and current.startswith(("http://", "https://")):
+                self._local = current
 
     def is_local(self) -> bool:
         self._remember()
@@ -41,11 +43,15 @@ class Shell:
 
     def load(self, url: str) -> None:
         self._remember()
-        self.window.load_url(url)
+        # Leaving before the local page is known would let the next page
+        # be recorded as ours.
+        if self._local is not None:
+            self.window.load_url(url)
 
     def load_local(self) -> None:
+        # A reload mid-job redraws Home and strands the job's events.
         self._remember()
-        if self._local is not None:
+        if self._local is not None and not self.is_local():
             self.window.load_url(self._local)
 
     def push(self, event: dict) -> None:
@@ -61,16 +67,17 @@ def public_methods(cls: type) -> list[str]:
 
 
 def guarded(api: object, shell: Shell) -> object:
-    bridge = type("DesktopBridge", (), {})()
-    for name in public_methods(type(api)):
-        setattr(bridge, name, _guard(getattr(api, name), shell))
-    return bridge
+    # Methods on a class, not functions on an instance: pywebview before 6.2
+    # exposes only what inspect.ismethod() accepts.
+    methods = {name: _guard(getattr(api, name), name, shell)
+               for name in public_methods(type(api))}
+    return type("DesktopBridge", (), methods)()
 
 
-def _guard(method, shell: Shell):
-    @functools.wraps(method)
-    def call(*args, **kwargs):
+def _guard(method, name: str, shell: Shell):
+    def call(self, *args, **kwargs):
         if not shell.is_local():
-            raise NotLocalPage(f"{method.__name__} is only available to Omelet's own screens")
+            raise NotLocalPage(f"{name} is only available to Omelet's own screens")
         return method(*args, **kwargs)
+    call.__name__ = name
     return call

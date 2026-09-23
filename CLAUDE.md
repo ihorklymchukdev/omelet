@@ -239,7 +239,10 @@ that document is written. Add a new entry here when you hit one.
 - pywebview injects `window.pywebview.api` into every page the window loads, including the
   console served from the VM. `host/desktop/shell.py` refuses bridge calls and pushed events
   unless the local UI is showing; a new `DesktopApi` method is covered automatically, but
-  anything handed to `create_window(js_api=...)` other than `guarded(...)` is not.
+  anything handed to `create_window(js_api=...)` other than `guarded(...)` is not. It checks
+  the page showing, not the sender, and the local UI is plain `http://127.0.0.1:<port>`;
+  the spec's "What the guard does not cover" names the residual race. The facade's members
+  must stay bound methods: pywebview before 6.2 exposes nothing else.
 
 ## Testing conventions
 

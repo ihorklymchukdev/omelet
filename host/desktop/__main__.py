@@ -50,8 +50,19 @@ def _default_start(**kwargs):
 
 
 def menu_items(api, shell) -> list:
+    def projects():
+        result = api.enter_console()
+        if result["ok"]:
+            return
+        if shell.is_local():
+            shell.push({"kind": "notice", "message": result["message"]})
+        else:
+            # The console can't show a desktop notice; Home re-probes and its
+            # state is the explanation.
+            shell.load_local()
+
     return [
-        ("Projects", api.enter_console),
+        ("Projects", projects),
         ("Machine", shell.load_local),
         ("Open in browser", api.open_omelet),
     ]
@@ -63,8 +74,9 @@ def _default_menu(items):
     from webview.menu import Menu, MenuAction
 
     def detached(fn):
-        # Menu callbacks run on the UI thread; a handoff reads the token
-        # through the provider, which would freeze the window meanwhile.
+        # Recent pywebview already runs menu actions off the UI thread; older
+        # ones may not, and on WKWebView get_current_url() from the main
+        # thread deadlocks.
         return lambda: threading.Thread(target=fn, daemon=True).start()
 
     return [Menu("Omelet", [MenuAction(title, detached(fn)) for title, fn in items])]
