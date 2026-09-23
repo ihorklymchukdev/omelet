@@ -156,9 +156,12 @@ Do not add an `if windows` anywhere else — push the difference into a provider
   WKWebView on macOS) that replaced the old tkinter wizard. `view.py` is pure mappings from
   `host/core` values to what a screen needs — no provider, no client, nothing reaching the VM or
   the network (it does walk the local filesystem in `inspect_folder()`) — which is what makes
-  it the only module here worth unit-testing. `api.py` is the only object JavaScript can reach, so
-  it stays a thin, fixed list of methods taking scalars, with every real decision pushed into
-  `view.py`. `jobs.py` runs one slow job at a time on a worker thread: `InstallState` is a JSON
+  it the only module here worth unit-testing. `api.py` is the only object JavaScript can reach —
+  through `shell.py`'s `guarded()` facade, which refuses every call unless the local UI is the
+  page showing — so it stays a thin, fixed list of methods taking scalars, with every real
+  decision pushed into `view.py`. When the machine is running the same window shows the projects
+  console (`localhost:<edge>`, entered with a handoff code); a native "Omelet" menu switches
+  between it and the local screens and offers "Open in browser". `jobs.py` runs one slow job at a time on a worker thread: `InstallState` is a JSON
   file, and two installs writing it at once would race. `ui/` holds the HTML, CSS, JS and bundled
   fonts and must work fully offline. `cli.setup` launches it; `--headless` still bypasses it
   entirely for a machine without a webview runtime.
@@ -233,6 +236,13 @@ that document is written. Add a new entry here when you hit one.
   count must agree with `runtime/web/Dockerfile`'s `WORKDIR` (and the `COPY --from=fixtures`
   destination inside it). Changing one without the other passes `npm test`, which runs against the
   checkout, and fails only inside the image build.
+- pywebview injects `window.pywebview.api` into every page the window loads, including the
+  console served from the VM. `host/desktop/shell.py` refuses bridge calls and pushed events
+  unless the local UI is showing; a new `DesktopApi` method is covered automatically, but
+  anything handed to `create_window(js_api=...)` other than `guarded(...)` is not. It checks
+  the page showing, not the sender, and the local UI is plain `http://127.0.0.1:<port>`;
+  the spec's "What the guard does not cover" names the residual race. The facade's members
+  must stay bound methods: pywebview before 6.2 exposes nothing else.
 
 ## Testing conventions
 

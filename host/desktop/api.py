@@ -24,7 +24,7 @@ class DesktopApi:
 
     def __init__(self, provider, state, *, push,
                  probe_fn=probe, browser_open=webbrowser.open, steps_factory=None,
-                 client_factory=None, install_dir_factory=None):
+                 client_factory=None, install_dir_factory=None, navigate=None):
         self._provider = provider
         self._state = state
         self._probe = probe_fn
@@ -33,6 +33,8 @@ class DesktopApi:
         self._client_factory = client_factory or self._default_client_factory
         self._install_dir_factory = install_dir_factory or self._default_install_dir
         self.jobs = JobRegistry(push)
+        self._navigate = navigate or (lambda url: None)
+        self._home_seen = False
 
     @staticmethod
     def _default_client_factory(provider):
@@ -61,6 +63,12 @@ class DesktopApi:
         route, state = route_for(readiness)
         resumed = getattr(self, "resumed", False)
         self.resumed = False
+        first_run = not readiness.vm_exists and not self._state.completed()
+        # One-shot like `resumed`: the Machine menu item reloads this page,
+        # and a second True would bounce the user back into the console.
+        enter_console = (not self._home_seen and (route, state) == ("home", "running")
+                         and not first_run and not resumed)
+        self._home_seen = True
         return {
             "route": route,
             "state": state,
@@ -68,13 +76,14 @@ class DesktopApi:
             # true only where nothing has ever been recorded. Once any step
             # has completed the answer flips, because "not vm_exists" stays
             # true across every failed create_vm relaunch too.
-            "first_run": not readiness.vm_exists and not self._state.completed(),
+            "first_run": first_run,
             "app_version": constants.APP_VERSION,
             "runtime_version": readiness.runtime_version or "",
             "problem": readiness.problem,
             # Set by __main__.run() when RunOnce reopened the window after a
             # restart, so the install screen can explain why it appeared.
             "resumed": resumed,
+            "enter_console": enter_console,
         }
 
     # --- actions ------------------------------------------------------
@@ -91,6 +100,19 @@ class DesktopApi:
             # is always better than an error here.
             code = None
         self._open(f"{url}/#handoff={code}" if code else url)
+        return {"ok": True}
+
+    def enter_console(self) -> dict:
+        if self.jobs.running():
+            # Leaving the local UI now would strand the job's events.
+            return {"ok": False, "message": "Wait for the current job to finish first."}
+        try:
+            code = self._client_factory(self._provider).handoff_code()
+        except Exception as e:
+            # Never load the console without a code: its signed-out screen
+            # sends the user to the desktop app they are already in.
+            return {"ok": False, "message": f"{e}"}
+        self._navigate(f"http://localhost:{constants.EDGE_PORT}/#handoff={code}")
         return {"ok": True}
 
     def start_install(self) -> dict:

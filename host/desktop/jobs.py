@@ -41,6 +41,10 @@ class JobRegistry:
             thread.start()
         return job_id
 
+    def running(self) -> bool:
+        thread = self._thread
+        return thread is not None and thread.is_alive()
+
     def join(self, timeout: float | None = None) -> None:
         """Wait for the running job. For tests and for shutdown."""
         thread = self._thread

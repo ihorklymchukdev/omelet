@@ -8,12 +8,34 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from host.core.install import InstallState
 from host.desktop.__main__ import WEBVIEW_MISSING, run, ui_dir
 
 
 class FakeProvider:
     pass
+
+
+LOCAL = "http://127.0.0.1:53817/index.html"
+
+
+class FakeWindow:
+    def __init__(self, url=LOCAL):
+        self.url = url
+        self.loaded = []
+        self.evaluated = []
+
+    def get_current_url(self):
+        return self.url
+
+    def load_url(self, url):
+        self.loaded.append(url)
+        self.url = url
+
+    def evaluate_js(self, script):
+        self.evaluated.append(script)
 
 
 def test_ui_dir_points_at_the_bundled_assets():
@@ -38,10 +60,10 @@ def test_the_fallback_names_the_headless_command():
 
 def test_a_working_window_starts_the_loop_and_returns_zero(tmp_path):
     started = []
-    window = object()
     code = run(FakeProvider(), InstallState(tmp_path / "s.json"),
-               create=lambda **kwargs: window,
-               start=lambda **kwargs: started.append(kwargs))
+               create=lambda **kwargs: FakeWindow(),
+               start=lambda **kwargs: started.append(kwargs),
+               menu=lambda items: items)
 
     assert code == 0
     # debug must be off in a shipped build: it exposes devtools and a context
@@ -72,9 +94,84 @@ def test_a_resumed_launch_is_recorded_for_the_install_screen(tmp_path):
 
     def create(**kwargs):
         captured["api"] = kwargs["js_api"]
-        return object()
+        return FakeWindow()
 
     run(FakeProvider(), InstallState(tmp_path / "s.json"),
-        create=create, start=lambda **kwargs: None, resumed=True)
+        create=create, start=lambda **kwargs: None, resumed=True,
+        menu=lambda items: items)
 
-    assert captured["api"].resumed is True
+    assert captured["api"].home()["resumed"] is True
+
+
+def test_javascript_gets_the_guarded_bridge_not_the_api(tmp_path):
+    from host.desktop.shell import NotLocalPage
+    captured = {}
+    window = FakeWindow()
+
+    def create(**kwargs):
+        captured["api"] = kwargs["js_api"]
+        return window
+
+    run(FakeProvider(), InstallState(tmp_path / "s.json"),
+        create=create, start=lambda **kwargs: None, menu=lambda items: items)
+    captured["api"].reset_install()
+    window.url = "http://localhost:39080/"
+    with pytest.raises(NotLocalPage):
+        captured["api"].reset_install()
+
+
+def test_the_menu_offers_projects_machine_and_the_browser(tmp_path):
+    started = []
+    run(FakeProvider(), InstallState(tmp_path / "s.json"),
+        create=lambda **kwargs: FakeWindow(),
+        start=lambda **kwargs: started.append(kwargs), menu=lambda items: items)
+    assert [title for title, _ in started[0]["menu"]] == \
+        ["Projects", "Machine", "Open in browser"]
+
+
+def test_machine_returns_the_window_to_the_local_ui(tmp_path):
+    started = []
+    window = FakeWindow()
+    run(FakeProvider(), InstallState(tmp_path / "s.json"),
+        create=lambda **kwargs: window,
+        start=lambda **kwargs: started.append(kwargs), menu=lambda items: items)
+    machine = dict(started[0]["menu"])["Machine"]
+    # The first machine() records the page the window opened with as local.
+    window.url = LOCAL
+    machine()
+    window.url = "http://localhost:39080/"
+    machine()
+    assert window.url == LOCAL
+
+
+def _launch(tmp_path, window):
+    captured = {}
+
+    def create(**kwargs):
+        captured["bridge"] = kwargs["js_api"]
+        return window
+
+    # FakeProvider has no exec(), so every handoff fails, as on a stopped VM.
+    run(FakeProvider(), InstallState(tmp_path / "s.json"), create=create,
+        start=lambda **kwargs: captured.update(menu=dict(kwargs["menu"])),
+        menu=lambda items: items)
+    return captured
+
+
+def test_projects_says_why_when_the_console_is_out_of_reach(tmp_path):
+    window = FakeWindow()
+    _launch(tmp_path, window)["menu"]["Projects"]()
+    assert window.loaded == []
+    assert len(window.evaluated) == 1 and '"kind": "notice"' in window.evaluated[0]
+
+
+def test_projects_from_a_dead_console_returns_to_the_machine_screen(tmp_path):
+    # The console can't show a desktop notice; Home re-probes and its state
+    # (stopped, something's wrong) is the explanation.
+    window = FakeWindow()
+    launched = _launch(tmp_path, window)
+    launched["bridge"].reset_install()
+    window.url = "http://localhost:39080/"
+    launched["menu"]["Projects"]()
+    assert window.url == LOCAL
+    assert window.evaluated == []
