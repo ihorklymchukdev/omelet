@@ -103,7 +103,11 @@ window.addEventListener('unhandledrejection', (event) => {
 });
 
 const ACTIONS = {
-  'open-omelet': () => api().open_omelet(),
+  // Success navigates the window away; there is nothing to render after it.
+  'enter-console': async () => {
+    const result = await api().enter_console();
+    if (!result.ok) showNotice(result.message);
+  },
   'go-home': () => refresh(),
   'dismiss-notice': () => { document.getElementById('notice').hidden = true; },
 };
@@ -392,6 +396,11 @@ async function refresh() {
   // A window RunOnce reopened by itself must continue setup, not show Home.
   if (home.resumed) return ACTIONS['start-install'](null, home);
   if (home.first_run) return show('first-run', home);
+  if (home.enter_console) {
+    const result = await api().enter_console();
+    if (result.ok) return;
+    showNotice(result.message);
+  }
   show(home.route === 'unreachable' ? 'unreachable' : `home:${home.state}`, home);
 }
 

@@ -273,3 +273,15 @@ def test_hidden_beats_any_display_rule():
     notice showed on every launch with no detail, and Dismiss did nothing."""
     css = (UI / "app.css").read_text()
     assert re.search(r"\[hidden\]\s*\{\s*display:\s*none\s*!important", css)
+
+
+def test_every_bridge_call_in_the_ui_names_a_real_method():
+    """A misspelled api().method() only rejects at runtime, inside a window
+    no test opens."""
+    from host.desktop.api import DesktopApi
+    from host.desktop.shell import public_methods
+
+    script = (UI / "app.js").read_text()
+    called = set(re.findall(r"api\(\)\.([a-zA-Z_]+)\(", script))
+    assert "enter_console" in called
+    assert called <= set(public_methods(DesktopApi)), called - set(public_methods(DesktopApi))
