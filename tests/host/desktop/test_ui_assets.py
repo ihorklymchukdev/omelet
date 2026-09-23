@@ -72,12 +72,58 @@ def test_no_template_renders_a_separator_with_nothing_after_it():
     installed, so a hard-coded separator between two fields renders as
     "0.1.0 · "."""
     markup = (UI / "index.html").read_text()
-    # Every runtime_version field must sit inside a section gated on it.
-    for chunk in markup.split('data-field="runtime_version"')[1:]:
-        pass
-    assert 'data-when="runtime_version"' in markup
+    occurrences = [m.start() for m in re.finditer(r'data-field="runtime_version"', markup)]
+    assert occurrences, 'no data-field="runtime_version" found'
+    # Every runtime_version field must sit inside a section gated on it: the
+    # nearest data-when before each occurrence must be the same field, or an
+    # unconditional separator renders as "0.1.0 · " with nothing after it.
+    for pos in occurrences:
+        gates = re.findall(r'data-when="([^"]*)"', markup[:pos])
+        assert gates, f'no data-when gate precedes data-field="runtime_version" at offset {pos}'
+        assert gates[-1] == "runtime_version", (
+            f'data-field="runtime_version" at offset {pos} is gated by '
+            f'data-when="{gates[-1]}", not "runtime_version"')
     assert '</span> &middot; <span data-field="runtime_version">' not in markup
     assert '</span> · <span data-field="runtime_version">' not in markup
+
+
+def test_the_version_tiles_bind_fields_desktop_api_home_actually_returns():
+    """The markup and DesktopApi.home() agree on field names only by two
+    people copying the same string correctly -- nothing pins them together.
+    A diff that renamed Readiness.runtime_version (or home()'s key) but left
+    the markup saying data-field="engine_version" would pass every other test
+    here and render the version tile permanently blank."""
+    from host.core.install import InstallState
+    from host.core.status import Readiness
+    from host.desktop.api import DesktopApi
+
+    class FakeProvider:
+        pass
+
+    readiness = Readiness(vm_exists=True, vm_reachable=True,
+                          runtime_version="runtime-v0.1.0", agent_api=1)
+    state = InstallState(UI / "does-not-exist" / "install-state.json")
+    home = DesktopApi(FakeProvider(), state, push=lambda event: None,
+                      probe_fn=lambda provider: readiness).home()
+
+    markup = (UI / "index.html").read_text()
+    lines = [l for l in markup.splitlines() if 'data-field="app_version"' in l]
+    assert lines, "no version tile found"
+    gated = [l for l in lines if 'data-when="runtime_version"' in l]
+    # home:not_installed's tile shows app_version alone -- there is no runtime
+    # yet to name -- so only the tiles gated on the runtime being present are
+    # required to bind a data-field for it.
+    assert gated, "no version tile is gated on runtime_version"
+    for line in lines:
+        fields = re.findall(r'data-field="([a-zA-Z_]+)"', line)
+        for field in fields:
+            assert field in home, (
+                f"{field!r} is not a key DesktopApi.home() returns; a version "
+                f"tile bound to it renders permanently blank: {line.strip()}")
+    for line in gated:
+        fields = re.findall(r'data-field="([a-zA-Z_]+)"', line)
+        assert "runtime_version" in fields, \
+            f"version tile has no data-field for the runtime version: {line.strip()}"
 
 
 def test_nothing_installed_offers_no_uninstall():

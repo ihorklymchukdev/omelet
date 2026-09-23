@@ -75,21 +75,21 @@ def test_missing_token_file_never_falls_back_to_allowing_requests(tmp_path):
     client = _client(tmp_path, None)
     resp = client.get("/projects", headers={"Authorization": "Bearer anything"})
     assert resp.status_code == 503
-    assert resp.json()["error"]["code"] == "agent_unconfigured"
+    assert resp.json()["error"]["code"] == "api_unconfigured"
 
 
 def test_empty_token_file_is_also_treated_as_unconfigured(tmp_path):
     client = _client(tmp_path, "")
     resp = client.get("/projects")
     assert resp.status_code == 503
-    assert resp.json()["error"]["code"] == "agent_unconfigured"
+    assert resp.json()["error"]["code"] == "api_unconfigured"
 
 
 def test_a_token_file_with_only_whitespace_is_treated_as_unconfigured(tmp_path):
     client = _client(tmp_path, "\n")
     resp = client.get("/projects")
     assert resp.status_code == 503
-    assert resp.json()["error"]["code"] == "agent_unconfigured"
+    assert resp.json()["error"]["code"] == "api_unconfigured"
 
 
 def test_every_route_except_health_requires_a_token(tmp_path):

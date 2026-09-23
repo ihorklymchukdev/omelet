@@ -50,7 +50,7 @@ class AgentConfig:
     def from_env(cls, env: dict | None = None) -> "AgentConfig":
         env = os.environ if env is None else env
         return cls(
-            bind_host=env.get("OMELET_AGENT_HOST", "0.0.0.0"),
+            bind_host=env.get("OMELET_API_HOST", "0.0.0.0"),
             port=int(env.get("OMELET_API_PORT", constants.API_PORT)),
             domain=env.get("OMELET_DOMAIN", constants.DEFAULT_DOMAIN),
             edge_port=int(env.get("OMELET_EDGE_PORT", constants.EDGE_PORT)),

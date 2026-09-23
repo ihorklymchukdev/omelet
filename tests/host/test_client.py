@@ -315,7 +315,7 @@ def test_a_stale_token_is_reported_with_the_command_that_fixes_it():
 
 def test_an_unconfigured_agent_says_setup_has_not_finished():
     c, _ = client(lambda call: http_error(
-        503, "agent_unconfigured", "the agent has no token configured"))
+        503, "api_unconfigured", "the agent has no token configured"))
     try:
         c.list_projects()
         raise AssertionError("expected AgentError")

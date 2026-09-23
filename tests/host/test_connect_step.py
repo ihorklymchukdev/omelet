@@ -62,7 +62,7 @@ def test_an_agent_refusing_this_host_is_reconnected_once():
         reconnects.append("reconnect")
         return FakeClient("0.1.0")
 
-    message = connect_step(None, client=FakeClient(_refused("agent_unconfigured")),
+    message = connect_step(None, client=FakeClient(_refused("api_unconfigured")),
                            reconnect=reconnect)
     assert reconnects == ["reconnect"]
     assert "reconnected" in message

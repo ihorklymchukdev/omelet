@@ -260,7 +260,7 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
         if path == "/health":
             return await call_next(request)
         if not token:
-            return _body("agent_unconfigured",
+            return _body("api_unconfigured",
                          "the agent has no token configured; run setup again", 503)
         if not _bearer_ok(request):
             return _body("unauthorized", "missing or invalid bearer token", 401)

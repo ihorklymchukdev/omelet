@@ -1,7 +1,12 @@
 import ast
 import sys
+from pathlib import Path
+
+import yaml
 
 from tests.runtime.cli.loader import GUEST_CLI, load
+
+STACK = Path(__file__).resolve().parents[3] / "runtime" / "stack.yml"
 
 
 def test_the_guest_cli_imports_only_the_standard_library():
@@ -24,6 +29,19 @@ def test_start_stack_is_built_from_the_declared_stack_path():
     # hardcoded path used to risk against GUEST_ROOT/GUEST_STACK elsewhere.
     cli = load()
     assert cli.GUEST_STACK in cli.START_STACK
+
+
+def test_restart_agent_recreates_the_compose_service_stack_yml_defines():
+    # RESTART_AGENT is the one guidance printed for a stale token
+    # (unauthorized / api_unconfigured); if the service key it recreates
+    # drifts from stack.yml's own key, compose answers "no such service" and
+    # the one documented recovery is a dead end. Derived from stack.yml's
+    # image rather than hardcoding "api" here too, so a rename on either side
+    # alone fails this test instead of both sides silently agreeing by luck.
+    services = yaml.safe_load(STACK.read_text())["services"]
+    (api_key,) = [name for name, svc in services.items()
+                  if "omelet-api" in svc.get("image", "")]
+    assert f"--force-recreate {api_key}" in load().RESTART_AGENT
 
 
 def test_the_guest_cli_slugs_project_names_the_way_the_agent_does():

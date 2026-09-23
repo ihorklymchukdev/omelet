@@ -123,10 +123,10 @@ BUSY_RETRY_INTERVAL = 1.0
 
 START_STACK = f"sudo /usr/bin/docker compose -f {GUEST_STACK} up -d"
 # The agent reads its token once, at startup, so only a recreate picks up a new one.
-RESTART_AGENT = f"{START_STACK} --force-recreate agent"
+RESTART_AGENT = f"{START_STACK} --force-recreate api"
 _GUIDANCE = {
     "unauthorized": f"The Omelet service needs a restart. Run: {RESTART_AGENT}",
-    "agent_unconfigured": f"The Omelet service needs a restart. Run: {RESTART_AGENT}",
+    "api_unconfigured": f"The Omelet service needs a restart. Run: {RESTART_AGENT}",
 }
 
 

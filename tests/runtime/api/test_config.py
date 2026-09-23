@@ -11,7 +11,7 @@ def test_from_env_reads_the_names_the_container_will_set():
         "OMELET_PROJECTS_ROOT": "/srv/projects",
         "OMELET_STATE_DB": "/srv/state.db",
         "OMELET_SERVICE_VERSION": "1.2.3",
-        "OMELET_AGENT_HOST": "127.0.0.1",
+        "OMELET_API_HOST": "127.0.0.1",
         "OMELET_API_PORT": "9000",
     })
     assert config.domain == "box.local"

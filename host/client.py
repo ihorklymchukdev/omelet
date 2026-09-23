@@ -110,8 +110,8 @@ def project_id_for(name: str) -> str:
 _GUIDANCE = {
     "unauthorized": "The VM no longer accepts this token, which usually means "
                     "the VM was rebuilt. Run `omelet setup` to reconnect.",
-    "agent_unconfigured": "The VM has not finished setting itself up. "
-                          "Run `omelet setup`.",
+    "api_unconfigured": "The VM has not finished setting itself up. "
+                        "Run `omelet setup`.",
 }
 
 

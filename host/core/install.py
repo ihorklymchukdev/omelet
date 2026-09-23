@@ -190,7 +190,7 @@ class AgentNotAccepted(RuntimeError):
 # The agent answers one of these when it has no usable token of its own, or
 # when the one this host is holding is not the one it started with. Neither
 # clears with time: the token is read once, at container startup.
-_TOKEN_CODES = frozenset({"agent_unconfigured", "unauthorized"})
+_TOKEN_CODES = frozenset({"api_unconfigured", "unauthorized"})
 
 
 class AgentIncompatible(RuntimeError):

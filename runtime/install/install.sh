@@ -233,4 +233,4 @@ done < <(accounts)
 
 # 12. marker, last: a failure above must leave no marker behind.
 echo "$REF" > /opt/omelet/runtime.version
-echo "Omelet engine $REF installed"
+echo "Omelet runtime $REF installed"
