@@ -1,3 +1,5 @@
+import pytest
+
 from omelet_api.core.state import State
 
 
@@ -56,3 +58,14 @@ def test_state_serves_threads_other_than_the_one_that_opened_it(tmp_path):
 
     assert not errors, f"state failed off-thread: {errors}"
     assert s.get_project("p")["status"] in {f"status-{n}" for n in range(6)}
+
+
+def test_the_device_id_survives_reopening_the_database(tmp_path):
+    first = State(tmp_path / "state.db").get_account()["device_id"]
+    assert State(tmp_path / "state.db").get_account()["device_id"] == first
+
+
+def test_update_account_refuses_a_field_it_does_not_know(tmp_path):
+    state = State(tmp_path / "state.db")
+    with pytest.raises(ValueError):
+        state.update_account(**{"email=NULL; --": "x"})
