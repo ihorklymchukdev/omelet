@@ -15,8 +15,8 @@ def _provider():
 
 
 def _default_client():
-    from host.client import AgentClient
-    return AgentClient.for_provider(_provider())
+    from host.client import ApiClient
+    return ApiClient.for_provider(_provider())
 
 
 _client_factory = _default_client  # tests override this
@@ -27,15 +27,15 @@ def _client():
 
 
 @contextmanager
-def _agent_errors():
-    """Every failure the agent can report is already a sentence written for a
+def _api_errors():
+    """Every failure the API can report is already a sentence written for a
     user; printing a traceback or a status code over it loses the only text
     that says what went wrong."""
-    from host.client import (AgentError, AgentUnavailableError, JobFailedError,
+    from host.client import (ApiError, ApiUnavailableError, JobFailedError,
                              JobTimeoutError)
     try:
         yield
-    except (AgentError, AgentUnavailableError, JobFailedError,
+    except (ApiError, ApiUnavailableError, JobFailedError,
             JobTimeoutError) as e:
         typer.echo(str(e), err=True)
         raise typer.Exit(code=1)
@@ -169,7 +169,7 @@ def up(directory: str = typer.Argument(".", help="Project directory with a docke
     local = _Path(directory).resolve()
     project_id = project_id_for(local.name)
 
-    with _agent_errors():
+    with _api_errors():
         client = _client()
         client.ensure_project(project_id)
         client.upload_directory(project_id, local)
@@ -213,7 +213,7 @@ def up(directory: str = typer.Argument(".", help="Project directory with a docke
 @app.command()
 def down(project_id: str):
     """Stop a project's containers."""
-    with _agent_errors():
+    with _api_errors():
         client = _client()
         # Waited on, not fired and forgotten: `down` reporting success while
         # the containers are still stopping is a lie the next command trips on.
@@ -224,7 +224,7 @@ def down(project_id: str):
 @app.command()
 def status():
     """List known projects and their status."""
-    with _agent_errors():
+    with _api_errors():
         projects = _client().list_projects()
     if not projects:
         typer.echo("No projects.")
@@ -243,7 +243,7 @@ def status():
 @app.command()
 def logs(project_id: str, service: str = typer.Option(None)):
     """Show a project's container logs."""
-    with _agent_errors():
+    with _api_errors():
         text = _client().logs(project_id, service)
     typer.echo(text)
 
@@ -251,7 +251,7 @@ def logs(project_id: str, service: str = typer.Option(None)):
 @app.command()
 def destroy(project_id: str):
     """Stop and forget a project."""
-    with _agent_errors():
+    with _api_errors():
         result = _client().delete_project(project_id)
     typer.echo(f"{project_id} destroyed.")
     if not result.get("stopped", True):

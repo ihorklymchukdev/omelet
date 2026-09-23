@@ -36,9 +36,9 @@ class DesktopApi:
 
     @staticmethod
     def _default_client_factory(provider):
-        from host.client import AgentClient
+        from host.client import ApiClient
 
-        return AgentClient.for_provider(provider)
+        return ApiClient.for_provider(provider)
 
     @staticmethod
     def _default_install_dir():
@@ -70,7 +70,7 @@ class DesktopApi:
             # true across every failed create_vm relaunch too.
             "first_run": not readiness.vm_exists and not self._state.completed(),
             "app_version": constants.APP_VERSION,
-            "engine_version": readiness.engine_version or "",
+            "runtime_version": readiness.runtime_version or "",
             "problem": readiness.problem,
             # Set by __main__.run() when RunOnce reopened the window after a
             # restart, so the install screen can explain why it appeared.
@@ -80,13 +80,13 @@ class DesktopApi:
     # --- actions ------------------------------------------------------
 
     def open_omelet(self) -> dict:
-        # The edge port, never the agent port: the page and its /api live
+        # The edge port, never the API port: the page and its /api live
         # behind Traefik.
         url = f"http://localhost:{constants.EDGE_PORT}"
         try:
             code = self._client_factory(self._provider).handoff_code()
         except Exception:
-            # An older agent, a stopped VM, an unreadable token: the bare page
+            # An older API, a stopped VM, an unreadable token: the bare page
             # shows its own "open from the desktop app" screen, so opening it
             # is always better than an error here.
             code = None
@@ -146,7 +146,7 @@ class DesktopApi:
             conflict = True
         except Exception:
             # Any refusal means "no project by that name to merge into". A
-            # conflict banner shown because the agent was briefly unreachable
+            # conflict banner shown because the API was briefly unreachable
             # would offer Replace -- which deletes -- over nothing.
             conflict = False
         return {**summary, "path": path, "project_id": project_id,

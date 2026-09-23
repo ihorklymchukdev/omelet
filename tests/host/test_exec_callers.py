@@ -6,12 +6,12 @@ from pathlib import Path
 HOST = Path(__file__).resolve().parents[2] / "host"
 
 # `exec()` survives the thinning for three jobs: getting the VM provisioned,
-# reading the token that lets the host talk to the agent over HTTP, and the
-# readiness probe's own cheap reachability check (`exec(["true"])`) and engine
+# reading the token that lets the host talk to the API over HTTP, and the
+# readiness probe's own cheap reachability check (`exec(["true"])`) and runtime
 # marker read (`exec(["cat", ...])`) -- both facts the probe must establish
 # itself, before there is a client to ask anything of. Every other use is
 # project logic reaching across the boundary by shelling into the guest, which
-# is what Phase 1 moved into the agent. A new entry here is a design decision,
+# is what Phase 1 moved into the API. A new entry here is a design decision,
 # not a formality.
 ALLOWED_CALLERS = {
     ("core/bootstrap.py", "_run"),
@@ -51,7 +51,7 @@ def test_exec_is_only_used_for_bootstrap_the_token_and_the_readiness_probe():
     assert not offenders, (
         "provider.exec() was called outside bootstrap, the token read and the "
         f"readiness probe: {offenders}. Shelling into the guest to do project "
-        "work is what the agent's HTTP API replaced -- add a route there "
+        "work is what the API's own HTTP routes replaced -- add a route there "
         "instead.")
     # Guards against the allowlist outliving the code it describes.
     assert set(found) == ALLOWED_CALLERS, (

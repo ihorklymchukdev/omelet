@@ -1,13 +1,13 @@
-"""The project commands, driven against a fake agent client.
+"""The project commands, driven against a fake API client.
 
-Every command now talks HTTP to the agent, so these assert on the calls the
-CLI makes and on what a user is told when the agent refuses or a job fails --
+Every command now talks HTTP to the API, so these assert on the calls the
+CLI makes and on what a user is told when the API refuses or a job fails --
 not on any local compose or state handling, which no longer exists on the host.
 """
 from typer.testing import CliRunner
 
 import host.cli as cli
-from host.client import (AgentError, AgentUnavailableError, JobFailedError)
+from host.client import (ApiError, ApiUnavailableError, JobFailedError)
 
 runner = CliRunner()
 
@@ -124,10 +124,10 @@ def test_up_without_a_compose_file_imports_and_says_so(monkeypatch, tmp_path):
     assert [c[0] for c in client.calls] == ["ensure_project", "upload_directory"]
 
 
-def test_an_unreachable_agent_is_reported_in_words_not_a_socket_error(
+def test_an_unreachable_api_is_reported_in_words_not_a_socket_error(
         monkeypatch, tmp_path):
     def boom():
-        raise AgentUnavailableError("could not reach the Omelet agent (refused). "
+        raise ApiUnavailableError("could not reach the Omelet API (refused). "
                                     "The VM may be stopped")
     monkeypatch.setattr(cli, "_client_factory", boom)
     result = runner.invoke(cli.app, ["up", str(project_dir(tmp_path))])
@@ -136,7 +136,7 @@ def test_an_unreachable_agent_is_reported_in_words_not_a_socket_error(
     assert "Traceback" not in result.output
 
 
-def test_status_lists_the_agents_projects_and_shows_a_broken_one(monkeypatch):
+def test_status_lists_the_apis_projects_and_shows_a_broken_one(monkeypatch):
     use(monkeypatch, FakeClient(projects=[
         {"id": "blog", "status": "started_ok", "domain": "d",
          "urls": ["http://blog.d:39080"], "problem": None},
@@ -165,9 +165,9 @@ def test_down_waits_for_the_job_before_claiming_the_project_is_stopped(monkeypat
     assert "blog stopped." in result.output
 
 
-def test_logs_reports_the_agents_message_when_compose_cannot_produce_them(
+def test_logs_reports_the_apis_message_when_compose_cannot_produce_them(
         monkeypatch):
-    refusal = AgentError("logs_unavailable", "no such service: web", 409)
+    refusal = ApiError("logs_unavailable", "no such service: web", 409)
     use(monkeypatch, FakeClient(fail={"logs": refusal}))
     result = runner.invoke(cli.app, ["logs", "blog"])
     assert result.exit_code == 1
@@ -182,9 +182,9 @@ def test_destroy_stays_loud_when_the_containers_could_not_be_stopped(monkeypatch
     assert "dockerd is not running" in result.output
 
 
-def test_up_warns_when_the_agent_could_not_reach_the_started_project(monkeypatch,
+def test_up_warns_when_the_api_could_not_reach_the_started_project(monkeypatch,
                                                                     tmp_path):
-    # A URL printed with no warning is exactly the silent failure the agent's
+    # A URL printed with no warning is exactly the silent failure the API's
     # probe exists to end.
     client = use(monkeypatch, FakeClient(job={
         "state": "done",

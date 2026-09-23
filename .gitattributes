@@ -3,5 +3,5 @@
 # install.sh as `set -euo pipefail\r` and aborts with "invalid option name".
 *.sh text eol=lf
 host/provision/** text eol=lf
-engine/** text eol=lf
+runtime/** text eol=lf
 host/providers/omelet.yaml text eol=lf

@@ -30,37 +30,37 @@ def test_vm_present_and_quiet_is_stopped():
     assert route_for(Readiness(vm_exists=True)) == ("home", "stopped")
 
 
-def test_reachable_without_engine_is_wrong():
+def test_reachable_without_runtime_is_wrong():
     assert route_for(Readiness(vm_exists=True, vm_reachable=True)) == ("home", "wrong")
 
 
 def test_a_marker_read_that_threw_is_wrong_not_unreachable():
-    # probe()'s third stage: the VM answers, but reading engine.version threw.
+    # probe()'s third stage: the VM answers, but reading runtime.version threw.
     # The unreachable screen claims we can see the machine humming, which
-    # needs a confirmed engine -- so this belongs on "something's wrong",
-    # and it is what pins the `and readiness.engine_version` half of the
+    # needs a confirmed runtime -- so this belongs on "something's wrong",
+    # and it is what pins the `and readiness.runtime_version` half of the
     # unreachable guard.
     readiness = Readiness(vm_exists=True, vm_reachable=True,
-                          problem="cat: /opt/omelet/engine.version: No such file")
+                          problem="cat: /opt/omelet/runtime.version: No such file")
     assert route_for(readiness) == ("home", "wrong")
 
 
-def test_agent_refused_is_the_only_unreachable():
+def test_api_refused_is_the_only_unreachable():
     # The one state where the board's copy is literally true: the VM answers
-    # `true`, the engine marker is there, and only /health is silent.
+    # `true`, the runtime marker is there, and only /health is silent.
     readiness = Readiness(vm_exists=True, vm_reachable=True,
-                          engine_version="engine-v0.1.0",
+                          runtime_version="runtime-v0.1.0",
                           problem="connection refused")
     assert route_for(readiness) == ("unreachable", "")
 
 
 def test_unsupported_api_is_wrong_not_unreachable():
     readiness = Readiness(vm_exists=True, vm_reachable=True,
-                          engine_version="engine-v9.0.0", agent_api=99)
+                          runtime_version="runtime-v9.0.0", api_version=99)
     assert route_for(readiness) == ("home", "wrong")
 
 
 def test_ready_is_running():
     readiness = Readiness(vm_exists=True, vm_reachable=True,
-                          engine_version="engine-v0.1.0", agent_api=1)
+                          runtime_version="runtime-v0.1.0", api_version=1)
     assert route_for(readiness) == ("home", "running")

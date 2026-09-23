@@ -28,20 +28,20 @@ def route_for(readiness: Readiness) -> tuple[str, str]:
     button on a machine where setup cannot run.
     """
     if readiness.problem:
-        # The agent refusing /health is the only failure the unreachable
+        # The api service refusing /health is the only failure the unreachable
         # screen describes truthfully: its copy claims we can see the machine
         # humming, which is only established once `true` ran in it and the
-        # engine marker was read.
-        if readiness.vm_reachable and readiness.engine_version:
+        # runtime marker was read.
+        if readiness.vm_reachable and readiness.runtime_version:
             return ("unreachable", "")
         return ("home", "wrong")
     if not readiness.vm_exists:
         return ("home", "not_installed")
     if not readiness.vm_reachable:
         return ("home", "stopped")
-    if not readiness.engine_version:
+    if not readiness.runtime_version:
         return ("home", "wrong")
-    if readiness.agent_api not in constants.SUPPORTED_API:
+    if readiness.api_version not in constants.SUPPORTED_API:
         return ("home", "wrong")
     return ("home", "running")
 
@@ -147,10 +147,10 @@ def inspect_folder(path) -> dict:
     return {"name": root.name, "files": files, "bytes": total}
 
 
-# Forwarded by the providers for their own use. A user who takes AGENT_PORT
-# severs the host from the agent, and every screen afterwards reads as "can't
-# reach the kitchen" with nothing pointing at the cause.
-RESERVED_HOST_PORTS = frozenset({constants.AGENT_PORT, constants.EDGE_PORT})
+# Forwarded by the providers for their own use. A user who takes API_PORT
+# severs the host from the api service, and every screen afterwards reads as
+# "can't reach the kitchen" with nothing pointing at the cause.
+RESERVED_HOST_PORTS = frozenset({constants.API_PORT, constants.EDGE_PORT})
 
 
 def validate_port(guest: int, host_port: int,

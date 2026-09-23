@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+from host.core.constants import API_UNCONFIGURED
+
 # Resolved from this module rather than from cli.py: cli.py is the frozen
 # entry script, whose __file__ points at the bundle root instead of at
 # host/, so an entry-script lookup misses the bundled template.
@@ -182,71 +184,72 @@ def reboot_gate_step(provider) -> None:
         raise RebootRequired()
 
 
-class AgentNotAccepted(RuntimeError):
-    """The agent is serving, but refuses every authenticated call and a
+class ApiNotAccepted(RuntimeError):
+    """The API is serving, but refuses every authenticated call and a
     re-provision did not change that."""
 
 
-# The agent answers one of these when it has no usable token of its own, or
+# The API answers one of these when it has no usable token of its own, or
 # when the one this host is holding is not the one it started with. Neither
 # clears with time: the token is read once, at container startup.
-_TOKEN_CODES = frozenset({"agent_unconfigured", "unauthorized"})
+_TOKEN_CODES = frozenset({API_UNCONFIGURED, "unauthorized"})
 
 
-class AgentIncompatible(RuntimeError):
-    """The agent serves an API number this host does not speak."""
+class ApiIncompatible(RuntimeError):
+    """The API serves an API number this host does not speak."""
 
 
-# `docker compose up -d` returns before the agent container is serving, so the
+# `docker compose up -d` returns before the API container is serving, so the
 # first call after an install or a repair legitimately answers "connection
 # refused".
-AGENT_RESTART_TIMEOUT = 30.0
+API_RESTART_TIMEOUT = 30.0
 
 
 def _once_serving(call, sleep, timeout: float):
-    from host.client import AgentUnavailableError
+    from host.client import ApiUnavailableError
     deadline = time.monotonic() + timeout
     while True:
         try:
             return call()
-        except AgentUnavailableError:
+        except ApiUnavailableError:
             if time.monotonic() >= deadline:
                 raise
         sleep(1.0)
 
 
 def connect_step(provider, *, client=None, reconnect=None, sleep=time.sleep):
-    """Check the agent speaks this host's API and accepts this host's token.
+    """Check the API speaks a version this host supports and accepts this
+    host's token.
 
-    `reconnect` reinstalls the engine in repair mode -- recreating the agent so
+    `reconnect` reinstalls the runtime in repair mode -- recreating the API so
     it re-reads its token -- and returns a client holding the token the VM has
     now. Returning None keeps the current client.
     """
-    from host.client import AgentClient, AgentError
+    from host.client import ApiClient, ApiError
     from host.core import constants
 
-    client = client or AgentClient.for_provider(provider)
-    # 0.1.0 agents predate the field and serve api 1.
-    api = _once_serving(client.health, sleep, AGENT_RESTART_TIMEOUT).get("api", 1)
+    client = client or ApiClient.for_provider(provider)
+    # 0.1.0 APIs predate the field and serve api 1.
+    api = _once_serving(client.health, sleep, API_RESTART_TIMEOUT).get("api", 1)
     if api not in constants.SUPPORTED_API:
         supported = ", ".join(str(n) for n in sorted(constants.SUPPORTED_API))
-        raise AgentIncompatible(
+        raise ApiIncompatible(
             "This app and the Omelet service inside the virtual machine are "
             "versions that cannot work together.\n"
             f"service API {api}, app supports {supported}")
     # /health skips the token check; /version is the cheapest route that does not.
     try:
         client.version()
-    except AgentError as e:
+    except ApiError as e:
         if e.code not in _TOKEN_CODES or reconnect is None:
             raise
         client = reconnect() or client
         try:
-            _once_serving(client.version, sleep, AGENT_RESTART_TIMEOUT)
-        except AgentError as again:
+            _once_serving(client.version, sleep, API_RESTART_TIMEOUT)
+        except ApiError as again:
             if again.code not in _TOKEN_CODES:
                 raise
-            raise AgentNotAccepted(
+            raise ApiNotAccepted(
                 "The Omelet service inside the virtual machine did not accept "
                 "this computer, and setting the virtual machine up again did "
                 f"not change that.\n{again.message}") from again
@@ -296,15 +299,15 @@ def _await_http_ok(url: str, http_get, timeout: float, sleep) -> None:
 def verify_step(provider, template_dir: Path, domain: str, *, client=None,
                 http_get=_default_http_get, ready_timeout: float = READY_TIMEOUT,
                 sleep=time.sleep) -> None:
-    """Run the bundled template through the agent and require HTTP 200.
+    """Run the bundled template through the API and require HTTP 200.
 
     The gate is the response the user's browser would get, not the job's own
     verdict: a container can run happily while its URL answers a proxy error.
     """
-    from host.client import AgentClient, JobFailedError
+    from host.client import ApiClient, JobFailedError
     from host.core.constants import VERIFY_PROJECT_ID
 
-    client = client or AgentClient.for_provider(provider)
+    client = client or ApiClient.for_provider(provider)
     try:
         client.ensure_project(VERIFY_PROJECT_ID, domain=domain)
         client.upload_directory(VERIFY_PROJECT_ID, template_dir)
@@ -318,7 +321,7 @@ def verify_step(provider, template_dir: Path, domain: str, *, client=None,
                 f"status: {status}" + (f"\n{e}" if str(e) else "")) from e
         problem = result.get("problem")
         if problem:
-            # The containers started, but the agent already probed the URL
+            # The containers started, but the API already probed the URL
             # through Traefik and knows why it will not answer. Waiting out
             # the readiness window to report "did not respond" would replace
             # that explanation with a symptom.
@@ -461,7 +464,7 @@ def default_steps(provider, *, cache_dir, template_dir: Path, domain,
     steps += [
         step("create_vm", lambda: _ensure_vm_running(provider), always_run=True),
         step("bootstrap", lambda: _bootstrap(provider), always_run=True),
-        # Before verify: a mismatched or refusing agent is one sentence here,
+        # Before verify: a mismatched or refusing API is one sentence here,
         # not a 404 or 401 minutes into the smoke test.
         step("connect", lambda: connect_step(
             provider, reconnect=lambda: _reconnect(provider)),
@@ -493,10 +496,10 @@ def _bootstrap(provider, *, repair: bool = False) -> None:
 
 
 def _reconnect(provider):
-    """Reinstall in repair mode, which recreates the agent container so it
+    """Reinstall in repair mode, which recreates the API container so it
     re-reads its token, then dial it with the token the VM holds now (the
     client caches the one it was built with)."""
-    from host.client import AgentClient
+    from host.client import ApiClient
 
     _bootstrap(provider, repair=True)
-    return AgentClient.for_provider(provider)
+    return ApiClient.for_provider(provider)

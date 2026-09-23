@@ -110,7 +110,7 @@ def test_rootfs_is_set_outside_the_download_step(tmp_path):
 
 def test_the_proving_steps_run_again_on_a_re_run(tmp_path):
     # A user whose VM broke re-runs setup; skipping verify would report success
-    # while proving nothing, and the VM's agent can have changed since the run
+    # while proving nothing, and the VM's API can have changed since the run
     # that recorded the compatibility check.
     state = InstallState(tmp_path / "state.json")
     provider = FakeProvider()

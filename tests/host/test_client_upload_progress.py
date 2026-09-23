@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import io
 
-from host.client import AgentClient
+from host.client import ApiClient
 
 
 class FakeResponse(io.BytesIO):
@@ -40,7 +40,7 @@ class FakeOpener:
 
 
 def _client(opener):
-    return AgentClient("token", opener=opener)
+    return ApiClient("token", opener=opener)
 
 
 def test_both_phases_report(tmp_path):

@@ -1,10 +1,10 @@
 """What the frozen builds are allowed to contain.
 
-The agent ships as a Docker image the VM pulls and the engine is fetched by the
-VM itself; neither is ever frozen into the host binary. Nothing enforced that
-except the import-boundary test, which says nothing about `datas` -- and `datas`
-is how two host-side compose files came to sit under `agent/` and get bundled
-from there.
+The API ships as a Docker image the VM pulls and the rest of the runtime is
+fetched by the VM itself; neither is ever frozen into the host binary. Nothing
+enforced that except the import-boundary test, which says nothing about
+`datas` -- and `datas` is how two host-side compose files came to sit under
+what was then `agent/` and get bundled from there.
 
 Every spec is checked, not just the one whose platform someone is on: a mac
 build that bundles the wrong thing is invisible from Windows and the other way
@@ -34,16 +34,15 @@ def test_there_is_a_spec_to_check():
 
 
 @pytest.mark.parametrize("spec", SPECS, ids=lambda s: s.parent.name)
-def test_the_frozen_binary_bundles_nothing_from_the_agent_or_the_engine(spec):
+def test_the_frozen_binary_bundles_nothing_from_runtime(spec):
     entries = _datas(spec)
     assert entries, "the spec bundles no assets at all -- this test guards nothing"
-    offenders = [src for src, dest in entries
-                 if "agent/" in src or "engine/" in src
-                 or dest.startswith(("agent", "engine"))]
+    offenders = [(src, dest) for src, dest in entries
+                 if "runtime/" in src or dest.startswith("runtime")]
     assert not offenders, (
         f"the frozen host binary bundles VM-side files: {offenders}. The VM "
-        "pulls the agent image and fetches the engine itself; a copy in the "
-        "host would need a desktop release to change.")
+        "pulls the API image and fetches the rest of the runtime itself; a "
+        "copy in the host would need a desktop release to change.")
 
 
 @pytest.mark.parametrize("spec", SPECS, ids=lambda s: s.parent.name)

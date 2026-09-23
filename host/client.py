@@ -1,11 +1,11 @@
-"""The host's side of the host/agent seam: the token read, and the HTTP client.
+"""The host's side of the host/API seam: the token read, and the HTTP client.
 
 Built on `urllib.request` deliberately. The host ships as a PyInstaller-frozen
-binary, so every dependency it declares lands in that binary; the agent, which
+binary, so every dependency it declares lands in that binary; the API, which
 ships as a Docker image, is the side that is free to grow one.
 
-Nothing here imports `agent/` -- the agent is reached over HTTP, and its API is
-the only contract between the two.
+Nothing here imports `omelet_api/` -- the API is reached over HTTP, and its
+routes are the only contract between the two.
 """
 
 from __future__ import annotations
@@ -23,9 +23,9 @@ from pathlib import Path
 from .core import constants
 from .core.provider import VmProvider
 
-# WSL2's localhostForwarding (and Lima's portForwards) surface the agent's
+# WSL2's localhostForwarding (and Lima's portForwards) surface the API's
 # guest socket on the host at the same port, so the host always dials loopback.
-AGENT_URL = f"http://127.0.0.1:{constants.AGENT_PORT}"
+API_URL = f"http://127.0.0.1:{constants.API_PORT}"
 
 # Ordinary calls are metadata-sized and should fail fast when the VM is wedged.
 REQUEST_TIMEOUT = 30.0
@@ -42,14 +42,14 @@ BUSY_RETRY_TIMEOUT = 60.0
 BUSY_RETRY_INTERVAL = 1.0
 
 
-class AgentUnavailableError(RuntimeError):
-    """The agent could not be reached at all: no token to authenticate with,
+class ApiUnavailableError(RuntimeError):
+    """The API could not be reached at all: no token to authenticate with,
     or nothing listening. Raised instead of a socket error or a bare 401 so
     the first symptom a user sees names the VM, not the transport."""
 
 
-class AgentError(RuntimeError):
-    """A structured failure from the agent: its own code and its own sentence."""
+class ApiError(RuntimeError):
+    """A structured failure from the API: its own code and its own sentence."""
 
     def __init__(self, code: str, message: str, status: int):
         super().__init__(message)
@@ -74,7 +74,7 @@ class JobTimeoutError(RuntimeError):
 
 
 def read_token(provider: VmProvider) -> str:
-    """Read `/opt/omelet/agent.token` fresh, once, via `provider.exec()`.
+    """Read `/opt/omelet/api.token` fresh, once, via `provider.exec()`.
 
     Never cached to the host filesystem: a copy at rest is a second secret to
     protect and a second thing to go stale after a VM rebuild. One `wsl.exe`
@@ -86,8 +86,8 @@ def read_token(provider: VmProvider) -> str:
     result = provider.exec(["cat", constants.GUEST_TOKEN], root=True)
     token = result.stdout.strip() if result.ok else ""
     if not token:
-        raise AgentUnavailableError(
-            "the VM has no agent token -- it may not be provisioned yet; "
+        raise ApiUnavailableError(
+            "the VM has no API token -- it may not be provisioned yet; "
             "run setup and try again")
     return token
 
@@ -97,26 +97,26 @@ def auth_header(token: str) -> dict[str, str]:
 
 
 def project_id_for(name: str) -> str:
-    """The same slug rule the agent applies to an id or a directory name.
-    Duplicated rather than imported (nothing under `host/` imports `agent/`)
-    and held equal by a test: the host needs the id before it can ask for the
-    project it just tried to create."""
+    """The same slug rule the API applies to an id or a directory name.
+    Duplicated rather than imported (nothing under `host/` imports
+    `omelet_api/`) and held equal by a test: the host needs the id before it
+    can ask for the project it just tried to create."""
     return re.sub(r"[^a-z0-9-]+", "-", name.strip().lower()).strip("-")
 
 
-# Two agent codes have a known real-world cause the agent cannot know about,
-# and their own wording ("missing or invalid bearer token") tells a
-# non-technical user nothing they can act on.
+# Two of the API's error codes have a known real-world cause the API cannot
+# know about, and their own wording ("missing or invalid bearer token") tells
+# a non-technical user nothing they can act on.
 _GUIDANCE = {
     "unauthorized": "The VM no longer accepts this token, which usually means "
                     "the VM was rebuilt. Run `omelet setup` to reconnect.",
-    "agent_unconfigured": "The VM has not finished setting itself up. "
-                          "Run `omelet setup`.",
+    constants.API_UNCONFIGURED: "The VM has not finished setting itself up. "
+                                "Run `omelet setup`.",
 }
 
 
-def _agent_error(exc: urllib.error.HTTPError) -> AgentError:
-    """Every non-2xx body from the agent is `{"error": {"code", "message"}}`.
+def _api_error(exc: urllib.error.HTTPError) -> ApiError:
+    """Every non-2xx body from the API is `{"error": {"code", "message"}}`.
     Anything else answering on this port (a proxy, a crashed server) must
     still come out as a readable failure rather than a JSONDecodeError."""
     try:
@@ -124,11 +124,11 @@ def _agent_error(exc: urllib.error.HTTPError) -> AgentError:
         code, message = str(error["code"]), str(error["message"])
         guidance = _GUIDANCE.get(code)
         if guidance:
-            message = f"{guidance} (the agent said: {message})"
-        return AgentError(code, message, exc.code)
+            message = f"{guidance} (the API said: {message})"
+        return ApiError(code, message, exc.code)
     except (OSError, ValueError, KeyError, TypeError):
-        return AgentError("http_error",
-                          f"the agent answered HTTP {exc.code} ({exc.reason})",
+        return ApiError("http_error",
+                          f"the API answered HTTP {exc.code} ({exc.reason})",
                           exc.code)
 
 
@@ -139,7 +139,7 @@ def _agent_error(exc: urllib.error.HTTPError) -> AgentError:
 EXCLUDED_DIRS = frozenset({".git", "node_modules", ".venv", "__pycache__"})
 # The overlay is generated inside the VM on every `compose_up`. `.omelet/` as a
 # whole is NOT excluded: `.omelet/project.yml` is the user's own configuration
-# and the agent reads it to resolve web services.
+# and the API reads it to resolve web services.
 EXCLUDED_FILES = frozenset({".omelet/overlay.yml"})
 
 
@@ -176,10 +176,10 @@ class _CountingReader:
         return chunk
 
 
-class AgentClient:
+class ApiClient:
     """Every route the CLI needs, and no transport detail above this line."""
 
-    def __init__(self, token: str, *, base_url: str = AGENT_URL, opener=None,
+    def __init__(self, token: str, *, base_url: str = API_URL, opener=None,
                  sleep=time.sleep, monotonic=time.monotonic):
         self._token = token
         self._base = base_url.rstrip("/")
@@ -190,7 +190,7 @@ class AgentClient:
         self._monotonic = monotonic
 
     @classmethod
-    def for_provider(cls, provider: VmProvider, **kwargs) -> "AgentClient":
+    def for_provider(cls, provider: VmProvider, **kwargs) -> "ApiClient":
         return cls(read_token(provider), **kwargs)
 
     # -- transport ---------------------------------------------------------
@@ -206,11 +206,11 @@ class AgentClient:
         try:
             return self._opener.open(request, timeout=timeout)
         except urllib.error.HTTPError as e:
-            raise _agent_error(e) from None
+            raise _api_error(e) from None
         except (urllib.error.URLError, OSError) as e:
             reason = getattr(e, "reason", e)
-            raise AgentUnavailableError(
-                f"could not reach the Omelet agent at {self._base} ({reason}). "
+            raise ApiUnavailableError(
+                f"could not reach the Omelet API at {self._base} ({reason}). "
                 "The VM may be stopped -- run `omelet vm start`, or run setup "
                 "again if this is a new machine.") from e
 
@@ -237,7 +237,7 @@ class AgentClient:
         while True:
             try:
                 return call()
-            except AgentError as e:
+            except ApiError as e:
                 if e.code != "project_busy" or self._monotonic() >= deadline:
                     raise
             self._sleep(BUSY_RETRY_INTERVAL)
@@ -267,7 +267,7 @@ class AgentClient:
         that is already known is the ordinary case, not an error."""
         try:
             return self.create_project(project_id, **kwargs)
-        except AgentError as e:
+        except ApiError as e:
             if e.code != "project_exists":
                 raise
         return self.get_project(project_id_for(project_id))
@@ -279,7 +279,7 @@ class AgentClient:
         return self._call("GET", f"/projects/{project_id}")
 
     def delete_project(self, project_id: str) -> dict:
-        """Synchronous by design on the agent side: `compose down` is bounded
+        """Synchronous by design on the API side: `compose down` is bounded
         by container stop timeouts, not by an image build."""
         return self._while_busy(
             lambda: self._call("DELETE", f"/projects/{project_id}",

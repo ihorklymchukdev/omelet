@@ -10,7 +10,7 @@ from host.core.status import Readiness
 from host.desktop.api import DesktopApi
 
 READY = Readiness(vm_exists=True, vm_reachable=True,
-                  engine_version="engine-v0.1.0", agent_api=1)
+                  runtime_version="runtime-v0.1.0", api_version=1)
 
 
 class FakeProvider:
@@ -49,12 +49,12 @@ def test_home_carries_the_versions_the_odds_and_ends_row_shows(tmp_path):
     from host.core import constants
     home = _api(tmp_path, READY).home()
     assert home["app_version"] == constants.APP_VERSION
-    assert home["engine_version"] == "engine-v0.1.0"
+    assert home["runtime_version"] == "runtime-v0.1.0"
 
 
 def test_home_passes_the_probe_problem_through_for_the_log(tmp_path):
     readiness = Readiness(vm_exists=True, vm_reachable=True,
-                          engine_version="engine-v0.1.0",
+                          runtime_version="runtime-v0.1.0",
                           problem="connection refused")
     home = _api(tmp_path, readiness).home()
     assert home["route"] == "unreachable"
@@ -84,7 +84,7 @@ def test_the_resume_flag_is_consumed_by_the_first_home_call(tmp_path):
     assert api.home()["resumed"] is False
 
 
-def test_open_omelet_opens_the_edge_port_not_the_agent_port(tmp_path):
+def test_open_omelet_opens_the_edge_port_not_the_api_port(tmp_path):
     from host.core import constants
     opened = []
     _api(tmp_path, READY, opened=opened).open_omelet()
@@ -116,12 +116,12 @@ def test_open_omelet_carries_a_handoff_code_in_the_fragment(tmp_path):
     assert opened == [f"http://localhost:{constants.EDGE_PORT}/#handoff=abc"]
 
 
-def test_open_omelet_still_opens_the_page_on_an_agent_without_handoff(tmp_path):
-    # An agent older than the route answers 404; the page must still open and
+def test_open_omelet_still_opens_the_page_on_an_api_without_handoff(tmp_path):
+    # An API older than the route answers 404; the page must still open and
     # show its own sign-in screen.
-    from host.client import AgentError
+    from host.client import ApiError
     from host.core import constants
     opened = []
-    client = _HandoffClient(error=AgentError("not_found", "no route", 404))
+    client = _HandoffClient(error=ApiError("not_found", "no route", 404))
     _api_with_client(tmp_path, client, opened).open_omelet()
     assert opened == [f"http://localhost:{constants.EDGE_PORT}"]

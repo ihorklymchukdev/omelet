@@ -1,12 +1,12 @@
-"""The host's check that the agent in the VM speaks its API and accepts its
-token -- turned into one sentence before the slow smoke test."""
+"""The host's check that the API in the VM speaks its own API version and
+accepts its token -- turned into one sentence before the slow smoke test."""
 from __future__ import annotations
 
 import pytest
 
-from host.client import AgentError, AgentUnavailableError
+from host.client import ApiError, ApiUnavailableError
 from host.core import constants
-from host.core.install import AgentIncompatible, AgentNotAccepted, connect_step
+from host.core.install import ApiIncompatible, ApiNotAccepted, connect_step
 
 
 class FakeClient:
@@ -28,33 +28,33 @@ class FakeClient:
         return answer
 
 
-def _refused(code: str) -> AgentError:
-    return AgentError(code, "missing or invalid bearer token", 401)
+def _refused(code: str) -> ApiError:
+    return ApiError(code, "missing or invalid bearer token", 401)
 
 
-def test_an_agent_on_another_api_is_reported_and_never_repaired():
+def test_an_api_on_another_version_is_reported_and_never_repaired():
     unsupported = max(constants.SUPPORTED_API) + 1
     reconnects = []
-    with pytest.raises(AgentIncompatible) as excinfo:
+    with pytest.raises(ApiIncompatible) as excinfo:
         connect_step(None, client=FakeClient(health={"status": "ok", "api": unsupported}),
                      reconnect=lambda: reconnects.append("reconnect"))
     assert str(unsupported) in str(excinfo.value), "support needs the number"
-    assert reconnects == [], "reinstalling the same engine cannot change its API"
+    assert reconnects == [], "reinstalling the same runtime cannot change its API"
 
 
-def test_an_agent_from_before_the_api_number_counts_as_api_1():
+def test_an_api_from_before_the_api_number_counts_as_api_1():
     assert connect_step(None, client=FakeClient(health={"status": "ok"})) is None
 
 
-def test_a_matching_agent_that_accepts_this_host_is_left_alone():
+def test_a_matching_api_that_accepts_this_host_is_left_alone():
     reconnects = []
     assert connect_step(None, client=FakeClient("0.1.0"),
                         reconnect=lambda: reconnects.append("reconnect")) is None
     assert reconnects == []
 
 
-def test_an_agent_refusing_this_host_is_reconnected_once():
-    # /health skips the token check, so restart:always never restarts an agent
+def test_an_api_refusing_this_host_is_reconnected_once():
+    # /health skips the token check, so restart:always never restarts an API
     # that refuses every other route; only a repair recreates it.
     reconnects = []
 
@@ -62,14 +62,14 @@ def test_an_agent_refusing_this_host_is_reconnected_once():
         reconnects.append("reconnect")
         return FakeClient("0.1.0")
 
-    message = connect_step(None, client=FakeClient(_refused("agent_unconfigured")),
+    message = connect_step(None, client=FakeClient(_refused("api_unconfigured")),
                            reconnect=reconnect)
     assert reconnects == ["reconnect"]
     assert "reconnected" in message
 
 
-def test_an_agent_still_refusing_after_the_reconnect_says_what_was_wrong():
-    with pytest.raises(AgentNotAccepted) as excinfo:
+def test_an_api_still_refusing_after_the_reconnect_says_what_was_wrong():
+    with pytest.raises(ApiNotAccepted) as excinfo:
         connect_step(None, client=FakeClient(_refused("unauthorized")),
                      reconnect=lambda: FakeClient(_refused("unauthorized")))
     assert "did not accept this computer" in str(excinfo.value)
@@ -77,16 +77,16 @@ def test_an_agent_still_refusing_after_the_reconnect_says_what_was_wrong():
 
 def test_an_error_that_is_not_about_the_token_is_not_repaired():
     reconnects = []
-    with pytest.raises(AgentError):
-        connect_step(None, client=FakeClient(AgentError("internal", "boom", 500)),
+    with pytest.raises(ApiError):
+        connect_step(None, client=FakeClient(ApiError("internal", "boom", 500)),
                      reconnect=lambda: reconnects.append("reconnect"))
     assert reconnects == []
 
 
-def test_the_agent_restarting_after_the_reconnect_is_waited_out():
+def test_the_api_restarting_after_the_reconnect_is_waited_out():
     # The recreated container is not serving yet when the repair returns.
     slept = []
-    restarted = FakeClient(AgentUnavailableError("connection refused"), "0.1.0")
+    restarted = FakeClient(ApiUnavailableError("connection refused"), "0.1.0")
     message = connect_step(None, client=FakeClient(_refused("unauthorized")),
                            reconnect=lambda: restarted, sleep=slept.append)
     assert slept, "the restart must be waited out, not reported as a failure"

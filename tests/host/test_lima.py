@@ -84,7 +84,7 @@ def test_the_lima_config_forwards_exactly_the_ports_the_host_dials():
     pairs = {(int(g), int(h)) for g, h in re.findall(
         r"guestPort:\s*(\d+)\s*\n\s*hostPort:\s*(\d+)", config)}
     assert pairs == {(constants.EDGE_PORT, constants.EDGE_PORT),
-                     (constants.AGENT_PORT, constants.AGENT_PORT)}
+                     (constants.API_PORT, constants.API_PORT)}
 
 
 # --- finding limactl when there is no shell PATH ---

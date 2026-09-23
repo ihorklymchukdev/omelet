@@ -25,16 +25,16 @@ def _dependency_names() -> set[str]:
 
 def test_host_dependencies_exclude_web_framework():
     # The host ships as a PyInstaller-frozen binary; every declared dependency
-    # lands in it. fastapi/uvicorn belong to the agent's Docker image only.
+    # lands in it. fastapi/uvicorn belong to the API's Docker image only.
     names = _dependency_names()
     assert "fastapi" not in names
     assert "uvicorn" not in names
 
 
 def test_host_declares_no_yaml_parser():
-    # Compose files are parsed by the agent; host/providers/omelet.yaml is only
+    # Compose files are parsed by the API; host/providers/omelet.yaml is only
     # ever handed to limactl as a path. A declared parser invites the next
-    # host-side parse of a file the agent owns.
+    # host-side parse of a file the API owns.
     assert "pyyaml" not in _dependency_names()
 
 
@@ -65,7 +65,7 @@ def test_packaging_specs_bundle_the_desktop_ui():
 
 def test_no_host_module_imports_yaml():
     # The dependency assertion above is only half of it: an import that is not
-    # declared still works in a dev checkout (the agent package installs
+    # declared still works in a dev checkout (the API package installs
     # pyyaml) and only fails in the frozen binary, on a user's machine.
     offenders = []
     for py in sorted((REPO_ROOT / "host").rglob("*.py")):

@@ -2,7 +2,7 @@
 name = "omelet"
 version = "0.1.0"
 requires-python = ">=3.12"
-# The host parses no YAML: compose files are read by the agent, and
+# The host parses no YAML: compose files are read by the API, and
 # host/providers/omelet.yaml is handed to limactl as a path.
 #
 # pywebview is the desktop window; it has no bindings of its own and needs a
@@ -34,6 +34,7 @@ include = ["host*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["runtime"]
 filterwarnings = [
     "ignore:The configuration option \"asyncio_default_fixture_loop_scope\" is unset:DeprecationWarning",
 ]

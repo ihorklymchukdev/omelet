@@ -1,15 +1,15 @@
 """Is this machine set up? Asked cheaply, and answered without raising.
 
 The window calls this before it draws anything, so a provider that throws, a
-VM that is gone and an agent that is silent all have to come back as facts.
+VM that is gone and an API that is silent all have to come back as facts.
 """
 from host.core.provider import Completed
 from host.core.status import Readiness, probe
 
 
 class FakeProvider:
-    def __init__(self, *, exists=True, reachable=True, engine="0.1.0", running=True):
-        self._exists, self._reachable, self._engine = exists, reachable, engine
+    def __init__(self, *, exists=True, reachable=True, runtime="0.1.0", running=True):
+        self._exists, self._reachable, self._runtime = exists, reachable, runtime
         self._running = running
         self.calls = []
 
@@ -24,7 +24,7 @@ class FakeProvider:
         if not self._reachable:
             return Completed(1, "", "the VM is not running")
         if argv[0] == "cat":
-            return (Completed(0, self._engine, "") if self._engine
+            return (Completed(0, self._runtime, "") if self._runtime
                     else Completed(1, "", "No such file or directory"))
         return Completed(0, "", "")
 
@@ -32,7 +32,7 @@ class FakeProvider:
 class RaisingExecProvider:
     """A provider that exists, but blows up on one particular `exec` call --
     for the escape paths past `exists()` returning True, which the fixed
-    `_reachable`/`_engine` knobs on `FakeProvider` can't reach."""
+    `_reachable`/`_runtime` knobs on `FakeProvider` can't reach."""
 
     def __init__(self, *, fail_on: str):
         self._fail_on = fail_on
@@ -79,7 +79,7 @@ def _client_returning(health):
 def test_a_provisioned_machine_is_ready():
     result = probe(FakeProvider(), client_factory=_client())
     assert result == Readiness(vm_exists=True, vm_reachable=True,
-                               engine_version="0.1.0", agent_api=1)
+                               runtime_version="0.1.0", api_version=1)
     assert result.ready
 
 
@@ -94,20 +94,20 @@ def test_a_missing_vm_stops_before_touching_the_guest():
 def test_a_vm_that_is_not_running_is_not_ready():
     result = probe(FakeProvider(reachable=False), client_factory=_client())
     assert result.vm_exists and not result.vm_reachable
-    assert result.engine_version is None
+    assert result.runtime_version is None
     assert not result.ready
 
 
-def test_a_vm_without_the_engine_is_not_ready():
-    result = probe(FakeProvider(engine=""), client_factory=_client())
-    assert result.vm_reachable and result.engine_version is None
+def test_a_vm_without_the_runtime_is_not_ready():
+    result = probe(FakeProvider(runtime=""), client_factory=_client())
+    assert result.vm_reachable and result.runtime_version is None
     assert not result.ready
 
 
-def test_a_silent_agent_is_not_ready_and_the_reason_is_kept():
+def test_a_silent_api_is_not_ready_and_the_reason_is_kept():
     result = probe(FakeProvider(), client_factory=_client(error=OSError("refused")))
-    assert result.engine_version == "0.1.0"
-    assert result.agent_api is None
+    assert result.runtime_version == "0.1.0"
+    assert result.api_version is None
     assert "refused" in result.problem
     assert not result.ready
 
@@ -130,7 +130,7 @@ def test_probe_never_raises_when_the_reachability_check_throws():
     result = probe(RaisingExecProvider(fail_on="true"), client_factory=_client())
     assert not result.ready
     assert result.vm_exists and not result.vm_reachable
-    assert result.engine_version is None
+    assert result.runtime_version is None
     assert "true failed" in result.problem
 
 
@@ -140,7 +140,7 @@ def test_probe_never_raises_when_the_marker_read_throws():
     result = probe(RaisingExecProvider(fail_on="cat"), client_factory=_client())
     assert not result.ready
     assert result.vm_exists and result.vm_reachable
-    assert result.engine_version is None
+    assert result.runtime_version is None
     assert "cat failed" in result.problem
 
 
@@ -150,8 +150,8 @@ def test_probe_never_raises_when_the_client_factory_itself_throws():
                    client_factory=_client_factory_raising(OSError("no route to host")))
     assert not result.ready
     assert result.vm_exists and result.vm_reachable
-    assert result.engine_version == "0.1.0"
-    assert result.agent_api is None
+    assert result.runtime_version == "0.1.0"
+    assert result.api_version is None
     assert "no route to host" in result.problem
 
 
@@ -160,16 +160,16 @@ def test_probe_never_raises_when_health_answers_with_no_usable_api_field():
         result = probe(FakeProvider(), client_factory=_client_returning(shapeless))
         assert not result.ready
         assert result.vm_exists and result.vm_reachable
-        assert result.engine_version == "0.1.0"
-        assert result.agent_api is None
+        assert result.runtime_version == "0.1.0"
+        assert result.api_version is None
         assert result.problem, f"expected a problem recorded for {shapeless!r}"
 
 
-def test_an_unsupported_agent_api_is_not_ready():
+def test_an_unsupported_api_version_is_not_ready():
     from host.core import constants
     unsupported = max(constants.SUPPORTED_API) + 1
     result = probe(FakeProvider(), client_factory=_client(health={"api": unsupported}))
-    assert result.agent_api == unsupported
+    assert result.api_version == unsupported
     assert not result.ready
 
 

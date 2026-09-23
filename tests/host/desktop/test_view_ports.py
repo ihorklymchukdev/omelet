@@ -2,7 +2,7 @@
 
 The reserved pair is the one that matters: the providers forward 39099 and
 39080 for themselves, and a user who takes 39099 silently severs the host from
-the agent -- every screen afterwards reads as "can't reach the kitchen" with
+the API -- every screen afterwards reads as "can't reach the kitchen" with
 no clue why.
 """
 from __future__ import annotations
@@ -33,8 +33,8 @@ def test_the_same_host_port_is_refused_even_for_a_different_guest_port():
     assert validate_port(9999, 3000, [(3000, 3000)]) == "duplicate"
 
 
-def test_the_agent_port_may_not_be_taken():
-    assert validate_port(1234, constants.AGENT_PORT, []) == "reserved"
+def test_the_api_port_may_not_be_taken():
+    assert validate_port(1234, constants.API_PORT, []) == "reserved"
 
 
 def test_the_edge_port_may_not_be_taken():

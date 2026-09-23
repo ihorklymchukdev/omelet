@@ -1,6 +1,6 @@
 import pytest
 
-from host.client import AgentUnavailableError, read_token
+from host.client import ApiUnavailableError, read_token
 from host.core.provider import Completed
 
 
@@ -18,7 +18,7 @@ def test_read_token_reads_as_root_from_the_token_path_and_strips_it():
     provider = FakeProvider(Completed(0, "sekret\n", ""))
     assert read_token(provider) == "sekret"
     (argv, root), = provider.execs
-    assert argv == ["cat", "/opt/omelet/agent.token"]
+    assert argv == ["cat", "/opt/omelet/api.token"]
     assert root is True
 
 
@@ -26,15 +26,15 @@ def test_read_token_raises_when_the_guest_command_fails():
     # A missing file, or the VM not existing at all, must not read as an
     # empty-but-valid token.
     provider = FakeProvider(Completed(1, "", "No such file or directory"))
-    with pytest.raises(AgentUnavailableError):
+    with pytest.raises(ApiUnavailableError):
         read_token(provider)
 
 
 def test_read_token_raises_on_an_empty_token_even_when_the_command_succeeds():
-    # A zero-length token file (the agent's own unconfigured state) must not
+    # A zero-length token file (the API's own unconfigured state) must not
     # be treated as a usable credential either.
     provider = FakeProvider(Completed(0, "", ""))
-    with pytest.raises(AgentUnavailableError):
+    with pytest.raises(ApiUnavailableError):
         read_token(provider)
 
 
@@ -48,7 +48,7 @@ import json
 import tarfile
 import urllib.error
 
-from host.client import (AgentClient, AgentError, JobFailedError,
+from host.client import (ApiClient, ApiError, JobFailedError,
                          JobTimeoutError, project_id_for)
 
 
@@ -60,7 +60,7 @@ class FakeResponse(io.BytesIO):
 
 def http_error(status: int, code: str, message: str) -> urllib.error.HTTPError:
     body = json.dumps({"error": {"code": code, "message": message}}).encode()
-    return urllib.error.HTTPError("http://agent/x", status, "reason",
+    return urllib.error.HTTPError("http://api/x", status, "reason",
                                   email.message.Message(), io.BytesIO(body))
 
 
@@ -118,16 +118,16 @@ class Clock:
         self.now += seconds
 
 
-def client(handler, clock: Clock | None = None) -> tuple[AgentClient, FakeOpener]:
+def client(handler, clock: Clock | None = None) -> tuple[ApiClient, FakeOpener]:
     opener = FakeOpener(handler)
     clock = clock or Clock()
-    return (AgentClient("sekret", opener=opener, sleep=clock.sleep,
+    return (ApiClient("sekret", opener=opener, sleep=clock.sleep,
                         monotonic=clock.monotonic),
             opener)
 
 
 def test_every_request_carries_the_bearer_token_and_a_timeout():
-    # Without the header the agent answers 401; without a timeout the CLI
+    # Without the header the API answers 401; without a timeout the CLI
     # hangs forever on a wedged VM.
     c, opener = client(lambda call: {"projects": []})
     c.list_projects()
@@ -136,30 +136,30 @@ def test_every_request_carries_the_bearer_token_and_a_timeout():
     assert call.timeout is not None and call.timeout > 0
 
 
-def test_an_error_response_reports_the_agents_own_sentence():
+def test_an_error_response_reports_the_apis_own_sentence():
     c, _ = client(lambda call: http_error(404, "project_not_found",
                                           "no project with id 'blog'"))
     try:
         c.get_project("blog")
-        raise AssertionError("expected AgentError")
-    except AgentError as e:
+        raise AssertionError("expected ApiError")
+    except ApiError as e:
         assert e.code == "project_not_found"
         assert e.status == 404
         assert "no project with id 'blog'" in str(e)
         assert "HTTP Error" not in str(e)
 
 
-def test_an_error_body_that_is_not_the_agents_shape_still_reads_as_a_sentence():
+def test_an_error_body_that_is_not_the_apis_shape_still_reads_as_a_sentence():
     # A proxy or a crashed server can answer HTML; the client must not raise
     # a JSONDecodeError over the failure it was reporting.
-    bad = urllib.error.HTTPError("http://agent/x", 502, "Bad Gateway",
+    bad = urllib.error.HTTPError("http://api/x", 502, "Bad Gateway",
                                  email.message.Message(),
                                  io.BytesIO(b"<html>nope</html>"))
     c, _ = client(lambda call: bad)
     try:
         c.list_projects()
-        raise AssertionError("expected AgentError")
-    except AgentError as e:
+        raise AssertionError("expected ApiError")
+    except ApiError as e:
         assert e.status == 502
         assert str(e).strip()
 
@@ -169,8 +169,8 @@ def test_a_refused_connection_says_the_vm_is_not_running():
         ConnectionRefusedError(111, "Connection refused")))
     try:
         c.list_projects()
-        raise AssertionError("expected AgentUnavailableError")
-    except AgentUnavailableError as e:
+        raise AssertionError("expected ApiUnavailableError")
+    except ApiUnavailableError as e:
         assert "VM" in str(e)
 
 
@@ -230,8 +230,8 @@ def test_a_project_that_stays_busy_is_finally_reported():
                   clock)
     try:
         c.project_up("blog")
-        raise AssertionError("expected AgentError")
-    except AgentError as e:
+        raise AssertionError("expected ApiError")
+    except ApiError as e:
         assert e.code == "project_busy"
 
 
@@ -250,12 +250,12 @@ def test_upload_directory_sends_a_tar_gz_of_the_directory_contents(tmp_path):
     with tarfile.open(fileobj=io.BytesIO(call.body), mode="r:gz") as tar:
         names = sorted(tar.getnames())
     # Contents at the archive root, not nested under the local folder name:
-    # the agent extracts straight into the project directory.
+    # the API extracts straight into the project directory.
     assert "docker-compose.yml" in names and "app/index.html" in names
 
 
 def test_an_upload_onto_a_busy_project_is_retried_with_the_whole_archive(tmp_path):
-    # The agent refuses a write while a job holds the project, so `up` on a
+    # The API refuses a write while a job holds the project, so `up` on a
     # project that is still stopping must retry -- and retry the archive from
     # the start, not from wherever the first attempt left the file.
     (tmp_path / "docker-compose.yml").write_text("services: {}\n")
@@ -277,7 +277,7 @@ def test_an_upload_onto_a_busy_project_is_retried_with_the_whole_archive(tmp_pat
 def test_the_upload_leaves_out_repositories_caches_and_the_generated_overlay(
         tmp_path):
     # A repository's object store re-sent on every `up` is silently slow, can
-    # trip the agent's upload cap on a project that is trivial to run, and
+    # trip the API's upload cap on a project that is trivial to run, and
     # carries .git/config credentials into the VM.
     (tmp_path / "docker-compose.yml").write_text("services: {}\n")
     for rel in (".git/objects/blob", "node_modules/pkg/index.js",
@@ -295,7 +295,7 @@ def test_the_upload_leaves_out_repositories_caches_and_the_generated_overlay(
 
     assert names == {"docker-compose.yml", "app", "app/index.html",
                      ".omelet", ".omelet/project.yml"}, names
-    # project.yml is the user's own configuration and the agent resolves web
+    # project.yml is the user's own configuration and the API resolves web
     # services from it; only the generated overlay is dropped.
     assert ".omelet/project.yml" in names
 
@@ -305,21 +305,21 @@ def test_a_stale_token_is_reported_with_the_command_that_fixes_it():
                                           "missing or invalid bearer token"))
     try:
         c.list_projects()
-        raise AssertionError("expected AgentError")
-    except AgentError as e:
+        raise AssertionError("expected ApiError")
+    except ApiError as e:
         assert e.code == "unauthorized"
         assert "omelet setup" in str(e)
-        # The agent's own wording is kept, not replaced.
+        # The API's own wording is kept, not replaced.
         assert "bearer token" in str(e)
 
 
-def test_an_unconfigured_agent_says_setup_has_not_finished():
+def test_an_unconfigured_api_says_setup_has_not_finished():
     c, _ = client(lambda call: http_error(
-        503, "agent_unconfigured", "the agent has no token configured"))
+        503, "api_unconfigured", "the API has no token configured"))
     try:
         c.list_projects()
-        raise AssertionError("expected AgentError")
-    except AgentError as e:
+        raise AssertionError("expected ApiError")
+    except ApiError as e:
         assert "omelet setup" in str(e)
 
 
@@ -337,7 +337,7 @@ def test_ensure_project_tolerates_one_that_already_exists():
     assert seen == [("POST", "/projects"), ("GET", "/projects/blog")]
 
 
-def test_project_id_matches_the_rule_the_agent_slugs_with():
-    from agent.core.project import _slug
+def test_project_id_matches_the_rule_the_api_slugs_with():
+    from omelet_api.core.project import _slug
     for name in ("My Blog", "blog", "  Spaced Out  ", "a_b.c", "UPPER"):
         assert project_id_for(name) == _slug(name)

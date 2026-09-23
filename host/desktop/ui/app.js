@@ -25,15 +25,15 @@ function show(screen, data) {
 }
 
 // Every [data-field] is replaced by the matching key. Values are written with
-// textContent, never innerHTML: an engine version or a provider's error text
+// textContent, never innerHTML: a runtime version or a provider's error text
 // is data, and some of it comes from a subprocess.
 function fill(root, data) {
   root.querySelectorAll('[data-field]').forEach((node) => {
     const value = data[node.dataset.field];
     if (value !== undefined && value !== null) node.textContent = String(value);
   });
-  // A section that only makes sense when its field has a value -- the engine
-  // version is empty on every machine where the engine never installed, and
+  // A section that only makes sense when its field has a value -- the runtime
+  // version is empty on every machine where the runtime never installed, and
   // its separator would otherwise render as a trailing " · ".
   root.querySelectorAll('[data-when]').forEach((node) => {
     node.hidden = !data[node.dataset.when];

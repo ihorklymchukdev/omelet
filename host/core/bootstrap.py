@@ -47,26 +47,26 @@ def _run(provider, argv, *, step: str):
 
 
 def _installed(provider) -> bool:
-    return provider.exec(["test", "-s", constants.ENGINE_MARKER], root=True).ok
+    return provider.exec(["test", "-s", constants.RUNTIME_MARKER], root=True).ok
 
 
 def bootstrap(provider, *, source: str | None = None, repair: bool = False) -> None:
-    """Install the engine in the VM unless it is already there.
+    """Install the runtime in the VM unless it is already there.
 
     `repair` reinstalls regardless and tells the installer to keep the ref it
-    has and recreate the agent container.
+    has and recreate the api container.
     """
     if not repair and _installed(provider):
         return
     url = _shell_safe(
-        source or os.environ.get("OMELET_ENGINE_URL") or constants.ENGINE_URL,
-        "OMELET_ENGINE_URL")
+        source or os.environ.get("OMELET_RUNTIME_URL") or constants.RUNTIME_URL,
+        "OMELET_RUNTIME_URL")
     assignments = []
-    ref = os.environ.get("OMELET_ENGINE_REF")
+    ref = os.environ.get("OMELET_RUNTIME_REF")
     if ref:
-        assignments.append(f"OMELET_ENGINE_REF={_shell_safe(ref, 'OMELET_ENGINE_REF')}")
+        assignments.append(f"OMELET_RUNTIME_REF={_shell_safe(ref, 'OMELET_RUNTIME_REF')}")
     if repair:
-        assignments.append("OMELET_ENGINE_REPAIR=1")
+        assignments.append("OMELET_RUNTIME_REPAIR=1")
     encoded = base64.b64encode(_STUB.encode()).decode("ascii")
     command = " ".join([*assignments, "bash", _STUB_PATH, url])
     _run(provider,
@@ -77,4 +77,4 @@ def bootstrap(provider, *, source: str | None = None, repair: bool = False) -> N
     if not _installed(provider):
         raise BootstrapError(
             "the Omelet installer reported success but left no "
-            f"{constants.ENGINE_MARKER}")
+            f"{constants.RUNTIME_MARKER}")
