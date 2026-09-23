@@ -63,6 +63,7 @@ function OpenInBrowser() {
       title="Open in browser"
       disabled={busy}
       onPointerEnter={prepare}
+      onPointerDown={prepare}
       onFocus={prepare}
       onClick={async () => {
         const prepared = ready.current;

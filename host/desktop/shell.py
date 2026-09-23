@@ -88,3 +88,17 @@ def _guard(method, name: str, shell: Shell):
         return method(*args, **kwargs)
     call.__name__ = name
     return call
+
+
+def web_links_only(open_url):
+    """Wrap webbrowser.open so a page can only hand the OS a web address.
+
+    pywebview gives every new-window request from any page in the window to
+    webbrowser.open, and on Windows that ends in os.startfile: a console page
+    from the VM could otherwise launch a file: path or a custom scheme.
+    """
+    def open_web(url, *args, **kwargs):
+        if not str(url).lower().startswith(("http://", "https://")):
+            return False
+        return open_url(url, *args, **kwargs)
+    return open_web

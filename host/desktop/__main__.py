@@ -45,7 +45,15 @@ def _default_create(**kwargs):
 
 
 def _default_start(**kwargs):
+    import webbrowser
+
     import webview
+
+    from .shell import web_links_only
+
+    # pywebview looks webbrowser.open up at call time, so this covers its
+    # new-window handling on every backend.
+    webbrowser.open = web_links_only(webbrowser.open)
     webview.start(**kwargs)
 
 

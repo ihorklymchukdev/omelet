@@ -248,7 +248,9 @@ that document is written. Add a new entry here when you hit one.
   resolves a dotted call name from `js_api` with plain `getattr`, so any object there lets a
   page walk `home.__func__.__globals__` past the guard. It checks the page showing, not the
   sender, and the local UI is plain `http://127.0.0.1:<port>`; the spec's "What the guard
-  does not cover" names the residual race.
+  does not cover" names the residual race. Any page can also open a new window, which pywebview
+  hands to `webbrowser.open` (`os.startfile` on Windows), so `_default_start` wraps it with
+  `web_links_only` — http(s) only.
 
 ## Testing conventions
 

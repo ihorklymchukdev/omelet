@@ -33,10 +33,11 @@ describe("takeDesktopHome", () => {
   });
 
   // The link is attacker-shapeable; a Home button must never lead off the machine.
+  // Ports are non-default so each case fails on its host, not on a missing port.
   it.each([
-    ["another host", "http://evil.example:80/"],
-    ["a lookalike host", "http://127.0.0.1.evil.example:80/"],
-    ["userinfo hiding the real host", "http://127.0.0.1:80@evil.example/"],
+    ["another host", "http://evil.example:53817/"],
+    ["a lookalike host", "http://127.0.0.1.evil.example:53817/"],
+    ["userinfo hiding the real host", "http://127.0.0.1:53817@evil.example:53817/"],
     ["https", "https://127.0.0.1:53817/"],
     ["a script URL", "javascript:alert(1)"],
     ["no port", "http://127.0.0.1/"],
@@ -46,7 +47,7 @@ describe("takeDesktopHome", () => {
   });
 
   it("refuses a bad address even when one was stored earlier", () => {
-    expect(desktopHome(store({ "omelet.desktopHome": "http://evil.example:80/" }))).toBeNull();
+    expect(desktopHome(store({ "omelet.desktopHome": "http://evil.example:53817/" }))).toBeNull();
   });
 
   it("still works when storage is unavailable", () => {

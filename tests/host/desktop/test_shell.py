@@ -12,7 +12,7 @@ import pytest
 
 from host.core.install import InstallState
 from host.desktop.api import DesktopApi
-from host.desktop.shell import NotLocalPage, Shell, guarded, public_methods
+from host.desktop.shell import NotLocalPage, Shell, guarded, public_methods, web_links_only
 
 # pywebview serves an absolute local path through its own bottle server.
 LOCAL = "http://127.0.0.1:53817/index.html"
@@ -132,3 +132,24 @@ def test_nothing_is_recorded_before_the_local_page_has_loaded(before_first_load)
     shell = Shell(window)
     shell.load(CONSOLE)
     assert window.loaded == []
+
+
+@pytest.mark.parametrize("url", [
+    "file:///C:/Windows/System32/calc.exe",
+    "ms-settings:privacy",
+    "javascript:alert(1)",
+    "\\\\server\\share\\run.exe",
+])
+def test_a_page_cannot_hand_the_os_anything_but_a_web_link(url):
+    # pywebview gives every new-window request from any page, the console
+    # included, to webbrowser.open; on Windows that is os.startfile.
+    opened = []
+    web_links_only(opened.append)(url)
+    assert opened == []
+
+
+def test_web_links_still_reach_the_browser():
+    opened = []
+    open_ = web_links_only(lambda url, *args: opened.append((url, args)))
+    open_("http://recipe-box.localhost:39080/", 2, True)
+    assert opened == [("http://recipe-box.localhost:39080/", (2, True))]
