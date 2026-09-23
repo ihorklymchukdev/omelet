@@ -1,8 +1,8 @@
 import shutil
 
-import agent.core.reconcile as reconcile
-from agent.core import constants
-from tests.agent.conftest import COMPOSE_ONE_WEB, _create, _write_compose
+import omelet_api.core.reconcile as reconcile
+from omelet_api.core import constants
+from tests.runtime.api.conftest import COMPOSE_ONE_WEB, _create, _write_compose
 
 
 def _folder(env, name, compose=True):

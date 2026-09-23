@@ -1,6 +1,6 @@
 from pathlib import Path
 
-DOCKERFILE = Path(__file__).resolve().parents[2] / "agent" / "Dockerfile"
+DOCKERFILE = Path(__file__).resolve().parents[3] / "runtime" / "omelet_api" / "Dockerfile"
 
 
 def _text() -> str:

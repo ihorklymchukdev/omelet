@@ -7,10 +7,10 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from agent.api.app import create_app
-from agent.core import files
-from agent.core.config import AgentConfig
-from agent.core.exec import Completed
+from omelet_api.routes.app import create_app
+from omelet_api.core import files
+from omelet_api.core.config import AgentConfig
+from omelet_api.core.exec import Completed
 
 
 def _tar_bytes(*, add_default_file=True, entries=None) -> bytes:
@@ -37,7 +37,7 @@ def _entry(name, **kw):
 
 
 # ---------------------------------------------------------------------------
-# Core-level: agent.core.files.extract_archive
+# Core-level: omelet_api.core.files.extract_archive
 # ---------------------------------------------------------------------------
 
 def test_relative_traversal_entry_is_rejected(tmp_path):
@@ -412,7 +412,7 @@ def test_browsing_a_permission_denied_folder_is_409_not_a_500(env):
 
 
 def test_remove_tree_falls_back_to_root_for_files_a_container_owns(tmp_path):
-    from agent.core import lifecycle
+    from omelet_api.core import lifecycle
 
     class Runner:
         def __init__(self):

@@ -2,9 +2,9 @@ import threading
 
 from fastapi import FastAPI
 
-from agent.core.exec import Completed
-from agent.core.state import State
-from tests.agent.conftest import (COMPOSE_AMBIGUOUS, COMPOSE_MALFORMED,
+from omelet_api.core.exec import Completed
+from omelet_api.core.state import State
+from tests.runtime.api.conftest import (COMPOSE_AMBIGUOUS, COMPOSE_MALFORMED,
                                   PS_RESTARTING, _create, _run_to_completion,
                                   _write_compose)
 
@@ -12,7 +12,7 @@ from tests.agent.conftest import (COMPOSE_AMBIGUOUS, COMPOSE_MALFORMED,
 def test_importing_the_app_module_builds_nothing(env):
     # A module-level app would open sqlite under /opt/omelet at import time and
     # drag the whole suite onto the real filesystem.
-    import agent.api.app as module
+    import omelet_api.routes.app as module
     assert not [name for name, value in vars(module).items()
                 if isinstance(value, (FastAPI, State))]
 
@@ -103,7 +103,7 @@ def test_a_file_write_during_a_running_job_is_refused_but_a_read_is_not(env):
     # An archive landing between the overlay being written and compose reading
     # docker-compose.yml starts a project from two different versions of
     # itself. Reads carry no such risk and must stay available while a job runs.
-    from tests.agent.test_files import _tar_bytes
+    from tests.runtime.api.test_files import _tar_bytes
 
     _create(env)
     _write_compose(env, "blog")

@@ -4,7 +4,7 @@
 #
 # It has no build context of its own, so it can be built straight into the VM
 # over stdin:
-#   docker build -t omelet-agent:debug - < agent/Dockerfile.debug
+#   docker build -t omelet-agent:debug - < runtime/omelet_api/Dockerfile.debug
 ARG AGENT_IMAGE=ghcr.io/ihorklymchukdev/omelet-agent:0.1.0
 FROM ${AGENT_IMAGE}
 
@@ -15,4 +15,4 @@ USER agent
 # No --wait-for-client: the container starts and serves normally, and the
 # debugger attaches whenever you want it. Waiting would hang the HEALTHCHECK
 # and leave restart:always looping a container nobody has attached to yet.
-CMD ["python", "-m", "debugpy", "--listen", "0.0.0.0:5678", "-m", "agent.api"]
+CMD ["python", "-m", "debugpy", "--listen", "0.0.0.0:5678", "-m", "omelet_api.routes"]

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from agent.core.config import AgentConfig
+from omelet_api.core.config import AgentConfig
 
 
 def test_from_env_reads_the_names_the_container_will_set():

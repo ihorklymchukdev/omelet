@@ -4,8 +4,8 @@
   "configurations": [
     {
       // Start here. The suite runs every module against fakes -- no VM, no
-      // containers -- so a breakpoint in agent/core or host/ is reached in
-      // about a second.
+      // containers -- so a breakpoint in omelet_api/core or host/ is reached
+      // in about a second.
       "name": "Tests: whole suite",
       "type": "debugpy",
       "request": "launch",
@@ -45,11 +45,12 @@
       "name": "Agent: run locally (no container)",
       "type": "debugpy",
       "request": "launch",
-      "module": "agent.api",
+      "module": "omelet_api.routes",
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}",
       "justMyCode": false,
       "env": {
+        "PYTHONPATH": "${workspaceFolder}/runtime",
         "OMELET_PROJECTS_ROOT": "${workspaceFolder}/.debug/projects",
         "OMELET_STATE_DB": "${workspaceFolder}/.debug/state.db",
         "OMELET_AGENT_TOKEN": "${workspaceFolder}/.debug/agent.token",
@@ -68,8 +69,8 @@
       "justMyCode": false,
       "pathMappings": [
         {
-          "localRoot": "${workspaceFolder}/agent",
-          "remoteRoot": "/usr/local/lib/python3.12/site-packages/agent"
+          "localRoot": "${workspaceFolder}/runtime/omelet_api",
+          "remoteRoot": "/usr/local/lib/python3.12/site-packages/omelet_api"
         }
       ]
     },

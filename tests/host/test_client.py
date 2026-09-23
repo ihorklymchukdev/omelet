@@ -338,6 +338,6 @@ def test_ensure_project_tolerates_one_that_already_exists():
 
 
 def test_project_id_matches_the_rule_the_agent_slugs_with():
-    from agent.core.project import _slug
+    from omelet_api.core.project import _slug
     for name in ("My Blog", "blog", "  Spaced Out  ", "a_b.c", "UPPER"):
         assert project_id_for(name) == _slug(name)

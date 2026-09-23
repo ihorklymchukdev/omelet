@@ -1,9 +1,9 @@
 import pytest
 
-from agent.core import health
-from agent.core.detect import WebSpec
-from agent.core.exec import Completed
-from agent.core.project import Project
+from omelet_api.core import health
+from omelet_api.core.detect import WebSpec
+from omelet_api.core.exec import Completed
+from omelet_api.core.project import Project
 
 # Real `cat /proc/net/tcp` output, trimmed: the header line every reader has to
 # skip, then one LISTEN row (st 0A). Port 80 is 0x0050.

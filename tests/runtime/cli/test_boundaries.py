@@ -29,6 +29,6 @@ def test_start_stack_is_built_from_the_declared_stack_path():
 def test_the_guest_cli_slugs_project_names_the_way_the_agent_does():
     # The agent derives the project folder from the slugged id; a guest that
     # slugs differently checks one folder and registers another.
-    from agent.core.project import _slug
+    from omelet_api.core.project import _slug
     for name in ("Blog", "my app", "My.Repo", "--x--", "Ünïcode 2", "a__b", ""):
         assert load().project_id_for(name) == _slug(name), name

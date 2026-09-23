@@ -5,8 +5,8 @@ import threading
 
 import pytest
 
-from agent.core import uploads as uploads_module
-from agent.core.uploads import RESERVE, UploadError, UploadStore
+from omelet_api.core import uploads as uploads_module
+from omelet_api.core.uploads import RESERVE, UploadError, UploadStore
 
 GIB = 1024 ** 3
 

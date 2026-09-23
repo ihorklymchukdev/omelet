@@ -2,11 +2,11 @@ import hashlib
 
 from fastapi.testclient import TestClient
 
-from agent.api.app import create_app
-from agent.core.config import AgentConfig
-from agent.core.sessions import COOKIE, SESSION_TTL, Sessions
-from agent.core.state import State
-from tests.agent.conftest import AUTH, BROWSER
+from omelet_api.routes.app import create_app
+from omelet_api.core.config import AgentConfig
+from omelet_api.core.sessions import COOKIE, SESSION_TTL, Sessions
+from omelet_api.core.state import State
+from tests.runtime.api.conftest import AUTH, BROWSER
 
 ORIGIN = {"Origin": "http://localhost:41080"}
 

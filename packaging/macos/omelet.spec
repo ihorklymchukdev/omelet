@@ -14,10 +14,10 @@ DATAS = [
     ("../../host/providers/omelet.yaml", "host/providers"),
     ("../../host/desktop/ui", "host/desktop/ui"),
 ]
-# Nothing from agent/ or engine/ is bundled: the VM pulls the image and fetches
-# the engine itself, and tests/host/test_frozen_bundle.py fails if an entry
-# reappears. Every dest mirrors the repo path its reader resolves from __file__,
-# so the bundle and a source checkout look identical.
+# Nothing from runtime/ is bundled: the VM pulls the API image and fetches the
+# rest of the runtime itself, and tests/host/test_frozen_bundle.py fails if an
+# entry reappears. Every dest mirrors the repo path its reader resolves from
+# __file__, so the bundle and a source checkout look identical.
 
 # host.desktop is reached only through cli.setup()'s function-local import,
 # so PyInstaller's static analysis never sees it -- a bundle missing one of

@@ -16,9 +16,9 @@ def _imported_modules(tree):
 HOST = Path(__file__).resolve().parents[2] / "host"
 
 
-def test_host_never_imports_from_agent():
+def test_host_never_imports_from_the_api():
     # The phase's whole point: the host ships as a frozen binary and reaches
-    # the agent over HTTP. An import of agent code would drag FastAPI, pyyaml
+    # the agent over HTTP. An import of API code would drag FastAPI, pyyaml
     # and the guest's own logic into that binary, and would go on working in
     # this repo long after the two are deployed apart.
     offenders = []
@@ -26,6 +26,6 @@ def test_host_never_imports_from_agent():
     assert scanned, f"scanned nothing under {HOST}"
     for py in scanned:
         for lineno, module in _imported_modules(ast.parse(py.read_text())):
-            if module == "agent" or module.startswith("agent."):
+            if module == "omelet_api" or module.startswith("omelet_api."):
                 offenders.append(f"{py}:{lineno} imports {module}")
-    assert not offenders, f"host/ imported agent code: {offenders}"
+    assert not offenders, f"host/ imported API code: {offenders}"

@@ -34,6 +34,7 @@ include = ["host*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["runtime"]
 filterwarnings = [
     "ignore:The configuration option \"asyncio_default_fixture_loop_scope\" is unset:DeprecationWarning",
 ]

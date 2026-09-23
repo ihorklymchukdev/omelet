@@ -1,8 +1,8 @@
 # Build context is this directory, not the repo root:
-#   docker build -t ghcr.io/ihorklymchukdev/omelet-agent:<version> agent/
-# `agent/pyproject.toml` maps package-dir {"agent" = "."} against that context,
-# which is also what keeps `agent/` importable and installable on its own
-# (the property tests/test_no_agent_imports_host.py protects). `docker build .`
+#   docker build -t ghcr.io/ihorklymchukdev/omelet-agent:<version> runtime/omelet_api/
+# `pyproject.toml` maps package-dir {"omelet_api" = "."} against that context,
+# which is also what keeps `omelet_api/` importable and installable on its own
+# (the property tests/host/test_no_api_import.py protects). `docker build .`
 # from the repo root will not find pyproject.toml here.
 
 ARG DOCKER_CLI_VERSION=29.8.0
@@ -44,12 +44,12 @@ RUN if getent group "${DOCKER_GID}" >/dev/null; then \
 
 WORKDIR /app
 
-# Only the installable package. The stack manifest lives in engine/ and the
+# Only the installable package. The stack manifest lives in runtime/ and the
 # verify fixture under host/provision/nginx-hello; neither ships inside the image.
 COPY pyproject.toml /app/
 COPY __init__.py /app/
 COPY core /app/core
-COPY api /app/api
+COPY routes /app/routes
 RUN pip install --no-cache-dir .
 
 USER agent
@@ -62,4 +62,4 @@ EXPOSE 39099
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD python -c "import os, urllib.request as u; u.urlopen('http://127.0.0.1:%s/health' % os.environ.get('OMELET_AGENT_PORT', '39099'), timeout=3)"
 
-CMD ["python", "-m", "agent.api"]
+CMD ["python", "-m", "omelet_api.routes"]

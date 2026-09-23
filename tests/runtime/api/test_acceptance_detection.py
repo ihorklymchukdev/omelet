@@ -1,6 +1,6 @@
 from pathlib import Path
-from agent.core.compose import load_compose
-from agent.core.detect import detect_web
+from omelet_api.core.compose import load_compose
+from omelet_api.core.detect import detect_web
 
 FIX = Path("tests/fixtures/compose")
 

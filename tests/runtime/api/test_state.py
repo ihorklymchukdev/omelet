@@ -1,4 +1,4 @@
-from agent.core.state import State
+from omelet_api.core.state import State
 
 
 def test_add_and_get_project(tmp_path):

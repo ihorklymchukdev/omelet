@@ -4,10 +4,10 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-from agent.api.app import create_app
-from agent.core.config import AgentConfig
-from agent.core.exec import Completed
-from agent.core.state import State
+from omelet_api.routes.app import create_app
+from omelet_api.core.config import AgentConfig
+from omelet_api.core.exec import Completed
+from omelet_api.core.state import State
 
 BROWSER = {"Host": "localhost:41080"}
 

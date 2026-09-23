@@ -1,5 +1,5 @@
 [project]
-name = "omelet-agent"
+name = "omelet-api"
 version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = ["fastapi>=0.110", "uvicorn[standard]>=0.30", "pyyaml>=6"]
@@ -9,5 +9,5 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-package-dir = {"agent" = "."}
-packages = ["agent", "agent.core", "agent.api"]
+package-dir = {"omelet_api" = "."}
+packages = ["omelet_api", "omelet_api.core", "omelet_api.routes"]

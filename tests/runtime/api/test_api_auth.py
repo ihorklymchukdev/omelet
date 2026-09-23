@@ -4,8 +4,8 @@ import re
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from agent.api.app import create_app
-from agent.core.config import AgentConfig
+from omelet_api.routes.app import create_app
+from omelet_api.core.config import AgentConfig
 
 
 def _app(tmp_path, token: str | None) -> FastAPI:

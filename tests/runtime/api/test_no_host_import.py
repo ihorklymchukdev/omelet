@@ -11,17 +11,17 @@ def _imported_modules(tree):
             yield node.lineno, node.module or ""
 
 
-AGENT = Path(__file__).resolve().parents[2] / "agent"
+API = Path(__file__).resolve().parents[3] / "runtime" / "omelet_api"
 
 
-def test_agent_never_imports_from_host():
-    # The agent ships as a Docker image built from agent/ alone; an import of
-    # host code would only fail once the image runs.
+def test_the_api_never_imports_from_the_host():
+    # The API ships as a Docker image built from runtime/omelet_api/ alone; an
+    # import of host code would only fail once the image runs.
     offenders = []
-    scanned = sorted(AGENT.rglob("*.py"))
-    assert scanned, f"scanned nothing under {AGENT}"
+    scanned = sorted(API.rglob("*.py"))
+    assert scanned, f"scanned nothing under {API}"
     for py in scanned:
         for lineno, module in _imported_modules(ast.parse(py.read_text())):
             if module == "host" or module.startswith("host."):
                 offenders.append(f"{py}:{lineno} imports {module}")
-    assert not offenders, f"agent/ imported host code: {offenders}"
+    assert not offenders, f"the API imported host code: {offenders}"

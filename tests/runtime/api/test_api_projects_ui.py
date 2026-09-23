@@ -1,8 +1,8 @@
 import threading
 import time
 
-from agent.core.exec import Completed
-from tests.agent.conftest import (COMPOSE_MALFORMED, _create,
+from omelet_api.core.exec import Completed
+from tests.runtime.api.conftest import (COMPOSE_MALFORMED, _create,
                                   _run_to_completion, _write_compose)
 
 COMPOSE_TWO_WEBS = """

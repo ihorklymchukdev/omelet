@@ -16,12 +16,12 @@ import urllib.error
 import pytest
 from fastapi.testclient import TestClient
 
-from agent.api.app import create_app
-from agent.core.config import AgentConfig
-from agent.core.exec import Completed
+from omelet_api.routes.app import create_app
+from omelet_api.core.config import AgentConfig
+from omelet_api.core.exec import Completed
 from host.client import AgentClient, AgentError
 
-from tests.agent.conftest import COMPOSE_ONE_WEB, FakeProbe, FakeRunner
+from tests.runtime.api.conftest import COMPOSE_ONE_WEB, FakeProbe, FakeRunner
 
 TOKEN = "test-token"
 

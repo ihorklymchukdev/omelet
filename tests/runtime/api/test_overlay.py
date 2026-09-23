@@ -1,5 +1,5 @@
-from agent.core.overlay import build_overlay, host_for
-from agent.core.detect import WebSpec
+from omelet_api.core.overlay import build_overlay, host_for
+from omelet_api.core.detect import WebSpec
 
 
 def test_host_primary_is_bare_id_additional_prefixed():

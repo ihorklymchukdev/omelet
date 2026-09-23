@@ -3,7 +3,7 @@ importing `agent/`), so a handful of names are declared twice. Nothing stops the
 two copies drifting except this test: a guest path or port that disagrees across
 the seam produces a VM the host cannot talk to, with no error naming the cause.
 """
-from agent.core import constants as agent_constants
+from omelet_api.core import constants as agent_constants
 from host.core import constants as host_constants
 
 
@@ -35,7 +35,7 @@ def test_the_readiness_window_is_the_same_on_both_sides_of_the_seam():
     # not import from host/. Both wait out the same behaviour -- Traefik
     # publishing a router a beat after the container starts -- so an agent with
     # the shorter window would diagnose a fault the host's own check waits out.
-    from agent.core.health import READY_TIMEOUT as agent_timeout
+    from omelet_api.core.health import READY_TIMEOUT as agent_timeout
     from host.core.install import READY_TIMEOUT as host_timeout
 
     assert host_timeout == agent_timeout
@@ -48,13 +48,13 @@ def test_the_stack_deploys_the_image_version_the_agent_reports():
     import re
     from pathlib import Path
 
-    from agent import __version__ as package_version
+    from omelet_api import __version__ as package_version
 
     root = Path(__file__).resolve().parent.parent
     stack = re.search(r"\$\{OMELET_AGENT_IMAGE:-[^}]+:([^}:]+)\}",
                       (root / "runtime" / "stack.yml").read_text())
     dockerfile = re.search(r"^ARG AGENT_VERSION=(\S+)",
-                           (root / "agent" / "Dockerfile").read_text(), re.M)
+                           (root / "runtime" / "omelet_api" / "Dockerfile").read_text(), re.M)
     assert stack, "stack.yml must default OMELET_AGENT_IMAGE with a tag"
     assert dockerfile, "the Dockerfile must default AGENT_VERSION"
     assert stack[1] == dockerfile[1] == package_version
@@ -99,7 +99,7 @@ def test_the_web_image_ships_with_the_agent_it_was_built_against():
     import re
     from pathlib import Path
 
-    from agent import __version__ as package_version
+    from omelet_api import __version__ as package_version
 
     stack = (Path(__file__).resolve().parent.parent / "runtime" / "stack.yml").read_text()
     web = re.search(r"\$\{OMELET_WEB_IMAGE:-[^}]+:([^}:]+)\}", stack)

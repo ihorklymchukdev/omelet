@@ -7,9 +7,9 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from agent.api.app import create_app
-from agent.core.config import AgentConfig
-from tests.agent.conftest import FakeProbe, FakeRunner
+from omelet_api.routes.app import create_app
+from omelet_api.core.config import AgentConfig
+from tests.runtime.api.conftest import FakeProbe, FakeRunner
 from tests.runtime.cli.loader import load
 from tests.host.test_client_seam import TOKEN, AppOpener
 

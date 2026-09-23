@@ -2,8 +2,8 @@ import threading
 
 import pytest
 
-from agent.core.uploads import RESERVE
-from tests.agent.conftest import _create
+from omelet_api.core.uploads import RESERVE
+from tests.runtime.api.conftest import _create
 
 
 @pytest.fixture

@@ -2,7 +2,7 @@ import re
 
 from fastapi.testclient import TestClient
 
-from tests.agent.conftest import BROWSER
+from tests.runtime.api.conftest import BROWSER
 
 ORIGIN = {"Origin": "http://localhost:41080"}
 

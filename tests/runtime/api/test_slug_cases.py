@@ -3,9 +3,9 @@ sides read these cases so the preview can't promise an id the agent won't make."
 import json
 from pathlib import Path
 
-from agent.core.project import _slug
+from omelet_api.core.project import _slug
 
-CASES = Path(__file__).resolve().parents[1] / "fixtures" / "slugify-cases.json"
+CASES = Path(__file__).resolve().parents[2] / "fixtures" / "slugify-cases.json"
 
 
 def test_the_agent_slugs_every_shared_case_the_way_the_page_previews_it():

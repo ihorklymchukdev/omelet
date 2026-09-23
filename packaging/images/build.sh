@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the two images a VM runs from engine/stack.yml: omelet-agent and
-# omelet-web. They release as a pair under agent/__init__.py's version.
+# omelet-web. They release as a pair under runtime/omelet_api/__init__.py's version.
 #
 #   packaging/images/build.sh                 # native arch, loaded into local docker
 #   packaging/images/build.sh --push          # amd64 + arm64, pushed to ghcr
@@ -33,8 +33,8 @@ while (( $# )); do
   shift
 done
 
-version="$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' "$repo/agent/__init__.py")"
-dockerfile_version="$(sed -n 's/^ARG AGENT_VERSION=//p' "$repo/agent/Dockerfile")"
+version="$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' "$repo/runtime/omelet_api/__init__.py")"
+dockerfile_version="$(sed -n 's/^ARG AGENT_VERSION=//p' "$repo/runtime/omelet_api/Dockerfile")"
 stack_agent="$(sed -n 's/.*omelet-agent:\([^}]*\)}.*/\1/p' "$repo/runtime/stack.yml")"
 stack_web="$(sed -n 's/.*omelet-web:\([^}]*\)}.*/\1/p' "$repo/runtime/stack.yml")"
 
@@ -43,8 +43,8 @@ stack_web="$(sed -n 's/.*omelet-web:\([^}]*\)}.*/\1/p' "$repo/runtime/stack.yml"
 if [[ -z "$version" || "$version" != "$dockerfile_version" \
       || "$version" != "$stack_agent" || "$version" != "$stack_web" ]]; then
   echo "versions disagree; bump them together before building:" >&2
-  echo "  agent/__init__.py       $version" >&2
-  echo "  agent/Dockerfile        $dockerfile_version" >&2
+  echo "  runtime/omelet_api/__init__.py $version" >&2
+  echo "  runtime/omelet_api/Dockerfile  $dockerfile_version" >&2
   echo "  engine/stack.yml agent  $stack_agent" >&2
   echo "  engine/stack.yml web    $stack_web" >&2
   exit 1
@@ -68,7 +68,7 @@ build() {
   fi
 }
 
-[[ "$only" == web ]] || build omelet-agent "$repo/agent" --build-arg "AGENT_VERSION=$version"
+[[ "$only" == web ]] || build omelet-agent "$repo/runtime/omelet_api" --build-arg "AGENT_VERSION=$version"
 [[ "$only" == agent ]] || build omelet-web "$repo/runtime/web" --build-context "fixtures=$repo/tests/fixtures"
 
 if (( push )); then

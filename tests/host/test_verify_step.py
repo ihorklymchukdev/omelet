@@ -13,14 +13,14 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from agent.api.app import create_app
-from agent.core.config import AgentConfig
-from agent.core.exec import Completed
+from omelet_api.routes.app import create_app
+from omelet_api.core.config import AgentConfig
+from omelet_api.core.exec import Completed
 from host.client import AgentClient, AgentError
 from host.core.constants import DEFAULT_DOMAIN, EDGE_PORT
 from host.core.install import VerificationFailed, verify_step
 
-from tests.agent.conftest import PS_RESTARTING, FakeProbe, FakeRunner
+from tests.runtime.api.conftest import PS_RESTARTING, FakeProbe, FakeRunner
 from tests.host.test_client_seam import AppOpener
 
 TOKEN = "test-token"
