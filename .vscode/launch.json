@@ -36,13 +36,13 @@
       "justMyCode": true
     },
     {
-      // The agent as an ordinary local process: no image, no VM, native
+      // The API as an ordinary local process: no image, no VM, native
       // stepping. It will drive whatever Docker this shell can reach, which
       // on this machine is Docker Desktop's engine, NOT omelet-vm's --
       // /usr/bin/docker here is a symlink into /mnt/wsl/docker-desktop.
       // Fine for stepping through routing, parsing and overlay generation.
       // Create the token first:  mkdir -p .debug && echo dev > .debug/api.token
-      "name": "Agent: run locally (no container)",
+      "name": "API: run locally (no container)",
       "type": "debugpy",
       "request": "launch",
       "module": "omelet_api.routes",
@@ -59,10 +59,10 @@
       }
     },
     {
-      // The real agent, in its container, in the VM. Requires the debug image
+      // The real API, in its container, in the VM. Requires the debug image
       // and the compose override -- see the README. Breakpoints only bind if
       // pathMappings is right; a hollow breakpoint means it is not.
-      "name": "Agent: attach to the VM",
+      "name": "API: attach to the VM",
       "type": "debugpy",
       "request": "attach",
       "connect": { "host": "127.0.0.1", "port": 5678 },

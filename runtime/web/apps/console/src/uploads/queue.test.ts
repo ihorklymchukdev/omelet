@@ -5,61 +5,61 @@ import { fits, UploadQueue, type UploadItem } from "./queue";
 import type { PendingUpload } from "./uploadApi";
 
 function setup() {
-  const api = fakeApi();
+  const fake = fakeApi();
   const landed: UploadItem[] = [];
   const lost: string[] = [];
   const queue = new UploadQueue({
-    api: api.api,
-    sleep: api.sleep,
+    api: fake.api,
+    sleep: fake.sleep,
     onLanded: (item) => landed.push(item),
     onSessionLost: (reason) => lost.push(reason),
   });
   const item = (key: string) => queue.snapshot().find((i) => i.key === key)!;
-  return { api, queue, landed, lost, item };
+  return { fake, queue, landed, lost, item };
 }
 
 describe("UploadQueue protocol", () => {
   it("sends a file in chunk_size slices, in order, and lands it", async () => {
-    const { api, queue, landed, item } = setup();
+    const { fake, queue, landed, item } = setup();
     const [key] = queue.add("p", "data", [file("a.sql", "abcdefghij")]);
     await queue.settled();
-    expect(api.calls).toEqual(["start data/a.sql", "patch up1 @0+4", "patch up1 @4+4", "patch up1 @8+2"]);
+    expect(fake.calls).toEqual(["start data/a.sql", "patch up1 @0+4", "patch up1 @4+4", "patch up1 @8+2"]);
     expect(item(key).state).toBe("done");
     expect(landed.map((i) => i.name)).toEqual(["a.sql"]);
   });
 
   it("carries on from the offset the API reports after an offset_mismatch", async () => {
-    const { api, queue, item } = setup();
-    api.state.skew = 8;
+    const { fake, queue, item } = setup();
+    fake.state.skew = 8;
     const [key] = queue.add("p", "", [file("a.txt", "abcdefghij")]);
     await queue.settled();
-    expect(api.calls).toEqual(["start a.txt", "patch up1 @0+4", "patch up1 @8+2"]);
+    expect(fake.calls).toEqual(["start a.txt", "patch up1 @0+4", "patch up1 @8+2"]);
     expect(item(key).state).toBe("done");
   });
 
   it("retries an empty PATCH at the full size while the project is busy, until it lands", async () => {
-    const { api, queue, item } = setup();
-    api.state.busyOnFinish = 2;
+    const { fake, queue, item } = setup();
+    fake.state.busyOnFinish = 2;
     const [key] = queue.add("p", "", [file("a.txt", "abcdefghij")]);
     await queue.settled();
-    expect(api.calls.slice(-3)).toEqual(["patch up1 @8+2", "patch up1 @10+0", "patch up1 @10+0"]);
-    expect(api.sleeps).toEqual([3000, 3000]);
+    expect(fake.calls.slice(-3)).toEqual(["patch up1 @8+2", "patch up1 @10+0", "patch up1 @10+0"]);
+    expect(fake.sleeps).toEqual([3000, 3000]);
     expect(item(key).state).toBe("done");
   });
 
   it("stops at the API's offset on disk_full and starts nothing else", async () => {
-    const { api, queue, item } = setup();
-    api.failOn("patch", 2, new ApiError("disk_full", "full", 507, { offset: 4 }));
+    const { fake, queue, item } = setup();
+    fake.failOn("patch", 2, new ApiError("disk_full", "full", 507, { offset: 4 }));
     const [a, b] = queue.add("p", "", [file("a.txt", "abcdefghij"), file("b.txt", "xyz")]);
     await queue.settled();
     expect(item(a)).toMatchObject({ state: "noRoom", offset: 4 });
     expect(item(b).state).toBe("waiting");
-    expect(api.calls.some((c) => c.startsWith("start b.txt"))).toBe(false);
+    expect(fake.calls.some((c) => c.startsWith("start b.txt"))).toBe(false);
   });
 
   it("marks a refused start noRoom with the API's free space, and still runs the next file", async () => {
-    const { api, queue, item } = setup();
-    api.failOn("start", 1, new ApiError("not_enough_space", "too big", 507, { free_bytes: 5 }));
+    const { fake, queue, item } = setup();
+    fake.failOn("start", 1, new ApiError("not_enough_space", "too big", 507, { free_bytes: 5 }));
     const [a, b] = queue.add("p", "", [file("a.txt", "abcdefghij"), file("b.txt", "xy")]);
     await queue.settled();
     expect(item(a)).toMatchObject({ state: "noRoom", freeBytes: 5, uploadId: null });
@@ -67,67 +67,67 @@ describe("UploadQueue protocol", () => {
   });
 
   it("sends one file at a time, in the order they were added", async () => {
-    const { api, queue } = setup();
+    const { fake, queue } = setup();
     queue.add("p", "", [file("a.txt", "abcde"), file("b.txt", "xy")]);
     await queue.settled();
-    expect(api.calls).toEqual(["start a.txt", "patch up1 @0+4", "patch up1 @4+1", "start b.txt", "patch up2 @0+2"]);
+    expect(fake.calls).toEqual(["start a.txt", "patch up1 @0+4", "patch up1 @4+1", "start b.txt", "patch up2 @0+2"]);
   });
 
   it("marks an upload stalled after three failed status reads on a dropped connection", async () => {
-    const { api, queue, item } = setup();
+    const { fake, queue, item } = setup();
     const gone = new ApiError("unreachable", "down", 0);
-    api.failOn("patch", 1, gone);
-    api.failOn("status", 1, gone);
-    api.failOn("status", 2, gone);
-    api.failOn("status", 3, gone);
+    fake.failOn("patch", 1, gone);
+    fake.failOn("status", 1, gone);
+    fake.failOn("status", 2, gone);
+    fake.failOn("status", 3, gone);
     const [key] = queue.add("p", "", [file("a.txt", "abcdefghij")]);
     await queue.settled();
-    expect(api.sleeps).toEqual([2000, 4000, 8000]);
+    expect(fake.sleeps).toEqual([2000, 4000, 8000]);
     expect(item(key)).toMatchObject({ state: "stalled", offset: 0 });
   });
 
   it("restarts from zero once when the API lost the upload, then gives up", async () => {
-    const { api, queue, item } = setup();
+    const { fake, queue, item } = setup();
     const lost = new ApiError("upload_not_found", "no such upload", 404);
-    api.failOn("patch", 1, lost);
-    api.failOn("patch", 2, lost);
+    fake.failOn("patch", 1, lost);
+    fake.failOn("patch", 2, lost);
     const [key] = queue.add("p", "", [file("a.txt", "abcdefghij")]);
     await queue.settled();
-    expect(api.calls).toEqual(["start a.txt", "patch up1 @0+4", "start a.txt", "patch up2 @0+4"]);
+    expect(fake.calls).toEqual(["start a.txt", "patch up1 @0+4", "start a.txt", "patch up2 @0+4"]);
     expect(item(key)).toMatchObject({ state: "failed", reason: "upload_not_found" });
   });
 
   it("lands an upload whose finishing response was lost, instead of restarting it", async () => {
-    const { api, queue, landed, item } = setup();
-    api.state.loseResponseAt = 3; // the last patch, @8+2, completes the file on the api
+    const { fake, queue, landed, item } = setup();
+    fake.state.loseResponseAt = 3; // the last patch, @8+2, completes the file on the API
     const [key] = queue.add("p", "", [file("a.txt", "abcdefghij")]);
     await queue.settled();
-    expect(api.calls).toEqual(["start a.txt", "patch up1 @0+4", "patch up1 @4+4", "patch up1 @8+2", "status up1"]);
+    expect(fake.calls).toEqual(["start a.txt", "patch up1 @0+4", "patch up1 @4+4", "patch up1 @8+2", "status up1"]);
     expect(item(key).state).toBe("done");
     expect(landed.map((i) => i.name)).toEqual(["a.txt"]);
   });
 
   it("lands an upload paused during its finishing PATCH that the API finished anyway", async () => {
-    const { api, queue, landed, item } = setup();
-    api.state.hangAfterApplyAt = 3;
+    const { fake, queue, landed, item } = setup();
+    fake.state.hangAfterApplyAt = 3;
     const [key] = queue.add("p", "", [file("a.txt", "abcdefghij")]);
-    await until(() => api.calls.length === 4);
+    await until(() => fake.calls.length === 4);
     queue.pause(key);
     await queue.settled();
     queue.resume(key);
     await queue.settled();
     expect(item(key).state).toBe("done");
     expect(landed).toHaveLength(1);
-    expect(api.calls.filter((c) => c.startsWith("start"))).toHaveLength(1);
+    expect(fake.calls.filter((c) => c.startsWith("start"))).toHaveLength(1);
   });
 
   it("lands a finished upload picked up after its lost finishing response stalled it", async () => {
-    const { api, queue, landed, item } = setup();
+    const { fake, queue, landed, item } = setup();
     const gone = new ApiError("unreachable", "down", 0);
-    api.state.loseResponseAt = 3;
-    api.failOn("status", 1, gone);
-    api.failOn("status", 2, gone);
-    api.failOn("status", 3, gone);
+    fake.state.loseResponseAt = 3;
+    fake.failOn("status", 1, gone);
+    fake.failOn("status", 2, gone);
+    fake.failOn("status", 3, gone);
     const [key] = queue.add("p", "", [file("a.txt", "abcdefghij")]);
     await queue.settled();
     expect(item(key).state).toBe("stalled");
@@ -135,12 +135,12 @@ describe("UploadQueue protocol", () => {
     await queue.settled();
     expect(item(key).state).toBe("done");
     expect(landed).toHaveLength(1);
-    expect(api.calls.filter((c) => c.startsWith("start"))).toHaveLength(1);
+    expect(fake.calls.filter((c) => c.startsWith("start"))).toHaveLength(1);
   });
 
   it("fails a start the API refuses and keeps going with the next file", async () => {
-    const { api, queue, item } = setup();
-    api.failOn("start", 1, new ApiError("file_exists", "'a.txt' is already in the project", 409));
+    const { fake, queue, item } = setup();
+    fake.failOn("start", 1, new ApiError("file_exists", "'a.txt' is already in the project", 409));
     const [a, b] = queue.add("p", "", [file("a.txt", "abc"), file("b.txt", "xy")]);
     await queue.settled();
     expect(item(a)).toMatchObject({ state: "failed", reason: "file_exists" });
@@ -148,8 +148,8 @@ describe("UploadQueue protocol", () => {
   });
 
   it("stalls an upload on an error that isn't the API's, and still runs the next one", async () => {
-    const { api, queue, item } = setup();
-    api.failOn("patch", 1, new TypeError("Load failed"));
+    const { fake, queue, item } = setup();
+    fake.failOn("patch", 1, new TypeError("Load failed"));
     const [a, b] = queue.add("p", "", [file("a.txt", "abcdefghij"), file("b.txt", "xy")]);
     await expect(queue.settled()).resolves.toBeUndefined();
     expect(item(a)).toMatchObject({ state: "stalled", message: "Load failed" });
@@ -157,8 +157,8 @@ describe("UploadQueue protocol", () => {
   });
 
   it("hands a lost session to the app instead of failing the upload", async () => {
-    const { api, queue, lost, item } = setup();
-    api.failOn("patch", 1, new ApiError("session_expired", "gone", 401));
+    const { fake, queue, lost, item } = setup();
+    fake.failOn("patch", 1, new ApiError("session_expired", "gone", 401));
     const [key] = queue.add("p", "", [file("a.txt", "abcdefghij")]);
     await queue.settled();
     expect(lost).toEqual(["session_expired"]);
@@ -168,50 +168,50 @@ describe("UploadQueue protocol", () => {
 
 describe("UploadQueue controls", () => {
   it("pauses by aborting the chunk and re-reads the server offset before resuming", async () => {
-    const { api, queue, item } = setup();
-    api.state.hangAt = 2;
+    const { fake, queue, item } = setup();
+    fake.state.hangAt = 2;
     const [key] = queue.add("p", "", [file("a.txt", "abcdefghij")]);
-    await until(() => api.calls.length === 3);
+    await until(() => fake.calls.length === 3);
     queue.pause(key);
     await queue.settled();
     expect(item(key)).toMatchObject({ state: "paused", offset: 4 });
-    api.state.hangAt = 0;
+    fake.state.hangAt = 0;
     queue.resume(key);
     await queue.settled();
-    expect(api.calls.slice(3)).toEqual(["status up1", "patch up1 @4+4", "patch up1 @8+2"]);
+    expect(fake.calls.slice(3)).toEqual(["status up1", "patch up1 @4+4", "patch up1 @8+2"]);
     expect(item(key).state).toBe("done");
   });
 
   it("cancels a started upload on the API when it is removed, then moves on", async () => {
-    const { api, queue } = setup();
-    api.state.hangAt = 1;
+    const { fake, queue } = setup();
+    fake.state.hangAt = 1;
     const [a] = queue.add("p", "", [file("a.txt", "abcdefghij"), file("b.txt", "xy")]);
-    await until(() => api.calls.length === 2);
+    await until(() => fake.calls.length === 2);
     queue.remove(a);
     await until(() => queue.snapshot().every((i) => i.state === "done"));
-    expect(api.calls).toContain("cancel up1");
+    expect(fake.calls).toContain("cancel up1");
     expect(queue.snapshot().map((i) => i.name)).toEqual(["b.txt"]);
   });
 
   it("resends a refused duplicate with replace once the user says so", async () => {
-    const { api, queue, item } = setup();
-    api.failOn("start", 1, new ApiError("file_exists", "exists", 409));
+    const { fake, queue, item } = setup();
+    fake.failOn("start", 1, new ApiError("file_exists", "exists", 409));
     const [key] = queue.add("p", "data", [file("a.txt", "abc")]);
     await queue.settled();
     queue.replace(key);
     await queue.settled();
-    expect(api.calls).toContain("start data/a.txt replace");
+    expect(fake.calls).toContain("start data/a.txt replace");
     expect(item(key).state).toBe("done");
   });
 
   it("starts nothing more once disposed, so a signed-out page stops uploading", async () => {
-    const { api, queue } = setup();
-    api.state.hangAt = 1;
+    const { fake, queue } = setup();
+    fake.state.hangAt = 1;
     queue.add("p", "", [file("a.txt", "abcdefghij"), file("b.txt", "xy")]);
-    await until(() => api.calls.length === 2);
+    await until(() => fake.calls.length === 2);
     queue.dispose();
     await queue.settled();
-    expect(api.calls.some((c) => c.startsWith("start b.txt"))).toBe(false);
+    expect(fake.calls.some((c) => c.startsWith("start b.txt"))).toBe(false);
   });
 
   const pending = (over: Partial<PendingUpload> = {}): PendingUpload => ({
@@ -227,14 +227,14 @@ describe("UploadQueue controls", () => {
   });
 
   it("resumes a reloaded upload from the server's offset once given the same file", async () => {
-    const { api, queue, item } = setup();
-    api.uploads.set("srv1", { size: 10, offset: 4, path: "data/a.txt" });
+    const { fake, queue, item } = setup();
+    fake.uploads.set("srv1", { size: 10, offset: 4, path: "data/a.txt" });
     queue.adoptPending("p", [pending()]);
     expect(item("srv1")).toMatchObject({ dir: "data", name: "a.txt", fromReload: true });
     expect(queue.relink("srv1", file("a.txt", "abcdefghij", 7))).toBe(true);
     await queue.settled();
     // No start answer after a reload, so the chunk size is the 8 MiB default: one PATCH finishes it.
-    expect(api.calls).toEqual(["status srv1", "patch srv1 @4+6"]);
+    expect(fake.calls).toEqual(["status srv1", "patch srv1 @4+6"]);
     expect(item("srv1").state).toBe("done");
   });
 
@@ -266,14 +266,14 @@ describe("UploadQueue controls", () => {
   });
 
   it("carries on after disk_full only once the API reports room", async () => {
-    const { api, queue, item } = setup();
-    api.failOn("patch", 2, new ApiError("disk_full", "full", 507, { offset: 4 }));
+    const { fake, queue, item } = setup();
+    fake.failOn("patch", 2, new ApiError("disk_full", "full", 507, { offset: 4 }));
     const [a, b] = queue.add("p", "", [file("a.txt", "abcdefghij"), file("b.txt", "xy")]);
     await queue.settled();
-    api.state.free = 3;
+    fake.state.free = 3;
     expect(await queue.carryOn()).toBe(false);
     expect(item(a).state).toBe("noRoom");
-    api.state.free = 100;
+    fake.state.free = 100;
     expect(await queue.carryOn()).toBe(true);
     await until(() => item(b).state === "done");
     expect(item(a).state).toBe("done");

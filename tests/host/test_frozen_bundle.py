@@ -4,7 +4,7 @@ The API ships as a Docker image the VM pulls and the rest of the runtime is
 fetched by the VM itself; neither is ever frozen into the host binary. Nothing
 enforced that except the import-boundary test, which says nothing about
 `datas` -- and `datas` is how two host-side compose files came to sit under
-`agent/` and get bundled from there.
+what was then `agent/` and get bundled from there.
 
 Every spec is checked, not just the one whose platform someone is on: a mac
 build that bundles the wrong thing is invisible from Windows and the other way

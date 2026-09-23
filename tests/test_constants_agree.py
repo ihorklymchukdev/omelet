@@ -70,6 +70,26 @@ def test_the_stack_deploys_the_image_version_the_api_service_reports():
     assert stack[1] == dockerfile[1] == package_version
 
 
+def test_the_debug_image_is_built_on_the_current_release_not_a_stale_one():
+    # Dockerfile.debug's default SERVICE_IMAGE names a *published* tag to build
+    # FROM, so an unbumped default silently pins debugging to an old release --
+    # and since Docker never validates USER at build time, a base image built
+    # before some later rename (a package name, a Linux account) fails only at
+    # `docker run`, not at build. Held to the same version as the release
+    # itself so this can only drift on purpose.
+    import re
+    from pathlib import Path
+
+    from omelet_api import __version__ as package_version
+
+    root = Path(__file__).resolve().parent.parent
+    debug = re.search(
+        r"^ARG SERVICE_IMAGE=ghcr\.io/\S+/omelet-api:(\S+)",
+        (root / "runtime" / "omelet_api" / "Dockerfile.debug").read_text(), re.M)
+    assert debug, "Dockerfile.debug must default SERVICE_IMAGE to a tagged omelet-api image"
+    assert debug[1] == package_version
+
+
 def test_the_host_speaks_the_api_the_api_service_serves():
     assert api_constants.API_VERSION in host_constants.SUPPORTED_API
 
