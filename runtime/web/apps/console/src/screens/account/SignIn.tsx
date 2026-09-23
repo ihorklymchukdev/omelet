@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@omelet/ui";
-import { type Account, signInError, signInLink } from "../../account/account";
-import { ApiError, createApi } from "../../api/client";
+import { type Account, type StartOutcome, signInError, signInLink, startError } from "../../account/account";
+import { createApi, type SessionLoss, isSessionLost } from "../../api/client";
 import { Qr } from "../../components/Qr";
 import { useNow } from "../../projects/useNow";
 import { SleepyEgg } from "../SleepyEgg";
@@ -12,20 +12,29 @@ import own from "./SignIn.module.css";
 const api = createApi((input, init) => fetch(input, init));
 const POLL_MS = 3000;
 
-type View = { account: Account | null; unreachable: boolean; starting: boolean };
+// A "sessionLost" outcome is handed to onSessionLost and never stored here.
+type ScreenOutcome = Exclude<StartOutcome, { kind: "sessionLost" }>;
+type View = { account: Account | null; outcome: ScreenOutcome | null; starting: boolean };
 
-export function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
-  const [view, setView] = useState<View>({ account: null, unreachable: false, starting: false });
+export function SignIn({
+  onSignedIn,
+  onSessionLost,
+}: {
+  onSignedIn: () => void;
+  onSessionLost: (reason: SessionLoss) => void;
+}) {
+  const [view, setView] = useState<View>({ account: null, outcome: null, starting: false });
 
   const refresh = useCallback(async () => {
     try {
       const account = await api.get<Account>("/api/account");
       if (account.state === "signed_in") onSignedIn();
       else setView((v) => ({ ...v, account }));
-    } catch {
-      // A missed poll is retried on the next tick.
+    } catch (error) {
+      // A missed poll is retried on the next tick; a lost session is not.
+      if (isSessionLost(error)) onSessionLost(error.code);
     }
-  }, [onSignedIn]);
+  }, [onSignedIn, onSessionLost]);
 
   useEffect(() => {
     void refresh();
@@ -34,29 +43,31 @@ export function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
   }, [refresh]);
 
   const start = async () => {
-    setView((v) => ({ ...v, starting: true, unreachable: false }));
+    setView((v) => ({ ...v, starting: true, outcome: null }));
     try {
       const account = await api.post<Account>("/api/account/sign-in");
-      setView({ account, unreachable: false, starting: false });
+      setView({ account, outcome: null, starting: false });
     } catch (error) {
-      const unreachable = error instanceof ApiError && error.code === "cloud_unavailable";
-      setView((v) => ({ ...v, unreachable, starting: false }));
+      const outcome = startError(error);
+      if (outcome.kind === "sessionLost") {
+        onSessionLost(outcome.reason);
+        return;
+      }
+      setView((v) => ({ ...v, outcome, starting: false }));
     }
   };
 
   const account = view.account;
-  if (account?.state === "pending") return <Pending account={account} onRestart={start} />;
+  if (account?.state === "pending") return <Pending account={account} />;
 
-  const reason = view.unreachable
-    ? "The Omelet service can't be reached right now. Check the internet connection."
-    : signInError(account?.state === "signed_out" ? account.error : null);
+  const reason = view.outcome?.message ?? signInError(account?.state === "signed_out" ? account.error : null);
   return (
     <StatusScreen
       art={<SleepyEgg />}
       title="Sign in to Omelet"
       actions={
         <Button variant="primary" size="lg" onClick={start} disabled={view.starting}>
-          {view.unreachable ? "Try again" : "Sign in"}
+          {view.outcome?.kind === "unreachable" ? "Try again" : "Sign in"}
         </Button>
       }
       footer="Your projects keep running while you sign in."
@@ -67,14 +78,14 @@ export function SignIn({ onSignedIn }: { onSignedIn: () => void }) {
   );
 }
 
-function Pending({ account, onRestart }: { account: Extract<Account, { state: "pending" }>; onRestart: () => void }) {
+function Pending({ account }: { account: Extract<Account, { state: "pending" }> }) {
   const now = useNow(1000);
   const left = Math.max(0, Math.round(account.expires_at - now / 1000));
   const link = signInLink(account.url);
   if (link === null) {
     return (
-      <StatusScreen art={<SleepyEgg />} title="Sign-in isn't available" actions={<Button onClick={onRestart}>Try again</Button>}>
-        <p className={s.lead}>The sign-in link from the Omelet service is not valid.</p>
+      <StatusScreen art={<SleepyEgg />} title="Sign-in isn't available" actions={null}>
+        <p className={s.lead}>The link the Omelet service sent isn't valid. This page keeps waiting for a good one.</p>
         <p className={s.detail}>{account.url}</p>
       </StatusScreen>
     );

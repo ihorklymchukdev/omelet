@@ -8,6 +8,7 @@ const api = createApi((input, init) => fetch(input, init));
 
 export function AccountMenu({ onSignedOut }: { onSignedOut: () => void }) {
   const [leaving, setLeaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const { data } = useQuery({
     queryKey: ["account"],
@@ -26,17 +27,21 @@ export function AccountMenu({ onSignedOut }: { onSignedOut: () => void }) {
 
   const signOut = async () => {
     setLeaving(true);
+    setError(null);
     try {
       await api.post("/api/account/sign-out");
-    } finally {
       queryClient.removeQueries({ queryKey: ["account"] });
       onSignedOut();
+    } catch {
+      setLeaving(false);
+      setError("Couldn't sign out. Try again.");
     }
   };
 
   return (
     <>
       {data?.state === "signed_in" && data.email && <span>{data.email}</span>}
+      {error && <span role="alert">{error}</span>}
       <Button variant="quiet" onClick={signOut} disabled={leaving}>
         Sign out
       </Button>

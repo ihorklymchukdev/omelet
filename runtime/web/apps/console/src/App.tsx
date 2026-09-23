@@ -67,7 +67,7 @@ export function App({ handoff }: { handoff: string | null }) {
         </QueryClientProvider>
       );
     case "needsAccount":
-      return <SignIn onSignedIn={run} />;
+      return <SignIn onSignedIn={run} onSessionLost={(reason) => setResult({ kind: "signedOut", reason })} />;
     case "signedOut":
       return <SignedOut reason={result.reason} onRetry={run} />;
     case "needsUpdate":
