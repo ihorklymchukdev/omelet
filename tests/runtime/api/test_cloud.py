@@ -1,3 +1,4 @@
+import http.client
 import io
 import json
 import urllib.error
@@ -89,3 +90,25 @@ def test_a_2xx_response_with_non_json_body_reports_the_actual_status():
     with pytest.raises(CloudError) as raised:
         cloud.create_project("t", "n", "r")
     assert (raised.value.code, raised.value.status) == ("bad_response", 201)
+
+
+def test_a_truncated_body_is_unavailable_not_a_bare_exception():
+    class _BrokenResponse:
+        status = 200
+
+        def read(self):
+            raise http.client.IncompleteRead(b"")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    class _BrokenOpener:
+        def __call__(self, request, timeout):
+            return _BrokenResponse()
+
+    cloud = Cloud("https://svc/api", opener=_BrokenOpener())
+    with pytest.raises(CloudUnavailable):
+        cloud.me("t")

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import http.client
 import json
 import urllib.error
 import urllib.parse
@@ -55,7 +56,9 @@ class Cloud:
                 raw = response.read()
         except urllib.error.HTTPError as e:
             raise _error_from(e.code, e.read()) from None
-        except OSError as e:
+        except (OSError, http.client.HTTPException) as e:
+            # A truncated body (e.g. IncompleteRead) is not an OSError, but
+            # it means the same thing here: the service did not answer.
             raise CloudUnavailable(str(e)) from None
         if not raw:
             return None
