@@ -38,8 +38,8 @@ Rejected:
   also needs a `postMessage` protocol between the two.
 - **Two windows, one shown at a time** (the console window created without
   `js_api`). Strongest isolation, but keeping two native windows' size and
-  position in step is visible jank on both platforms. The guard in §4 gives
-  the same guarantee for this threat.
+  position in step is visible jank on both platforms. The guard in §4 covers
+  this threat except for the race it names.
 - **A "Machine" section inside the console.** The runtime would start knowing
   about the host, and a new host control would need a runtime release.
 
@@ -80,8 +80,8 @@ crosses the JS bridge.
 
 | Item | Does |
 |---|---|
-| Projects | `enter_console()` |
-| Machine | `window.load_url(<local UI>)` — the local UI boots, re-probes and shows Home in its real state |
+| Projects | `enter_console()`; on failure a notice on the local UI, or — from the console — back to the local UI, whose Home state explains it |
+| Machine | `window.load_url(<local UI>)` — the local UI boots, re-probes and shows Home in its real state; nothing when the local UI already shows |
 | Open in browser | `open_omelet()` (today's behaviour: handoff, system browser) |
 
 *Projects* does nothing while a desktop job (install, import, VM start/stop,
