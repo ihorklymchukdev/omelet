@@ -11,7 +11,7 @@ from omelet_api.core.config import AgentConfig
 def _app(tmp_path, token: str | None) -> FastAPI:
     """`token=None` means no file at all; `""` means an empty file -- both
     must be treated as unconfigured, never as "allow"."""
-    token_path = tmp_path / "agent.token"
+    token_path = tmp_path / "api.token"
     if token is not None:
         token_path.write_text(token)
     config = AgentConfig(projects_root=tmp_path / "projects",

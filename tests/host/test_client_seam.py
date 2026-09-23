@@ -57,11 +57,11 @@ class AppOpener:
 
 @pytest.fixture
 def seam(tmp_path):
-    (tmp_path / "agent.token").write_text(TOKEN)
+    (tmp_path / "api.token").write_text(TOKEN)
     config = AgentConfig(domain="test.local", edge_port=41080,
                          projects_root=tmp_path / "projects",
                          state_db=tmp_path / "state.db",
-                         token_path=tmp_path / "agent.token",
+                         token_path=tmp_path / "api.token",
                          ready_timeout=0.0)
     runner = FakeRunner()
     # Injected: the real probe would open a socket to a Traefik that does not

@@ -13,7 +13,7 @@
 #
 # The edge network name is the literal `edge`, not a variable: it is
 # `constants.EDGE_NETWORK`, an authoritative constant the global rulings
-# forbid giving a second name. `agent/core/overlay.py` hardcodes the same
+# forbid giving a second name. `omelet_api/core/overlay.py` hardcodes the same
 # constant when it labels project containers, so parameterising only the
 # Traefik side here would let the two drift -- Traefik watching a network
 # nothing is attached to, every route answering 404 with no error anywhere.
@@ -36,33 +36,33 @@ services:
     networks:
       - edge
 
-  agent:
-    image: ${OMELET_AGENT_IMAGE:-ghcr.io/ihorklymchukdev/omelet-agent:0.2.0}
+  api:
+    image: ${OMELET_API_IMAGE:-ghcr.io/ihorklymchukdev/omelet-api:0.2.0}
     restart: always
-    # No `hostname:` here -- the agent looks itself up with
+    # No `hostname:` here -- the api service looks itself up with
     # `docker inspect $HOSTNAME` to remove root-owned project files, and
     # that only resolves when $HOSTNAME is still the container id compose
     # assigns by default.
     # 0.0.0.0, not 127.0.0.1: WSL2's localhostForwarding only surfaces guest
     # sockets bound to all interfaces. That also means every other container
-    # in the VM can reach an agent that holds the Docker socket -- Task 8
-    # closes that gap with a shared token, not this file.
+    # in the VM can reach an api service that holds the Docker socket --
+    # Task 8 closes that gap with a shared token, not this file.
     #
     # Equal on both sides of the colon, and handed to the process as well: the
     # host dials 127.0.0.1:<same port> through the VM's forward, and a mapping
-    # the agent does not bind forwards to nothing.
+    # the api service does not bind forwards to nothing.
     ports:
-      - "${OMELET_AGENT_PORT:-39099}:${OMELET_AGENT_PORT:-39099}"
+      - "${OMELET_API_PORT:-39099}:${OMELET_API_PORT:-39099}"
     environment:
-      - OMELET_AGENT_PORT=${OMELET_AGENT_PORT:-39099}
+      - OMELET_API_PORT=${OMELET_API_PORT:-39099}
       - OMELET_DOMAIN=${OMELET_DOMAIN:-127-0-0-1.sslip.io}
       - OMELET_EDGE_PORT=${OMELET_EDGE_PORT:-39080}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      # Same path on both sides, not negotiable: the agent parses compose
-      # files, but the bind-mount paths inside them are resolved by dockerd
-      # on the VM, not inside this container. A different path here mounts
-      # every user project's relative volume onto an empty directory.
+      # Same path on both sides, not negotiable: the api service parses
+      # compose files, but the bind-mount paths inside them are resolved by
+      # dockerd on the VM, not inside this container. A different path here
+      # mounts every user project's relative volume onto an empty directory.
       - /opt/omelet:/opt/omelet
     # Fixable without a rebuild when a VM's docker group GID doesn't match
     # the image's build-time default.
@@ -78,10 +78,10 @@ services:
       - "traefik.http.routers.omelet-api.rule=(Host(`localhost`) || Host(`127.0.0.1`)) && PathPrefix(`/api`)"
       - "traefik.http.routers.omelet-api.entrypoints=web"
       - "traefik.http.routers.omelet-api.priority=1000"
-      - "traefik.http.services.omelet-api.loadbalancer.server.port=${OMELET_AGENT_PORT:-39099}"
+      - "traefik.http.services.omelet-api.loadbalancer.server.port=${OMELET_API_PORT:-39099}"
 
   # The browser UI: static files only, no secrets, no logic. Released under
-  # the agent's version -- the two install as a pair. Its router is the
+  # the api service's version -- the two install as a pair. Its router is the
   # catch-all for the UI hosts, so it sits below omelet-api's priority.
   web:
     image: ${OMELET_WEB_IMAGE:-ghcr.io/ihorklymchukdev/omelet-web:0.2.0}

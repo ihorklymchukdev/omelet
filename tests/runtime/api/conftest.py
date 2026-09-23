@@ -110,7 +110,7 @@ AUTH = {"Authorization": "Bearer test-token"}
 
 @pytest.fixture
 def env(tmp_path):
-    token_path = tmp_path / "agent.token"
+    token_path = tmp_path / "api.token"
     token_path.write_text("test-token")
     config = AgentConfig(
         domain="test.local",

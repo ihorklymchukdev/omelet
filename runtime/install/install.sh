@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
-# Installs the engine into this VM. Run as root by get.sh from the unpacked
-# engine directory; re-running it is safe.
+# Installs the runtime into this VM. Run as root by get.sh from the unpacked
+# runtime/install directory; re-running it is safe.
 set -euo pipefail
 
-ENGINE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+INSTALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RUNTIME_DIR="$(dirname "$INSTALL_DIR")"
+# Skills still live in the repo's separate top-level engine/ directory, which
+# this script does not unpack -- Task 4 moves them under runtime/ and updates
+# this reference together with the tarball's contents.
+ENGINE_DIR="$INSTALL_DIR"
 
-REF="${1:?usage: install.sh <engine ref> [--repair]}"
+REF="${1:?usage: install.sh <runtime ref> [--repair]}"
 REPAIR=0
 if [[ "${2:-}" == --repair ]]; then
   REPAIR=1
@@ -16,7 +21,7 @@ NODE_MIN=22.20.0
 TOKEN_CREATED=0
 
 # A failed reinstall must not look installed; get.sh already resolved the ref.
-rm -f /opt/omelet/engine.version
+rm -f /opt/omelet/runtime.version
 
 export DEBIAN_FRONTEND=noninteractive
 
@@ -90,26 +95,26 @@ printf 'OMELET_DOCKER_GID=%s\n' "$DOCKER_GID" > /opt/omelet/.env
 # later `head -c` instead kills tr with SIGPIPE the moment head stops
 # reading, and set -o pipefail then fails the whole script over a byte count
 # that was never wrong.
-if [[ ! -s /opt/omelet/agent.token ]]; then
+if [[ ! -s /opt/omelet/api.token ]]; then
   TOKEN_CREATED=1
   # `install` sets the mode on creation, before any content lands in the
   # file -- a plain `>` redirect creates it under root's umask (644) first
   # and only narrows it on the next line, leaving it briefly world-readable.
-  install -m 640 /dev/null /opt/omelet/agent.token
-  head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > /opt/omelet/agent.token
+  install -m 640 /dev/null /opt/omelet/api.token
+  head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > /opt/omelet/api.token
 fi
 # Root-owned but group-readable: the agent's own uid is non-root, and docker
 # group membership is already root-equivalent here (it owns the socket), so
 # it is the group a credential the agent itself must read has to grant.
 # Reasserted every run, not just on first creation, so a pre-existing file
 # from before this ever ran still ends up correct.
-chgrp docker /opt/omelet/agent.token
-chmod 640 /opt/omelet/agent.token
+chgrp docker /opt/omelet/api.token
+chmod 640 /opt/omelet/api.token
 
 # 7. traefik, the agent and the web page, as one compose stack.
 # Always pull: this is how an agent update reaches an already-provisioned VM,
 # so both the first install and every update need the network.
-install -m 644 "$ENGINE_DIR/stack.yml" /opt/omelet/stack.yml
+install -m 644 "$RUNTIME_DIR/stack.yml" /opt/omelet/stack.yml
 # The output is kept as well as shown. An image with no build for this VM's
 # architecture and a registry that cannot be reached fail the same way here and
 # differ only in the daemon's wording -- and the two need opposite things from
@@ -135,7 +140,7 @@ rm -f "$PULL_LOG"
 # The agent reads its token once, at startup, and `up -d` leaves an unchanged
 # container running.
 if (( TOKEN_CREATED || REPAIR )); then
-  /usr/bin/docker compose -f /opt/omelet/stack.yml up -d --force-recreate agent
+  /usr/bin/docker compose -f /opt/omelet/stack.yml up -d --force-recreate api
 fi
 
 # 8. git for `omelet clone`, gh for GitHub work, Node for `npx skills`.
@@ -194,9 +199,9 @@ if ! node_ok; then
 fi
 
 # 9. the in-VM omelet command and the instructions every session loads.
-install -m 755 "$ENGINE_DIR/cli/omelet.py" /usr/local/bin/omelet
+install -m 755 "$RUNTIME_DIR/cli/omelet.py" /usr/local/bin/omelet
 install -d /etc/claude-code
-install -m 644 "$ENGINE_DIR/instructions/omelet.md" /etc/claude-code/CLAUDE.md
+install -m 644 "$RUNTIME_DIR/instructions/omelet.md" /etc/claude-code/CLAUDE.md
 
 # 10. copies earlier provisioning made, which npx now owns or nothing reads.
 rm -rf /etc/codex/skills/omelet-setup /opt/omelet/bin /opt/omelet/agents \
@@ -212,13 +217,13 @@ fi
 # 11. per account: docker group, Codex block, ~/projects, skills.
 accounts() {
   echo "root:0:0:/root"
-  getent passwd | bash "$ENGINE_DIR/lib/login-users.sh" /etc/shells
+  getent passwd | bash "$INSTALL_DIR/lib/login-users.sh" /etc/shells
 }
 while IFS=: read -r name uid gid home; do
   if [[ "$name" != root ]]; then
     usermod -aG docker "$name"
   fi
-  bash "$ENGINE_DIR/lib/install-agents.sh" "$ENGINE_DIR" "$home" "$uid:$gid"
+  bash "$INSTALL_DIR/lib/install-agents.sh" "$RUNTIME_DIR" "$home" "$uid:$gid"
   # stdin is the account list this loop is reading.
   if ! runuser -u "$name" -- env HOME="$home" DISABLE_TELEMETRY=1 npx -y "$SKILLS_CLI" add "$ENGINE_DIR/skills" -s '*' -g -a claude-code codex -y </dev/null; then
     echo "could not install Omelet's skills for $name: the npm registry may be unreachable" >&2
@@ -227,5 +232,5 @@ while IFS=: read -r name uid gid home; do
 done < <(accounts)
 
 # 12. marker, last: a failure above must leave no marker behind.
-echo "$REF" > /opt/omelet/engine.version
+echo "$REF" > /opt/omelet/runtime.version
 echo "Omelet engine $REF installed"

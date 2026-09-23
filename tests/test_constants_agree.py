@@ -1,9 +1,10 @@
-"""The host and the agent each own a constants module (Task 9 forbids `host/`
-importing `agent/`), so a handful of names are declared twice. Nothing stops the
-two copies drifting except this test: a guest path or port that disagrees across
-the seam produces a VM the host cannot talk to, with no error naming the cause.
+"""The host and the API service each own a constants module (a hard invariant
+forbids `host/` importing `omelet_api/`), so a handful of names are declared
+twice. Nothing stops the two copies drifting except this test: a guest path or
+port that disagrees across the seam produces a VM the host cannot talk to,
+with no error naming the cause.
 """
-from omelet_api.core import constants as agent_constants
+from omelet_api.core import constants as api_constants
 from host.core import constants as host_constants
 
 
@@ -13,64 +14,73 @@ def _public(module) -> dict:
 
 
 def test_names_declared_in_both_constants_modules_hold_the_same_value():
-    agent = _public(agent_constants)
+    api = _public(api_constants)
     host = _public(host_constants)
-    shared = sorted(set(agent) & set(host))
+    shared = sorted(set(api) & set(host))
     assert shared, "the two modules share no names -- this test is no longer guarding anything"
-    diverged = {name: (host[name], agent[name])
-                for name in shared if host[name] != agent[name]}
-    assert not diverged, f"host/agent constants diverged (host, agent): {diverged}"
+    diverged = {name: (host[name], api[name])
+                for name in shared if host[name] != api[name]}
+    assert not diverged, f"host/api constants diverged (host, api): {diverged}"
 
 
-def test_the_engine_entrypoint_constants_live_only_on_the_host():
-    # The agent has no use for either, and must not become a second source of
-    # truth for where the engine comes from.
-    for name in ("ENGINE_URL", "ENGINE_MARKER"):
-        assert not hasattr(agent_constants, name), f"{name} must not live in agent/core/constants.py"
+def test_the_runtime_entrypoint_constants_live_only_on_the_host():
+    # The API has no use for either, and must not become a second source of
+    # truth for where the runtime comes from.
+    for name in ("RUNTIME_URL", "RUNTIME_MARKER"):
+        assert not hasattr(api_constants, name), f"{name} must not live in omelet_api/core/constants.py"
         assert hasattr(host_constants, name), f"{name} must live in host/core/constants.py"
 
 
+def test_no_host_contract_name_still_says_engine_or_agent():
+    # The window for these renames closes with the first shipped host binary,
+    # so the test exists to fail loudly if one is reintroduced.
+    stale = [name for name in vars(host_constants)
+             if name.isupper() and ("ENGINE" in name or "AGENT" in name)]
+    assert not stale, f"host constants still carrying the old vocabulary: {stale}"
+
+
 def test_the_readiness_window_is_the_same_on_both_sides_of_the_seam():
-    # Declared twice for the same reason as the constants above: the agent may
-    # not import from host/. Both wait out the same behaviour -- Traefik
-    # publishing a router a beat after the container starts -- so an agent with
-    # the shorter window would diagnose a fault the host's own check waits out.
-    from omelet_api.core.health import READY_TIMEOUT as agent_timeout
+    # Declared twice for the same reason as the constants above: the api
+    # service may not import from host/. Both wait out the same behaviour --
+    # Traefik publishing a router a beat after the container starts -- so an
+    # api service with the shorter window would diagnose a fault the host's
+    # own check waits out.
+    from omelet_api.core.health import READY_TIMEOUT as api_timeout
     from host.core.install import READY_TIMEOUT as host_timeout
 
-    assert host_timeout == agent_timeout
+    assert host_timeout == api_timeout
 
 
-def test_the_stack_deploys_the_image_version_the_agent_reports():
-    # Three files name this version and are bumped together on an engine
+def test_the_stack_deploys_the_image_version_the_api_service_reports():
+    # Three files name this version and are bumped together on a runtime
     # release: the stack's image tag (what the VM pulls), the Dockerfile's
-    # AGENT_VERSION (GET /version's answer) and the package __version__.
+    # SERVICE_VERSION (GET /version's answer) and the package __version__.
     import re
     from pathlib import Path
 
     from omelet_api import __version__ as package_version
 
     root = Path(__file__).resolve().parent.parent
-    stack = re.search(r"\$\{OMELET_AGENT_IMAGE:-[^}]+:([^}:]+)\}",
+    stack = re.search(r"\$\{OMELET_API_IMAGE:-[^}]+:([^}:]+)\}",
                       (root / "runtime" / "stack.yml").read_text())
-    dockerfile = re.search(r"^ARG AGENT_VERSION=(\S+)",
+    dockerfile = re.search(r"^ARG SERVICE_VERSION=(\S+)",
                            (root / "runtime" / "omelet_api" / "Dockerfile").read_text(), re.M)
-    assert stack, "stack.yml must default OMELET_AGENT_IMAGE with a tag"
-    assert dockerfile, "the Dockerfile must default AGENT_VERSION"
+    assert stack, "stack.yml must default OMELET_API_IMAGE with a tag"
+    assert dockerfile, "the Dockerfile must default SERVICE_VERSION"
     assert stack[1] == dockerfile[1] == package_version
 
 
-def test_the_host_speaks_the_api_the_agent_serves():
-    assert agent_constants.API_VERSION in host_constants.SUPPORTED_API
+def test_the_host_speaks_the_api_the_api_service_serves():
+    assert api_constants.API_VERSION in host_constants.SUPPORTED_API
 
 
-def test_the_guest_cli_holds_the_same_values_as_the_host_and_the_agent():
+def test_the_guest_cli_holds_the_same_values_as_the_host_and_the_api_service():
     # The guest CLI is copied into the VM on its own and can import neither
     # side, so its copies of the shared names are held equal here.
     from tests.runtime.cli.loader import load
 
     guest = _public(load())
-    for side, other in (("agent", _public(agent_constants)),
+    for side, other in (("api", _public(api_constants)),
                         ("host", _public(host_constants))):
         shared = sorted(set(guest) & set(other))
         assert shared, f"the guest CLI shares no names with the {side}"
@@ -79,9 +89,9 @@ def test_the_guest_cli_holds_the_same_values_as_the_host_and_the_agent():
         assert not diverged, f"guest/{side} constants diverged: {diverged}"
 
 
-def test_the_web_page_speaks_the_api_the_agent_serves():
-    # The page is a separate image, but ships under the same engine tag; a
-    # page that no longer lists the agent's api number shows "needs an
+def test_the_web_page_speaks_the_api_the_api_service_serves():
+    # The page is a separate image, but ships under the same runtime tag; a
+    # page that no longer lists the api service's api number shows "needs an
     # update" on every VM that installed the matching pair.
     import re
     from pathlib import Path
@@ -91,11 +101,11 @@ def test_the_web_page_speaks_the_api_the_agent_serves():
     match = re.search(r"SUPPORTED_API[^=]*=\s*\[([^\]]*)\]", source)
     assert match, "version.ts must declare SUPPORTED_API as an array literal"
     supported = {int(n) for n in re.findall(r"\d+", match[1])}
-    assert agent_constants.API_VERSION in supported
+    assert api_constants.API_VERSION in supported
 
 
-def test_the_web_image_ships_with_the_agent_it_was_built_against():
-    # The page and the agent are released as a pair under one engine tag.
+def test_the_web_image_ships_with_the_api_service_it_was_built_against():
+    # The page and the api service are released as a pair under one runtime tag.
     import re
     from pathlib import Path
 

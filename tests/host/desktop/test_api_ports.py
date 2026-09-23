@@ -70,7 +70,7 @@ def test_a_non_numeric_port_never_reaches_the_provider(tmp_path):
 
 def test_the_agent_port_is_refused_before_anything_is_forwarded(tmp_path):
     provider = FakeProvider()
-    result = _api(tmp_path, provider).add_port(1234, constants.AGENT_PORT)
+    result = _api(tmp_path, provider).add_port(1234, constants.API_PORT)
     assert result == {"ok": False, "reason": "reserved"}
     assert provider.forwarded == []
 

@@ -30,7 +30,7 @@ def test_install_pins_docker_official_repo_not_docker_io():
 def test_install_writes_the_marker_path_the_host_checks():
     # The host treats a missing marker after a zero exit as a failed install;
     # two spellings would fail every install that actually worked.
-    assert f"> {constants.ENGINE_MARKER}" in INSTALL.read_text()
+    assert f"> {constants.RUNTIME_MARKER}" in INSTALL.read_text()
 
 
 def test_install_guards_on_the_package_not_the_docker_binary():
@@ -128,18 +128,18 @@ def test_install_makes_opt_omelet_writable_before_the_agent_starts():
 
 def test_install_writes_the_marker_last():
     commands = _commands()
-    marker = _index_of(f"> {constants.ENGINE_MARKER}")
+    marker = _index_of(f"> {constants.RUNTIME_MARKER}")
     assert marker > _index_of('"$SKILLS_CLI" add')
     assert marker >= len(commands) - 2, "nothing that can fail may run after the marker"
 
 
 def test_a_failed_reinstall_does_not_leave_the_previous_marker_standing():
-    # The engine dir, stack and skills are already replaced by the time any
+    # The runtime dir, stack and skills are already replaced by the time any
     # Docker step could fail; the old marker must not go on claiming success.
     commands = _commands()
-    rm_marker = _index_of(f"rm -f {constants.ENGINE_MARKER}")
+    rm_marker = _index_of(f"rm -f {constants.RUNTIME_MARKER}")
     assert rm_marker < _index_of("dpkg -s docker-ce")
-    write_marker = _index_of(f"> {constants.ENGINE_MARKER}")
+    write_marker = _index_of(f"> {constants.RUNTIME_MARKER}")
     assert write_marker >= len(commands) - 2, "nothing that can fail may run after the marker"
 
 
@@ -168,7 +168,7 @@ def test_npx_in_the_account_loop_cannot_swallow_the_account_list():
 def test_a_repair_or_a_new_token_recreates_the_agent():
     # The agent reads its token once at startup; `up -d` leaves it running.
     commands = _commands()
-    recreate = _index_of("--force-recreate agent")
+    recreate = _index_of("--force-recreate api")
     assert recreate > _index_of(" up -d")
     condition = commands[recreate - 1]
     assert "TOKEN_CREATED" in condition and "REPAIR" in condition, condition
@@ -278,7 +278,7 @@ def test_the_github_cli_repo_is_signed_by_its_keyring():
 
 def test_a_github_cli_failure_is_reported_and_stops_the_install():
     # provider.exec() never raises and install.sh runs behind a bootstrap that
-    # only re-checks engine.version -- a silently skipped gh would look installed.
+    # only re-checks runtime.version -- a silently skipped gh would look installed.
     text = INSTALL.read_text()
     gh_block = text.split("dpkg -s gh")[1].split("node_ok()")[0]
     assert gh_block.count("exit 1") == 2, "both the keyring and the apt failure must stop"

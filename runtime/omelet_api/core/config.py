@@ -23,7 +23,7 @@ class AgentConfig:
     """
 
     bind_host: str = "0.0.0.0"
-    port: int = constants.AGENT_PORT
+    port: int = constants.API_PORT
     domain: str = constants.DEFAULT_DOMAIN
     edge_port: int = constants.EDGE_PORT
     # The name Traefik answers to on the `edge` network. Phase 5 moves the
@@ -34,9 +34,10 @@ class AgentConfig:
     ready_timeout: float = READY_TIMEOUT
     projects_root: Path = Path(constants.GUEST_PROJECTS)
     state_db: Path = Path(f"{constants.GUEST_ROOT}/state.db")
-    # The shared secret the engine installer generates in the guest. Phase 3 replaces
-    # it with a service-issued device token; see agent/api/app.py's auth check.
-    token_path: Path = Path(f"{constants.GUEST_ROOT}/agent.token")
+    # The shared secret the runtime installer generates in the guest. Phase 3
+    # replaces it with a service-issued device token; see
+    # omelet_api/routes/app.py's auth check.
+    token_path: Path = Path(f"{constants.GUEST_ROOT}/api.token")
     # Partial uploads, outside projects_root so neither a listing, the
     # reconcile scan nor the coding agent ever sees a half-written file.
     uploads_root: Path = Path(f"{constants.GUEST_ROOT}/uploads")
@@ -50,7 +51,7 @@ class AgentConfig:
         env = os.environ if env is None else env
         return cls(
             bind_host=env.get("OMELET_AGENT_HOST", "0.0.0.0"),
-            port=int(env.get("OMELET_AGENT_PORT", constants.AGENT_PORT)),
+            port=int(env.get("OMELET_API_PORT", constants.API_PORT)),
             domain=env.get("OMELET_DOMAIN", constants.DEFAULT_DOMAIN),
             edge_port=int(env.get("OMELET_EDGE_PORT", constants.EDGE_PORT)),
             traefik_host=env.get("OMELET_TRAEFIK_HOST", "traefik"),
@@ -59,11 +60,11 @@ class AgentConfig:
                                        constants.GUEST_PROJECTS)),
             state_db=Path(env.get("OMELET_STATE_DB",
                                   f"{constants.GUEST_ROOT}/state.db")),
-            token_path=Path(env.get("OMELET_AGENT_TOKEN",
-                                    f"{constants.GUEST_ROOT}/agent.token")),
+            token_path=Path(env.get("OMELET_API_TOKEN",
+                                    f"{constants.GUEST_ROOT}/api.token")),
             uploads_root=Path(env.get("OMELET_UPLOADS_ROOT",
                                       f"{constants.GUEST_ROOT}/uploads")),
             max_upload_bytes=int(env.get("OMELET_MAX_UPLOAD_BYTES",
                                          512 * 1024 * 1024)),
-            version=env.get("OMELET_AGENT_VERSION", __version__),
+            version=env.get("OMELET_SERVICE_VERSION", __version__),
         )

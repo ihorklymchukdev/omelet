@@ -41,7 +41,7 @@
       // on this machine is Docker Desktop's engine, NOT omelet-vm's --
       // /usr/bin/docker here is a symlink into /mnt/wsl/docker-desktop.
       // Fine for stepping through routing, parsing and overlay generation.
-      // Create the token first:  mkdir -p .debug && echo dev > .debug/agent.token
+      // Create the token first:  mkdir -p .debug && echo dev > .debug/api.token
       "name": "Agent: run locally (no container)",
       "type": "debugpy",
       "request": "launch",
@@ -53,9 +53,9 @@
         "PYTHONPATH": "${workspaceFolder}/runtime",
         "OMELET_PROJECTS_ROOT": "${workspaceFolder}/.debug/projects",
         "OMELET_STATE_DB": "${workspaceFolder}/.debug/state.db",
-        "OMELET_AGENT_TOKEN": "${workspaceFolder}/.debug/agent.token",
+        "OMELET_API_TOKEN": "${workspaceFolder}/.debug/api.token",
         "OMELET_TRAEFIK_HOST": "127.0.0.1",
-        "OMELET_AGENT_PORT": "39099"
+        "OMELET_API_PORT": "39099"
       }
     },
     {

@@ -25,7 +25,7 @@ function show(screen, data) {
 }
 
 // Every [data-field] is replaced by the matching key. Values are written with
-// textContent, never innerHTML: an engine version or a provider's error text
+// textContent, never innerHTML: a runtime version or a provider's error text
 // is data, and some of it comes from a subprocess.
 function fill(root, data) {
   root.querySelectorAll('[data-field]').forEach((node) => {

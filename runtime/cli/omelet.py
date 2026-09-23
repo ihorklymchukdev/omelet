@@ -3,8 +3,8 @@
 
 Pushed into the guest by the host and installed as /usr/local/bin/omelet, then
 run by whichever coding agent the user works in. Stdlib only: it can import
-neither host/ nor agent/, so the names it shares with them are declared again
-here and held equal by tests/test_constants_agree.py.
+neither host/ nor omelet_api/, so the names it shares with them are declared
+again here and held equal by tests/test_constants_agree.py.
 """
 from __future__ import annotations
 
@@ -23,10 +23,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, TextIO
 
-AGENT_PORT = 39099
+API_PORT = 39099
 GUEST_ROOT = "/opt/omelet"
 GUEST_PROJECTS = f"{GUEST_ROOT}/projects"
-GUEST_TOKEN = f"{GUEST_ROOT}/agent.token"
+GUEST_TOKEN = f"{GUEST_ROOT}/api.token"
 GUEST_STACK = f"{GUEST_ROOT}/stack.yml"
 COMPOSE_FILE = "docker-compose.yml"
 # Compose accepts these too; Omelet does not, so a project written under one of
@@ -174,7 +174,7 @@ def _agent_error(exc: urllib.error.HTTPError) -> AgentError:
 class Agent:
     """The agent API over the same HTTP contract host/client.py speaks."""
 
-    def __init__(self, token: str, *, base_url: str = f"http://127.0.0.1:{AGENT_PORT}",
+    def __init__(self, token: str, *, base_url: str = f"http://127.0.0.1:{API_PORT}",
                  opener=None, sleep=time.sleep, monotonic=time.monotonic):
         self._token = token
         self._base = base_url

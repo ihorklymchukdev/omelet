@@ -25,7 +25,7 @@ def _without_interpolation() -> str:
 def test_stack_yml_hardcodes_no_domain_or_port_outside_a_default():
     # This is the one rule that keeps Phase 5 from becoming a rewrite: every
     # environment injects its own domain and ports through OMELET_DOMAIN /
-    # OMELET_EDGE_PORT / OMELET_AGENT_PORT, so nothing here may assume the
+    # OMELET_EDGE_PORT / OMELET_API_PORT, so nothing here may assume the
     # local values.
     stripped = _without_interpolation()
     assert "39080" not in stripped
@@ -33,13 +33,13 @@ def test_stack_yml_hardcodes_no_domain_or_port_outside_a_default():
     assert "127-0-0-1.sslip.io" not in stripped
 
 
-def test_the_agent_binds_the_port_it_is_published_on():
-    # AgentConfig already reads OMELET_AGENT_PORT; publishing a fixed port
+def test_the_api_service_binds_the_port_it_is_published_on():
+    # AgentConfig already reads OMELET_API_PORT; publishing a fixed port
     # while the process binds a configured one forwards the host to nothing.
-    agent = yaml.safe_load(_text())["services"]["agent"]
-    assert agent["ports"] == ["${OMELET_AGENT_PORT:-39099}:"
-                              "${OMELET_AGENT_PORT:-39099}"]
-    assert "OMELET_AGENT_PORT=${OMELET_AGENT_PORT:-39099}" in agent["environment"]
+    api = yaml.safe_load(_text())["services"]["api"]
+    assert api["ports"] == ["${OMELET_API_PORT:-39099}:"
+                            "${OMELET_API_PORT:-39099}"]
+    assert "OMELET_API_PORT=${OMELET_API_PORT:-39099}" in api["environment"]
 
 
 def test_stack_yml_parses_and_has_no_version_key():
@@ -49,7 +49,7 @@ def test_stack_yml_parses_and_has_no_version_key():
 
 def test_stack_yml_both_services_restart_always_on_the_external_edge_network():
     doc = yaml.safe_load(_text())
-    for name in ("traefik", "agent", "web"):
+    for name in ("traefik", "api", "web"):
         service = doc["services"][name]
         assert service["restart"] == "always"
         assert "edge" in service["networks"]
@@ -57,10 +57,10 @@ def test_stack_yml_both_services_restart_always_on_the_external_edge_network():
 
 
 def test_stack_yml_mounts_opt_omelet_at_the_identical_path_on_both_sides():
-    # The agent parses compose files, but dockerd on the VM resolves the
+    # The api service parses compose files, but dockerd on the VM resolves the
     # bind-mount paths inside them. A mismatched path here silently mounts
     # every user project's relative volume onto an empty directory.
-    volumes = yaml.safe_load(_text())["services"]["agent"]["volumes"]
+    volumes = yaml.safe_load(_text())["services"]["api"]["volumes"]
     assert "/opt/omelet:/opt/omelet" in volumes
 
 
@@ -88,12 +88,13 @@ def _labels(service: dict) -> dict:
 
 def test_the_web_page_is_reached_only_through_traefik_below_the_api_route():
     # Both routers match Host(localhost) || Host(127.0.0.1); the page's is a
-    # catch-all, so it must lose to the agent's /api router or it answers
-    # every API call with index.html. No published port: only Traefik fronts it.
+    # catch-all, so it must lose to the api service's /api router or it
+    # answers every API call with index.html. No published port: only
+    # Traefik fronts it.
     services = yaml.safe_load(_text())["services"]
-    web, agent = _labels(services["web"]), _labels(services["agent"])
+    web, api = _labels(services["web"]), _labels(services["api"])
     assert int(web["traefik.http.routers.omelet-web.priority"]) \
-        < int(agent["traefik.http.routers.omelet-api.priority"])
+        < int(api["traefik.http.routers.omelet-api.priority"])
     assert "ports" not in services["web"]
 
 

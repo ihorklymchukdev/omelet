@@ -123,7 +123,7 @@ def test_an_expired_session_answers_session_expired_through_the_middleware(env):
 
 def test_the_cookie_is_not_reissued_right_after_sign_in(tmp_path):
     clock = Clock()
-    token_path = tmp_path / "agent.token"
+    token_path = tmp_path / "api.token"
     token_path.write_text("test-token")
     config = AgentConfig(projects_root=tmp_path / "projects",
                          state_db=tmp_path / "state.db", token_path=token_path,
@@ -142,7 +142,7 @@ def test_the_cookie_is_not_reissued_right_after_sign_in(tmp_path):
 
 def test_the_cookie_is_reissued_once_the_slide_window_is_crossed(tmp_path):
     clock = Clock()
-    token_path = tmp_path / "agent.token"
+    token_path = tmp_path / "api.token"
     token_path.write_text("test-token")
     config = AgentConfig(projects_root=tmp_path / "projects",
                          state_db=tmp_path / "state.db", token_path=token_path,

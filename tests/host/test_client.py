@@ -18,7 +18,7 @@ def test_read_token_reads_as_root_from_the_token_path_and_strips_it():
     provider = FakeProvider(Completed(0, "sekret\n", ""))
     assert read_token(provider) == "sekret"
     (argv, root), = provider.execs
-    assert argv == ["cat", "/opt/omelet/agent.token"]
+    assert argv == ["cat", "/opt/omelet/api.token"]
     assert root is True
 
 

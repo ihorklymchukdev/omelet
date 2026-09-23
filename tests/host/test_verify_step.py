@@ -39,10 +39,10 @@ def template(tmp_path):
 @pytest.fixture
 def agent(tmp_path):
     """The real agent app behind a real `AgentClient`."""
-    (tmp_path / "agent.token").write_text(TOKEN)
+    (tmp_path / "api.token").write_text(TOKEN)
     config = AgentConfig(projects_root=tmp_path / "projects",
                          state_db=tmp_path / "state.db",
-                         token_path=tmp_path / "agent.token",
+                         token_path=tmp_path / "api.token",
                          # The agent's own readiness window is covered in
                          # test_health.py; this file is about the host's.
                          ready_timeout=0.0)

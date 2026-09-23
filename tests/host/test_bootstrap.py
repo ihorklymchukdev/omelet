@@ -12,7 +12,7 @@ from host.core.provider import Completed
 
 class FakeProvider:
     """Guest stand-in. A successful installer run writes the marker, as
-    engine/install.sh does on its last line."""
+    runtime/install/install.sh does on its last line."""
 
     def __init__(self, *, installed=False, fail=False, stderr="", writes_marker=True):
         self.execs = []
@@ -37,7 +37,7 @@ class FakeProvider:
 
 @pytest.fixture(autouse=True)
 def _clean_env(monkeypatch):
-    for name in ("OMELET_ENGINE_URL", "OMELET_ENGINE_REF"):
+    for name in ("OMELET_RUNTIME_URL", "OMELET_RUNTIME_REF"):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -52,48 +52,48 @@ def _stub(command: str) -> str:
     return base64.b64decode(re.search(r"echo (\S+) \| base64 -d", command)[1]).decode()
 
 
-def test_an_installed_engine_is_left_alone():
+def test_an_installed_runtime_is_left_alone():
     p = FakeProvider(installed=True)
     bootstrap(p)
     assert p.installer_runs() == []
-    assert any(constants.ENGINE_MARKER in argv for argv, _ in p.execs)
+    assert any(constants.RUNTIME_MARKER in argv for argv, _ in p.execs)
 
 
-def test_a_missing_engine_runs_the_default_entrypoint_as_root():
+def test_a_missing_runtime_runs_the_default_entrypoint_as_root():
     p = FakeProvider()
     bootstrap(p)
     (run,) = p.installer_runs()
     assert run[1] is True, "the installer needs root"
-    assert _command(p).rstrip().endswith(constants.ENGINE_URL)
+    assert _command(p).rstrip().endswith(constants.RUNTIME_URL)
 
 
 def test_the_entrypoint_can_be_pointed_elsewhere_from_the_environment(monkeypatch):
-    monkeypatch.setenv("OMELET_ENGINE_URL", "https://example.invalid/branch/get.sh")
+    monkeypatch.setenv("OMELET_RUNTIME_URL", "https://example.invalid/branch/get.sh")
     p = FakeProvider()
     bootstrap(p)
     assert _command(p).rstrip().endswith("https://example.invalid/branch/get.sh")
-    assert constants.ENGINE_URL not in _command(p)
+    assert constants.RUNTIME_URL not in _command(p)
 
 
 def test_a_ref_reaches_the_guest_only_when_one_is_set(monkeypatch):
     p = FakeProvider()
     bootstrap(p)
-    assert "OMELET_ENGINE_REF" not in _command(p)
+    assert "OMELET_RUNTIME_REF" not in _command(p)
 
-    monkeypatch.setenv("OMELET_ENGINE_REF", "feature/engine-work")
+    monkeypatch.setenv("OMELET_RUNTIME_REF", "feature/runtime-work")
     p = FakeProvider()
     bootstrap(p)
-    assert "OMELET_ENGINE_REF=feature/engine-work" in _command(p)
+    assert "OMELET_RUNTIME_REF=feature/runtime-work" in _command(p)
 
 
-def test_repair_reinstalls_an_installed_engine_and_tells_the_installer_so():
+def test_repair_reinstalls_an_installed_runtime_and_tells_the_installer_so():
     plain = FakeProvider()
     bootstrap(plain)
-    assert "OMELET_ENGINE_REPAIR" not in _command(plain)
+    assert "OMELET_RUNTIME_REPAIR" not in _command(plain)
 
     p = FakeProvider(installed=True)
     bootstrap(p, repair=True)
-    assert "OMELET_ENGINE_REPAIR=1" in _command(p)
+    assert "OMELET_RUNTIME_REPAIR=1" in _command(p)
 
 
 def test_a_failing_installer_raises_with_the_guests_own_error():
@@ -104,16 +104,16 @@ def test_a_failing_installer_raises_with_the_guests_own_error():
 
 
 def test_an_installer_that_exits_zero_without_the_marker_is_a_failure():
-    with pytest.raises(BootstrapError, match="engine.version"):
+    with pytest.raises(BootstrapError, match="runtime.version"):
         bootstrap(FakeProvider(writes_marker=False))
 
 
 def test_a_value_that_would_be_re_split_on_the_guest_command_line_is_refused(monkeypatch):
     # The command crosses wsl.exe or ssh as one argument; a space or quote in
     # it would be parsed as shell by the guest.
-    monkeypatch.setenv("OMELET_ENGINE_REF", "main; rm -rf /")
+    monkeypatch.setenv("OMELET_RUNTIME_REF", "main; rm -rf /")
     p = FakeProvider()
-    with pytest.raises(BootstrapError, match="OMELET_ENGINE_REF"):
+    with pytest.raises(BootstrapError, match="OMELET_RUNTIME_REF"):
         bootstrap(p)
     assert p.installer_runs() == []
 
@@ -137,10 +137,10 @@ def _run_stub(tmp_path, env):
 
 
 def test_the_stub_runs_the_script_it_downloaded(tmp_path):
-    env = _fake_curl(tmp_path, "echo 'echo engine-ran'\n")
+    env = _fake_curl(tmp_path, "echo 'echo runtime-ran'\n")
     result = _run_stub(tmp_path, env)
     assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == "engine-ran"
+    assert result.stdout.strip() == "runtime-ran"
 
 
 def test_a_broken_download_runs_nothing_and_says_so(tmp_path):

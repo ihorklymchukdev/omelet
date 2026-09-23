@@ -68,15 +68,16 @@ def test_the_update_tile_promises_nothing_it_cannot_do():
 
 
 def test_no_template_renders_a_separator_with_nothing_after_it():
-    """engine_version is "" on every machine where the engine never installed,
-    so a hard-coded separator between two fields renders as "0.1.0 · "."""
+    """runtime_version is "" on every machine where the runtime never
+    installed, so a hard-coded separator between two fields renders as
+    "0.1.0 · "."""
     markup = (UI / "index.html").read_text()
-    # Every engine_version field must sit inside a section gated on it.
-    for chunk in markup.split('data-field="engine_version"')[1:]:
+    # Every runtime_version field must sit inside a section gated on it.
+    for chunk in markup.split('data-field="runtime_version"')[1:]:
         pass
-    assert 'data-when="engine_version"' in markup
-    assert '</span> &middot; <span data-field="engine_version">' not in markup
-    assert '</span> · <span data-field="engine_version">' not in markup
+    assert 'data-when="runtime_version"' in markup
+    assert '</span> &middot; <span data-field="runtime_version">' not in markup
+    assert '</span> · <span data-field="runtime_version">' not in markup
 
 
 def test_nothing_installed_offers_no_uninstall():

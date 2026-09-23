@@ -34,7 +34,7 @@ def test_the_same_host_port_is_refused_even_for_a_different_guest_port():
 
 
 def test_the_agent_port_may_not_be_taken():
-    assert validate_port(1234, constants.AGENT_PORT, []) == "reserved"
+    assert validate_port(1234, constants.API_PORT, []) == "reserved"
 
 
 def test_the_edge_port_may_not_be_taken():

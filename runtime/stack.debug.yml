@@ -1,6 +1,6 @@
-# Compose override that swaps the agent for its debugpy build and publishes
-# the debugger port. The base stack.yml is unchanged -- that file has to stay
-# identical to what runs in production.
+# Compose override that swaps the api service for its debugpy build and
+# publishes the debugger port. The base stack.yml is unchanged -- that file
+# has to stay identical to what runs in production.
 #
 #   docker compose -f /opt/omelet/stack.yml -f /opt/omelet/stack.debug.yml up -d
 #
@@ -8,7 +8,7 @@
 # WSL2's localhostForwarding surfaces 5678 on the Windows host at
 # 127.0.0.1:5678, which is what launch.json's attach config connects to.
 services:
-  agent:
-    image: omelet-agent:debug
+  api:
+    image: omelet-api:debug
     ports:
       - "5678:5678"

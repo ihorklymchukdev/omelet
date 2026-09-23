@@ -70,7 +70,7 @@ class DesktopApi:
             # true across every failed create_vm relaunch too.
             "first_run": not readiness.vm_exists and not self._state.completed(),
             "app_version": constants.APP_VERSION,
-            "engine_version": readiness.engine_version or "",
+            "runtime_version": readiness.runtime_version or "",
             "problem": readiness.problem,
             # Set by __main__.run() when RunOnce reopened the window after a
             # restart, so the install screen can explain why it appeared.

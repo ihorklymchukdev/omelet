@@ -1,12 +1,12 @@
-# The released agent image plus debugpy, for stepping through the agent while
+# The released api service image plus debugpy, for stepping through it while
 # it runs in the VM. Not part of any build or release path -- stack.debug.yml
 # is the only thing that references it.
 #
 # It has no build context of its own, so it can be built straight into the VM
 # over stdin:
-#   docker build -t omelet-agent:debug - < runtime/omelet_api/Dockerfile.debug
-ARG AGENT_IMAGE=ghcr.io/ihorklymchukdev/omelet-agent:0.1.0
-FROM ${AGENT_IMAGE}
+#   docker build -t omelet-api:debug - < runtime/omelet_api/Dockerfile.debug
+ARG SERVICE_IMAGE=ghcr.io/ihorklymchukdev/omelet-api:0.1.0
+FROM ${SERVICE_IMAGE}
 
 USER root
 RUN pip install --no-cache-dir debugpy==1.8.5

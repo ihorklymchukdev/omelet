@@ -2,7 +2,7 @@
 # Writes Omelet's Codex instructions block and the ~/projects link into one
 # home directory. Skills are installed separately, with npx.
 # Run by install.sh as root, once per home:
-#   install-agents.sh <engine-dir> <home> <owner uid:gid>
+#   install-agents.sh <runtime-dir> <home> <owner uid:gid>
 set -euo pipefail
 
 SRC=$1

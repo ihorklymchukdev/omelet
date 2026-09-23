@@ -25,7 +25,7 @@ from .core.provider import VmProvider
 
 # WSL2's localhostForwarding (and Lima's portForwards) surface the agent's
 # guest socket on the host at the same port, so the host always dials loopback.
-AGENT_URL = f"http://127.0.0.1:{constants.AGENT_PORT}"
+AGENT_URL = f"http://127.0.0.1:{constants.API_PORT}"
 
 # Ordinary calls are metadata-sized and should fail fast when the VM is wedged.
 REQUEST_TIMEOUT = 30.0
@@ -74,7 +74,7 @@ class JobTimeoutError(RuntimeError):
 
 
 def read_token(provider: VmProvider) -> str:
-    """Read `/opt/omelet/agent.token` fresh, once, via `provider.exec()`.
+    """Read `/opt/omelet/api.token` fresh, once, via `provider.exec()`.
 
     Never cached to the host filesystem: a copy at rest is a second secret to
     protect and a second thing to go stale after a VM rebuild. One `wsl.exe`

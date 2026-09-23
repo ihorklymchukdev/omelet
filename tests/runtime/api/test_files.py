@@ -178,7 +178,7 @@ def test_list_dir_skips_an_entry_whose_stat_raises(tmp_path, monkeypatch):
 
 @pytest.fixture
 def env(tmp_path):
-    token_path = tmp_path / "agent.token"
+    token_path = tmp_path / "api.token"
     token_path.write_text("test-token")
     config = AgentConfig(projects_root=tmp_path / "projects",
                          state_db=tmp_path / "state.db", token_path=token_path)
@@ -347,7 +347,7 @@ def test_a_5mb_archive_round_trips_proving_the_command_line_ceiling_is_gone(env)
 def capped_env(tmp_path):
     """A small cap so the tests below don't need a multi-hundred-MB body to
     exercise it."""
-    token_path = tmp_path / "agent.token"
+    token_path = tmp_path / "api.token"
     token_path.write_text("test-token")
     config = AgentConfig(projects_root=tmp_path / "projects",
                          state_db=tmp_path / "state.db", token_path=token_path,
@@ -379,7 +379,7 @@ def test_single_file_put_over_the_cap_is_413_and_leaves_no_temp_file(capped_env)
 def test_the_upload_cap_is_reported_in_a_size_a_person_can_read(tmp_path):
     # "upload exceeds the 536870912 byte limit" is the raw constant read out
     # loud; the people this tool is for do not count bytes.
-    token_path = tmp_path / "agent.token"
+    token_path = tmp_path / "api.token"
     token_path.write_text("test-token")
     config = AgentConfig(projects_root=tmp_path / "projects",
                          state_db=tmp_path / "state.db", token_path=token_path,
@@ -421,7 +421,7 @@ def test_remove_tree_falls_back_to_root_for_files_a_container_owns(tmp_path):
         def exec(self, argv, *, root=False):
             self.calls.append(argv)
             if argv[:2] == [lifecycle.DOCKER, "inspect"]:
-                return Completed(0, "ghcr.io/x/omelet-agent:9\n", "")
+                return Completed(0, "ghcr.io/x/omelet-api:9\n", "")
             return Completed(0, "", "")
 
     runner = Runner()

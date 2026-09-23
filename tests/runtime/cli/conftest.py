@@ -52,12 +52,12 @@ class Guest:
 
 @pytest.fixture
 def guest(tmp_path):
-    (tmp_path / "agent.token").write_text(TOKEN)
+    (tmp_path / "api.token").write_text(TOKEN)
     root = tmp_path / "projects"
     root.mkdir()
     config = AgentConfig(domain="test.local", edge_port=41080,
                          projects_root=root, state_db=tmp_path / "state.db",
-                         token_path=tmp_path / "agent.token", ready_timeout=0.0)
+                         token_path=tmp_path / "api.token", ready_timeout=0.0)
     runner = FakeRunner()
     app = create_app(config=config, runner=runner, http_probe=FakeProbe())
     with TestClient(app) as client:

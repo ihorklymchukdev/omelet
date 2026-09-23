@@ -22,14 +22,14 @@ class Readiness:
     """
     vm_exists: bool = False
     vm_reachable: bool = False
-    engine_version: str | None = None
+    runtime_version: str | None = None
     agent_api: int | None = None
     problem: str = ""
 
     @property
     def ready(self) -> bool:
         return (self.vm_exists and self.vm_reachable
-                and bool(self.engine_version)
+                and bool(self.runtime_version)
                 and self.agent_api in constants.SUPPORTED_API)
 
 
@@ -77,11 +77,11 @@ def probe(provider, *, client_factory=None) -> Readiness:
         return Readiness(vm_exists=True)
 
     try:
-        marker = provider.exec(["cat", constants.ENGINE_MARKER])
-        engine = marker.stdout.strip() if marker.ok else ""
+        marker = provider.exec(["cat", constants.RUNTIME_MARKER])
+        runtime = marker.stdout.strip() if marker.ok else ""
     except Exception as e:
         return Readiness(vm_exists=True, vm_reachable=True, problem=f"{e}")
-    if not engine:
+    if not runtime:
         return Readiness(vm_exists=True, vm_reachable=True)
 
     # Constructing the client and asking it for /health are one stage: both
@@ -93,6 +93,6 @@ def probe(provider, *, client_factory=None) -> Readiness:
         api = client_factory(provider).health().get("api", 1)
     except Exception as e:
         return Readiness(vm_exists=True, vm_reachable=True,
-                          engine_version=engine, problem=f"{e}")
+                          runtime_version=runtime, problem=f"{e}")
     return Readiness(vm_exists=True, vm_reachable=True,
-                      engine_version=engine, agent_api=api)
+                      runtime_version=runtime, agent_api=api)

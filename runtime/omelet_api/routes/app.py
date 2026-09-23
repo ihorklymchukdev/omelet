@@ -156,7 +156,7 @@ def create_app(*, config: AgentConfig | None = None, runner=None, state=None,
                               Path(config.projects_root))["free_bytes"])
     uploads.sweep()
 
-    app = FastAPI(title="omelet-agent", version=config.version)
+    app = FastAPI(title="omelet-api", version=config.version)
     app.state.config = config
     app.state.runner = runner
     app.state.state = state

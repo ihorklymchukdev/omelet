@@ -10,7 +10,7 @@ from host.core.status import Readiness
 from host.desktop.api import DesktopApi
 
 READY = Readiness(vm_exists=True, vm_reachable=True,
-                  engine_version="engine-v0.1.0", agent_api=1)
+                  runtime_version="runtime-v0.1.0", agent_api=1)
 
 
 class FakeProvider:
@@ -49,12 +49,12 @@ def test_home_carries_the_versions_the_odds_and_ends_row_shows(tmp_path):
     from host.core import constants
     home = _api(tmp_path, READY).home()
     assert home["app_version"] == constants.APP_VERSION
-    assert home["engine_version"] == "engine-v0.1.0"
+    assert home["runtime_version"] == "runtime-v0.1.0"
 
 
 def test_home_passes_the_probe_problem_through_for_the_log(tmp_path):
     readiness = Readiness(vm_exists=True, vm_reachable=True,
-                          engine_version="engine-v0.1.0",
+                          runtime_version="runtime-v0.1.0",
                           problem="connection refused")
     home = _api(tmp_path, readiness).home()
     assert home["route"] == "unreachable"

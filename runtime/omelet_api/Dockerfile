@@ -1,5 +1,5 @@
 # Build context is this directory, not the repo root:
-#   docker build -t ghcr.io/ihorklymchukdev/omelet-agent:<version> runtime/omelet_api/
+#   docker build -t ghcr.io/ihorklymchukdev/omelet-api:<version> runtime/omelet_api/
 # `pyproject.toml` maps package-dir {"omelet_api" = "."} against that context,
 # which is also what keeps `omelet_api/` importable and installable on its own
 # (the property tests/host/test_no_api_import.py protects). `docker build .`
@@ -14,10 +14,10 @@ FROM docker:${DOCKER_CLI_VERSION}-cli AS docker-cli
 
 FROM python:3.12-slim AS runtime
 
-ARG AGENT_VERSION=0.2.0
+ARG SERVICE_VERSION=0.2.0
 ARG DOCKER_GID=999
 
-ENV OMELET_AGENT_VERSION=${AGENT_VERSION} \
+ENV OMELET_SERVICE_VERSION=${SERVICE_VERSION} \
     PYTHONUNBUFFERED=1
 
 # Absolute /usr/bin/docker, not /usr/local/bin: core/lifecycle.py hardcodes
@@ -60,6 +60,6 @@ EXPOSE 39099
 # answer even when the Docker socket is unreachable, so a failing healthcheck
 # means the agent process itself is down, not that a project failed to start.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD python -c "import os, urllib.request as u; u.urlopen('http://127.0.0.1:%s/health' % os.environ.get('OMELET_AGENT_PORT', '39099'), timeout=3)"
+    CMD python -c "import os, urllib.request as u; u.urlopen('http://127.0.0.1:%s/health' % os.environ.get('OMELET_API_PORT', '39099'), timeout=3)"
 
 CMD ["python", "-m", "omelet_api.routes"]
