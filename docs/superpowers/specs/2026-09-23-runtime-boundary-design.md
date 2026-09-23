@@ -382,3 +382,22 @@ A bundling or scaffolding script is **not** in this change. What it should build
 is not yet clear — a one-line installer for the skills alone, a scaffolder for new
 repositories of this shape, or something else — and the answer depends on how
 `install.sh` splits (§4, out of scope). Writing it before that is guessing.
+
+## 14. As-built
+
+Execution (Tasks 1-6) matched this spec with four additions, none of which change
+the decisions above:
+
+- **`agent_unconfigured` → `api_unconfigured` joined the rename inventory (§5).**
+  The table missed this wire error code; it is renamed everywhere the API returns
+  it and everywhere the host and the guest CLI match on it.
+- **`AGENT_PORT`, `OMELET_AGENT_PORT`, `OMELET_AGENT_TOKEN` and `OMELET_AGENT_HOST`
+  → their `API_*` / `OMELET_API_*` equivalents.** Also missing from §5 — found
+  during the vocabulary sweep (§8 step 5), not planned for ahead of time.
+- **The package rename shipped in this change, not staged separately**, as §8
+  already concludes — recorded here because staging it was raised again during
+  execution and the user chose, again, to keep it in scope rather than open a
+  second PR.
+- **`test_stack_recipes.py` left with the skills**, not just `test_skills.py`
+  (§6). It tested the compose recipes bundled in `omelet-stack/references/`, so
+  it belongs with the skill content it exercises, not with this repository.
