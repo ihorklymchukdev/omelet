@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Button } from "@omelet/ui";
 import type { Account } from "../account/account";
@@ -8,6 +8,7 @@ const api = createApi((input, init) => fetch(input, init));
 
 export function AccountMenu({ onSignedOut }: { onSignedOut: () => void }) {
   const [leaving, setLeaving] = useState(false);
+  const queryClient = useQueryClient();
   const { data } = useQuery({
     queryKey: ["account"],
     queryFn: () => api.get<Account>("/api/account"),
@@ -16,14 +17,19 @@ export function AccountMenu({ onSignedOut }: { onSignedOut: () => void }) {
 
   // Revoked from the web app, or signed out in another tab.
   useEffect(() => {
-    if (data && data.state !== "signed_in") onSignedOut();
-  }, [data, onSignedOut]);
+    if (data && data.state !== "signed_in") {
+      // A later remount must start from a fresh fetch, not this stale answer.
+      queryClient.removeQueries({ queryKey: ["account"] });
+      onSignedOut();
+    }
+  }, [data, onSignedOut, queryClient]);
 
   const signOut = async () => {
     setLeaving(true);
     try {
       await api.post("/api/account/sign-out");
     } finally {
+      queryClient.removeQueries({ queryKey: ["account"] });
       onSignedOut();
     }
   };
