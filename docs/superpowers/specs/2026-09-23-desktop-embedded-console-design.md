@@ -3,6 +3,14 @@
 Date: 2026-09-23
 Issue: #14
 
+> **Update (same day):** the native "Omelet" menu (§3) was removed in favour
+> of the console's own top bar (§7): **‹ Home** replaces
+> *Machine*, **↗** replaces *Open in browser*, and `DesktopApi.open_omelet`
+> and `Shell.load_local` went with it. Sections below that mention the menu
+> describe the first iteration. The bar needs a runtime release: the
+> published `omelet-web:0.2.0` (pinned by `runtime-v0.0.5`) predates it, and a
+> console without the bar has no way back to Home inside the window.
+
 ## 1. Why
 
 A user today meets two interfaces: the desktop app (install, start/stop, ports,
@@ -199,4 +207,5 @@ draws itself, the same design as the rest of the page:
   session) it opens the bare page, whose sign-in screen explains itself.
 - No sync marker: it stays hidden, as the web UI's scope already decided.
 
-This part is a runtime change and ships in the pending runtime 0.2.0.
+This part is a runtime change. It needs new image tags: `0.2.0` is already
+published without it (pinned by `runtime-v0.0.5`).

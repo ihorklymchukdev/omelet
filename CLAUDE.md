@@ -160,9 +160,10 @@ Do not add an `if windows` anywhere else — push the difference into a provider
   through `shell.py`'s `guarded()` functions, which refuse every call unless the local UI is the
   page showing — so it stays a thin, fixed list of methods taking scalars, with every real
   decision pushed into `view.py`. When the machine is running the same window shows the projects
-  console (`localhost:<edge>`, entered with a handoff code); a native "Omelet" menu switches
-  between it and the local screens and offers "Open in browser". `jobs.py` runs one slow job at a time on a worker thread: `InstallState` is a JSON
-  file, and two installs writing it at once would race. `ui/` holds the HTML, CSS, JS and bundled
+  console (`localhost:<edge>`, entered with a handoff code); the console's own top bar links
+  back to the local screens and opens itself in the system browser — there is no native menu.
+  `jobs.py` runs one slow job at a time on a worker thread: `InstallState` is a JSON file, and
+  two installs writing it at once would race. `ui/` holds the HTML, CSS, JS and bundled
   fonts and must work fully offline. `cli.setup` launches it; `--headless` still bypasses it
   entirely for a machine without a webview runtime.
 - `runtime/install/get.sh` — the entrypoint: `resolve_ref` (explicit `OMELET_RUNTIME_REF` →

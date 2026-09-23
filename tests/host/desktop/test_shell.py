@@ -66,15 +66,6 @@ def test_the_fragment_does_not_make_the_local_page_foreign():
     assert shell.is_local() is True
 
 
-def test_load_local_returns_to_the_original_page_not_the_console():
-    window = FakeWindow(LOCAL)
-    shell = Shell(window)
-    shell.load(CONSOLE)
-    shell.load_local()
-    assert window.url == LOCAL
-    assert shell.is_local() is True
-
-
 def test_events_reach_the_local_page_as_one_json_argument():
     window = FakeWindow(LOCAL)
     Shell(window).push({"kind": "vm", "message": 'a "quote"'})
@@ -114,14 +105,6 @@ def test_the_bridge_exposes_only_the_public_methods(tmp_path):
 
 def test_the_local_page_reaches_the_real_method(tmp_path):
     assert _bridge(tmp_path, Shell(FakeWindow(LOCAL)))["reset_install"]() == {"ok": True}
-
-
-def test_load_local_leaves_an_already_local_page_alone():
-    # Reloading mid-job redraws Home and strands the job's events.
-    window = FakeWindow(LOCAL)
-    shell = Shell(window)
-    shell.load_local()
-    assert window.loaded == []
 
 
 @pytest.mark.parametrize("before_first_load", [None, "None", "about:blank"])
