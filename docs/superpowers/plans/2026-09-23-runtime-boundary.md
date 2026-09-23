@@ -585,6 +585,20 @@ stack_api="$(sed -n 's/.*omelet-api:\([^}]*\)}.*/\1/p' "$repo/runtime/stack.yml"
 
 Change `--only agent|api` in the usage string and the two `[[ "$only" == … ]]` guards to `api`.
 
+- [ ] **Step 8b: Rename the remaining contract-tier "agent" names**
+
+Found during the pre-flight scan; these are the same tier as the rows above and freeze on the same deadline.
+
+`AGENT_PORT` → `API_PORT`, declared three times and held equal by `tests/test_constants_agree.py`: `host/core/constants.py:19`, `runtime/omelet_api/core/constants.py:2`, `runtime/cli/omelet.py:26`. Its users: `host/client.py:28`, `host/desktop/view.py:150,153`, `runtime/omelet_api/core/config.py:26,53`, `tests/host/test_lima.py:87`, `tests/host/desktop/test_view_ports.py:37`, `tests/host/desktop/test_api_ports.py:73`, `runtime/cli/omelet.py:177`.
+
+`OMELET_AGENT_PORT` → `OMELET_API_PORT` in `runtime/stack.yml:55,57,81`, `runtime/omelet_api/core/config.py:53`, `tests/agent/test_config.py:15`, `tests/runtime/test_stack_yml.py:28,37,40-42`.
+
+`OMELET_AGENT_TOKEN` → `OMELET_API_TOKEN` in `runtime/omelet_api/core/config.py:62` and `.vscode/launch.json:55` (whose `.debug/agent.token` value also becomes `.debug/api.token`).
+
+The FastAPI service identity, which `grep` in Step 12 will otherwise catch: `runtime/omelet_api/routes/app.py:159` (`title="omelet-agent"` → `"omelet-api"`), `runtime/omelet_api/routes/__main__.py:17` (the `omelet-agent will not start` message), and the fixture string at `tests/runtime/api/test_files.py:424` (`ghcr.io/x/omelet-agent:9` → `omelet-api:9`).
+
+Leave `AGENT_URL` in `host/client.py:28` — it is a module-local name, not a contract, and Task 5 owns it.
+
 - [ ] **Step 9: Update the tests that assert on these strings**
 
 `tests/test_constants_agree.py` — `OMELET_AGENT_IMAGE` → `OMELET_API_IMAGE`, `omelet-agent` → `omelet-api`, `ARG AGENT_VERSION` → `ARG SERVICE_VERSION`, and `from agent import __version__` → `from omelet_api import __version__`.
