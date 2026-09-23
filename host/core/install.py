@@ -204,12 +204,12 @@ AGENT_RESTART_TIMEOUT = 30.0
 
 
 def _once_serving(call, sleep, timeout: float):
-    from host.client import AgentUnavailableError
+    from host.client import ApiUnavailableError
     deadline = time.monotonic() + timeout
     while True:
         try:
             return call()
-        except AgentUnavailableError:
+        except ApiUnavailableError:
             if time.monotonic() >= deadline:
                 raise
         sleep(1.0)
@@ -222,10 +222,10 @@ def connect_step(provider, *, client=None, reconnect=None, sleep=time.sleep):
     it re-reads its token -- and returns a client holding the token the VM has
     now. Returning None keeps the current client.
     """
-    from host.client import AgentClient, AgentError
+    from host.client import ApiClient, ApiError
     from host.core import constants
 
-    client = client or AgentClient.for_provider(provider)
+    client = client or ApiClient.for_provider(provider)
     # 0.1.0 agents predate the field and serve api 1.
     api = _once_serving(client.health, sleep, AGENT_RESTART_TIMEOUT).get("api", 1)
     if api not in constants.SUPPORTED_API:
@@ -237,13 +237,13 @@ def connect_step(provider, *, client=None, reconnect=None, sleep=time.sleep):
     # /health skips the token check; /version is the cheapest route that does not.
     try:
         client.version()
-    except AgentError as e:
+    except ApiError as e:
         if e.code not in _TOKEN_CODES or reconnect is None:
             raise
         client = reconnect() or client
         try:
             _once_serving(client.version, sleep, AGENT_RESTART_TIMEOUT)
-        except AgentError as again:
+        except ApiError as again:
             if again.code not in _TOKEN_CODES:
                 raise
             raise AgentNotAccepted(
@@ -301,10 +301,10 @@ def verify_step(provider, template_dir: Path, domain: str, *, client=None,
     The gate is the response the user's browser would get, not the job's own
     verdict: a container can run happily while its URL answers a proxy error.
     """
-    from host.client import AgentClient, JobFailedError
+    from host.client import ApiClient, JobFailedError
     from host.core.constants import VERIFY_PROJECT_ID
 
-    client = client or AgentClient.for_provider(provider)
+    client = client or ApiClient.for_provider(provider)
     try:
         client.ensure_project(VERIFY_PROJECT_ID, domain=domain)
         client.upload_directory(VERIFY_PROJECT_ID, template_dir)
@@ -496,7 +496,7 @@ def _reconnect(provider):
     """Reinstall in repair mode, which recreates the agent container so it
     re-reads its token, then dial it with the token the VM holds now (the
     client caches the one it was built with)."""
-    from host.client import AgentClient
+    from host.client import ApiClient
 
     _bootstrap(provider, repair=True)
-    return AgentClient.for_provider(provider)
+    return ApiClient.for_provider(provider)

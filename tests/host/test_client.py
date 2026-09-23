@@ -1,6 +1,6 @@
 import pytest
 
-from host.client import AgentUnavailableError, read_token
+from host.client import ApiUnavailableError, read_token
 from host.core.provider import Completed
 
 
@@ -26,7 +26,7 @@ def test_read_token_raises_when_the_guest_command_fails():
     # A missing file, or the VM not existing at all, must not read as an
     # empty-but-valid token.
     provider = FakeProvider(Completed(1, "", "No such file or directory"))
-    with pytest.raises(AgentUnavailableError):
+    with pytest.raises(ApiUnavailableError):
         read_token(provider)
 
 
@@ -34,7 +34,7 @@ def test_read_token_raises_on_an_empty_token_even_when_the_command_succeeds():
     # A zero-length token file (the agent's own unconfigured state) must not
     # be treated as a usable credential either.
     provider = FakeProvider(Completed(0, "", ""))
-    with pytest.raises(AgentUnavailableError):
+    with pytest.raises(ApiUnavailableError):
         read_token(provider)
 
 
@@ -48,7 +48,7 @@ import json
 import tarfile
 import urllib.error
 
-from host.client import (AgentClient, AgentError, JobFailedError,
+from host.client import (ApiClient, ApiError, JobFailedError,
                          JobTimeoutError, project_id_for)
 
 
@@ -118,10 +118,10 @@ class Clock:
         self.now += seconds
 
 
-def client(handler, clock: Clock | None = None) -> tuple[AgentClient, FakeOpener]:
+def client(handler, clock: Clock | None = None) -> tuple[ApiClient, FakeOpener]:
     opener = FakeOpener(handler)
     clock = clock or Clock()
-    return (AgentClient("sekret", opener=opener, sleep=clock.sleep,
+    return (ApiClient("sekret", opener=opener, sleep=clock.sleep,
                         monotonic=clock.monotonic),
             opener)
 
@@ -141,8 +141,8 @@ def test_an_error_response_reports_the_agents_own_sentence():
                                           "no project with id 'blog'"))
     try:
         c.get_project("blog")
-        raise AssertionError("expected AgentError")
-    except AgentError as e:
+        raise AssertionError("expected ApiError")
+    except ApiError as e:
         assert e.code == "project_not_found"
         assert e.status == 404
         assert "no project with id 'blog'" in str(e)
@@ -158,8 +158,8 @@ def test_an_error_body_that_is_not_the_agents_shape_still_reads_as_a_sentence():
     c, _ = client(lambda call: bad)
     try:
         c.list_projects()
-        raise AssertionError("expected AgentError")
-    except AgentError as e:
+        raise AssertionError("expected ApiError")
+    except ApiError as e:
         assert e.status == 502
         assert str(e).strip()
 
@@ -169,8 +169,8 @@ def test_a_refused_connection_says_the_vm_is_not_running():
         ConnectionRefusedError(111, "Connection refused")))
     try:
         c.list_projects()
-        raise AssertionError("expected AgentUnavailableError")
-    except AgentUnavailableError as e:
+        raise AssertionError("expected ApiUnavailableError")
+    except ApiUnavailableError as e:
         assert "VM" in str(e)
 
 
@@ -230,8 +230,8 @@ def test_a_project_that_stays_busy_is_finally_reported():
                   clock)
     try:
         c.project_up("blog")
-        raise AssertionError("expected AgentError")
-    except AgentError as e:
+        raise AssertionError("expected ApiError")
+    except ApiError as e:
         assert e.code == "project_busy"
 
 
@@ -305,8 +305,8 @@ def test_a_stale_token_is_reported_with_the_command_that_fixes_it():
                                           "missing or invalid bearer token"))
     try:
         c.list_projects()
-        raise AssertionError("expected AgentError")
-    except AgentError as e:
+        raise AssertionError("expected ApiError")
+    except ApiError as e:
         assert e.code == "unauthorized"
         assert "omelet setup" in str(e)
         # The agent's own wording is kept, not replaced.
@@ -318,8 +318,8 @@ def test_an_unconfigured_agent_says_setup_has_not_finished():
         503, "api_unconfigured", "the agent has no token configured"))
     try:
         c.list_projects()
-        raise AssertionError("expected AgentError")
-    except AgentError as e:
+        raise AssertionError("expected ApiError")
+    except ApiError as e:
         assert "omelet setup" in str(e)
 
 

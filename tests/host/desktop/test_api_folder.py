@@ -26,7 +26,7 @@ def _api(tmp_path):
 
 def _patch_client(monkeypatch, client):
     from host import client as client_module
-    monkeypatch.setattr(client_module.AgentClient, "for_provider",
+    monkeypatch.setattr(client_module.ApiClient, "for_provider",
                         classmethod(lambda cls, provider, **kw: client))
 
 

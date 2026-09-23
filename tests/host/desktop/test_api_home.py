@@ -119,9 +119,9 @@ def test_open_omelet_carries_a_handoff_code_in_the_fragment(tmp_path):
 def test_open_omelet_still_opens_the_page_on_an_agent_without_handoff(tmp_path):
     # An agent older than the route answers 404; the page must still open and
     # show its own sign-in screen.
-    from host.client import AgentError
+    from host.client import ApiError
     from host.core import constants
     opened = []
-    client = _HandoffClient(error=AgentError("not_found", "no route", 404))
+    client = _HandoffClient(error=ApiError("not_found", "no route", 404))
     _api_with_client(tmp_path, client, opened).open_omelet()
     assert opened == [f"http://localhost:{constants.EDGE_PORT}"]

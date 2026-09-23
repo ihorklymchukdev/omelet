@@ -130,7 +130,7 @@ _GUIDANCE = {
 }
 
 
-class AgentError(OmeletError):
+class ApiError(OmeletError):
     def __init__(self, code: str, message: str):
         super().__init__(message)
         self.code = code
@@ -157,17 +157,17 @@ def read_token(path: Path) -> str:
     return token
 
 
-def _agent_error(exc: urllib.error.HTTPError) -> AgentError:
+def _agent_error(exc: urllib.error.HTTPError) -> ApiError:
     """Every non-2xx body from the agent is {"error": {"code", "message"}};
     anything else on this port must still read as a sentence."""
     try:
         error = json.loads(exc.read().decode("utf-8", "replace"))["error"]
         code, message = str(error["code"]), str(error["message"])
     except (OSError, ValueError, KeyError, TypeError):
-        return AgentError("http_error", f"The Omelet service answered HTTP "
+        return ApiError("http_error", f"The Omelet service answered HTTP "
                                         f"{exc.code} ({exc.reason}).")
     guidance = _GUIDANCE.get(code)
-    return AgentError(code, f"{guidance} (the service said: {message})"
+    return ApiError(code, f"{guidance} (the service said: {message})"
                       if guidance else message)
 
 
@@ -208,7 +208,7 @@ class Agent:
         while True:
             try:
                 return call()
-            except AgentError as e:
+            except ApiError as e:
                 if e.code != "project_busy" or self._monotonic() >= deadline:
                     raise
             self._sleep(BUSY_RETRY_INTERVAL)
@@ -232,7 +232,7 @@ class Agent:
     def ensure_project(self, project_id: str) -> None:
         try:
             self._call("POST", "/projects", {"id": project_id})
-        except AgentError as e:
+        except ApiError as e:
             if e.code != "project_exists":
                 raise
 
@@ -357,7 +357,7 @@ def cmd_status(env: Env, directory: str | None) -> None:
         project_id = found[1]
         try:
             _print_project(env, agent.project(project_id))
-        except AgentError as e:
+        except ApiError as e:
             if e.code != "project_not_found":
                 raise
             print(f"{project_id} is not set up yet. Run `omelet up` in it.",

@@ -34,8 +34,8 @@ class Readiness:
 
 
 def _default_client_factory(provider):
-    from host.client import AgentClient
-    return AgentClient.for_provider(provider)
+    from host.client import ApiClient
+    return ApiClient.for_provider(provider)
 
 
 def probe(provider, *, client_factory=None) -> Readiness:

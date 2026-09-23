@@ -15,8 +15,8 @@ def _provider():
 
 
 def _default_client():
-    from host.client import AgentClient
-    return AgentClient.for_provider(_provider())
+    from host.client import ApiClient
+    return ApiClient.for_provider(_provider())
 
 
 _client_factory = _default_client  # tests override this
@@ -31,11 +31,11 @@ def _agent_errors():
     """Every failure the agent can report is already a sentence written for a
     user; printing a traceback or a status code over it loses the only text
     that says what went wrong."""
-    from host.client import (AgentError, AgentUnavailableError, JobFailedError,
+    from host.client import (ApiError, ApiUnavailableError, JobFailedError,
                              JobTimeoutError)
     try:
         yield
-    except (AgentError, AgentUnavailableError, JobFailedError,
+    except (ApiError, ApiUnavailableError, JobFailedError,
             JobTimeoutError) as e:
         typer.echo(str(e), err=True)
         raise typer.Exit(code=1)

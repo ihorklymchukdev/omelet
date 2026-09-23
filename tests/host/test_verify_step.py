@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 from omelet_api.routes.app import create_app
 from omelet_api.core.config import AgentConfig
 from omelet_api.core.exec import Completed
-from host.client import AgentClient, AgentError
+from host.client import ApiClient, ApiError
 from host.core.constants import DEFAULT_DOMAIN, EDGE_PORT
 from host.core.install import VerificationFailed, verify_step
 
@@ -38,7 +38,7 @@ def template(tmp_path):
 
 @pytest.fixture
 def agent(tmp_path):
-    """The real agent app behind a real `AgentClient`."""
+    """The real agent app behind a real `ApiClient`."""
     (tmp_path / "api.token").write_text(TOKEN)
     config = AgentConfig(projects_root=tmp_path / "projects",
                          state_db=tmp_path / "state.db",
@@ -50,7 +50,7 @@ def agent(tmp_path):
     probe = FakeProbe()
     app = create_app(config=config, runner=runner, http_probe=probe)
     with TestClient(app) as test_client:
-        client = AgentClient(TOKEN, opener=AppOpener(test_client),
+        client = ApiClient(TOKEN, opener=AppOpener(test_client),
                              sleep=lambda _s: time.sleep(0.01))
         yield client, runner, probe
 
@@ -137,7 +137,7 @@ class RefusesTeardown:
         return getattr(self._client, name)
 
     def delete_project(self, project_id):
-        raise AgentError("http_error", "the agent answered HTTP 500", 500)
+        raise ApiError("http_error", "the agent answered HTTP 500", 500)
 
 
 def test_a_teardown_failure_on_the_success_path_is_reported_not_swallowed(

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from host.client import AgentError, AgentUnavailableError
+from host.client import ApiError, ApiUnavailableError
 from host.core import constants
 from host.core.install import AgentIncompatible, AgentNotAccepted, connect_step
 
@@ -28,8 +28,8 @@ class FakeClient:
         return answer
 
 
-def _refused(code: str) -> AgentError:
-    return AgentError(code, "missing or invalid bearer token", 401)
+def _refused(code: str) -> ApiError:
+    return ApiError(code, "missing or invalid bearer token", 401)
 
 
 def test_an_agent_on_another_api_is_reported_and_never_repaired():
@@ -77,8 +77,8 @@ def test_an_agent_still_refusing_after_the_reconnect_says_what_was_wrong():
 
 def test_an_error_that_is_not_about_the_token_is_not_repaired():
     reconnects = []
-    with pytest.raises(AgentError):
-        connect_step(None, client=FakeClient(AgentError("internal", "boom", 500)),
+    with pytest.raises(ApiError):
+        connect_step(None, client=FakeClient(ApiError("internal", "boom", 500)),
                      reconnect=lambda: reconnects.append("reconnect"))
     assert reconnects == []
 
@@ -86,7 +86,7 @@ def test_an_error_that_is_not_about_the_token_is_not_repaired():
 def test_the_agent_restarting_after_the_reconnect_is_waited_out():
     # The recreated container is not serving yet when the repair returns.
     slept = []
-    restarted = FakeClient(AgentUnavailableError("connection refused"), "0.1.0")
+    restarted = FakeClient(ApiUnavailableError("connection refused"), "0.1.0")
     message = connect_step(None, client=FakeClient(_refused("unauthorized")),
                            reconnect=lambda: restarted, sleep=slept.append)
     assert slept, "the restart must be waited out, not reported as a failure"

@@ -36,9 +36,9 @@ class DesktopApi:
 
     @staticmethod
     def _default_client_factory(provider):
-        from host.client import AgentClient
+        from host.client import ApiClient
 
-        return AgentClient.for_provider(provider)
+        return ApiClient.for_provider(provider)
 
     @staticmethod
     def _default_install_dir():

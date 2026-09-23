@@ -19,7 +19,7 @@ from fastapi.testclient import TestClient
 from omelet_api.routes.app import create_app
 from omelet_api.core.config import AgentConfig
 from omelet_api.core.exec import Completed
-from host.client import AgentClient, AgentError
+from host.client import ApiClient, ApiError
 
 from tests.runtime.api.conftest import COMPOSE_ONE_WEB, FakeProbe, FakeRunner
 
@@ -70,7 +70,7 @@ def seam(tmp_path):
     with TestClient(app) as test_client:
         # A short real sleep, not the wall-clock poll interval: the job runs on
         # a thread here and finishes in milliseconds.
-        client = AgentClient(TOKEN, opener=AppOpener(test_client),
+        client = ApiClient(TOKEN, opener=AppOpener(test_client),
                              sleep=lambda _s: time.sleep(0.01))
         yield client, runner, tmp_path
 
@@ -96,7 +96,7 @@ def test_the_whole_up_flow_works_against_the_real_agent(seam, tmp_path):
 
 def test_an_unknown_project_comes_back_as_the_agents_own_message(seam):
     client, _runner, _root = seam
-    with pytest.raises(AgentError) as excinfo:
+    with pytest.raises(ApiError) as excinfo:
         client.get_project("nope")
     assert excinfo.value.code == "project_not_found"
     assert str(excinfo.value) == "no project with id 'nope'"
@@ -106,7 +106,7 @@ def test_a_logs_failure_reaches_the_caller_with_the_guests_stderr(seam):
     client, runner, _root = seam
     runner.logs = Completed(1, "", "no such service: web")
     client.ensure_project("blog")
-    with pytest.raises(AgentError) as excinfo:
+    with pytest.raises(ApiError) as excinfo:
         client.logs("blog")
     assert excinfo.value.code == "logs_unavailable"
     assert "no such service: web" in str(excinfo.value)

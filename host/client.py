@@ -25,7 +25,7 @@ from .core.provider import VmProvider
 
 # WSL2's localhostForwarding (and Lima's portForwards) surface the agent's
 # guest socket on the host at the same port, so the host always dials loopback.
-AGENT_URL = f"http://127.0.0.1:{constants.API_PORT}"
+API_URL = f"http://127.0.0.1:{constants.API_PORT}"
 
 # Ordinary calls are metadata-sized and should fail fast when the VM is wedged.
 REQUEST_TIMEOUT = 30.0
@@ -42,13 +42,13 @@ BUSY_RETRY_TIMEOUT = 60.0
 BUSY_RETRY_INTERVAL = 1.0
 
 
-class AgentUnavailableError(RuntimeError):
+class ApiUnavailableError(RuntimeError):
     """The agent could not be reached at all: no token to authenticate with,
     or nothing listening. Raised instead of a socket error or a bare 401 so
     the first symptom a user sees names the VM, not the transport."""
 
 
-class AgentError(RuntimeError):
+class ApiError(RuntimeError):
     """A structured failure from the agent: its own code and its own sentence."""
 
     def __init__(self, code: str, message: str, status: int):
@@ -86,7 +86,7 @@ def read_token(provider: VmProvider) -> str:
     result = provider.exec(["cat", constants.GUEST_TOKEN], root=True)
     token = result.stdout.strip() if result.ok else ""
     if not token:
-        raise AgentUnavailableError(
+        raise ApiUnavailableError(
             "the VM has no agent token -- it may not be provisioned yet; "
             "run setup and try again")
     return token
@@ -115,7 +115,7 @@ _GUIDANCE = {
 }
 
 
-def _agent_error(exc: urllib.error.HTTPError) -> AgentError:
+def _agent_error(exc: urllib.error.HTTPError) -> ApiError:
     """Every non-2xx body from the agent is `{"error": {"code", "message"}}`.
     Anything else answering on this port (a proxy, a crashed server) must
     still come out as a readable failure rather than a JSONDecodeError."""
@@ -125,9 +125,9 @@ def _agent_error(exc: urllib.error.HTTPError) -> AgentError:
         guidance = _GUIDANCE.get(code)
         if guidance:
             message = f"{guidance} (the agent said: {message})"
-        return AgentError(code, message, exc.code)
+        return ApiError(code, message, exc.code)
     except (OSError, ValueError, KeyError, TypeError):
-        return AgentError("http_error",
+        return ApiError("http_error",
                           f"the agent answered HTTP {exc.code} ({exc.reason})",
                           exc.code)
 
@@ -176,10 +176,10 @@ class _CountingReader:
         return chunk
 
 
-class AgentClient:
+class ApiClient:
     """Every route the CLI needs, and no transport detail above this line."""
 
-    def __init__(self, token: str, *, base_url: str = AGENT_URL, opener=None,
+    def __init__(self, token: str, *, base_url: str = API_URL, opener=None,
                  sleep=time.sleep, monotonic=time.monotonic):
         self._token = token
         self._base = base_url.rstrip("/")
@@ -190,7 +190,7 @@ class AgentClient:
         self._monotonic = monotonic
 
     @classmethod
-    def for_provider(cls, provider: VmProvider, **kwargs) -> "AgentClient":
+    def for_provider(cls, provider: VmProvider, **kwargs) -> "ApiClient":
         return cls(read_token(provider), **kwargs)
 
     # -- transport ---------------------------------------------------------
@@ -209,7 +209,7 @@ class AgentClient:
             raise _agent_error(e) from None
         except (urllib.error.URLError, OSError) as e:
             reason = getattr(e, "reason", e)
-            raise AgentUnavailableError(
+            raise ApiUnavailableError(
                 f"could not reach the Omelet agent at {self._base} ({reason}). "
                 "The VM may be stopped -- run `omelet vm start`, or run setup "
                 "again if this is a new machine.") from e
@@ -237,7 +237,7 @@ class AgentClient:
         while True:
             try:
                 return call()
-            except AgentError as e:
+            except ApiError as e:
                 if e.code != "project_busy" or self._monotonic() >= deadline:
                     raise
             self._sleep(BUSY_RETRY_INTERVAL)
@@ -267,7 +267,7 @@ class AgentClient:
         that is already known is the ordinary case, not an error."""
         try:
             return self.create_project(project_id, **kwargs)
-        except AgentError as e:
+        except ApiError as e:
             if e.code != "project_exists":
                 raise
         return self.get_project(project_id_for(project_id))
