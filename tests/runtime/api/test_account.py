@@ -175,3 +175,40 @@ def test_sign_out_forgets_everything_but_the_device_even_if_logout_fails(tmp_pat
     assert account.sign_out() == {"state": "signed_out", "error": None}
     assert account._state.cloud_mapping() == {}
     assert account.device_id == device
+
+
+def test_a_sign_out_during_refresh_is_not_undone_by_the_late_tokens(tmp_path):
+    class Wrapped(FakeCloud):
+        def refresh(self, refresh_token):
+            account._forget(None)
+            return super().refresh(refresh_token)
+
+    cloud = Wrapped(refresh=[TOKENS])
+    account, _ = signed_in(tmp_path, cloud, expires_in=0)
+
+    with pytest.raises(NotSignedIn):
+        account.authed(lambda token: token)
+    assert account.signed_in is False
+
+
+def test_a_sign_out_during_polling_is_not_undone_by_the_late_approval(tmp_path):
+    class Wrapped(FakeCloud):
+        def device_token(self, device_code):
+            account._forget(None)
+            return super().device_token(device_code)
+
+    cloud = Wrapped(device_code=[CODE], device_token=[TOKENS])
+    account, _, _ = make(tmp_path, cloud)
+    account.start_sign_in()
+
+    assert account.poll_once() is None
+    assert account.status()["state"] == "signed_out"
+
+
+def test_a_refresh_finding_the_token_already_replaced_does_not_spend_it_again(tmp_path):
+    cloud = FakeCloud()
+    account, _ = signed_in(tmp_path, cloud)
+    account._state.update_account(access_token="at-new")
+
+    assert account._refresh("at-1") == "at-new"
+    assert "refresh" not in cloud.names()
