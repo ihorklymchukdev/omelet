@@ -11,10 +11,19 @@ import { ProjectList } from "./screens/list/ProjectList";
 import { ProjectPage } from "./screens/project/ProjectPage";
 import { SignedOut } from "./screens/SignedOut";
 import { WrongHost } from "./screens/WrongHost";
+import { DesktopHome } from "./desktop/DesktopContext";
 import { Shell } from "./shell/Shell";
 import { QueueProvider } from "./uploads/QueueProvider";
 
-export function App({ handoff }: { handoff: string | null }) {
+export function App({ handoff, home = null }: { handoff: string | null; home?: string | null }) {
+  return (
+    <DesktopHome.Provider value={home}>
+      <Screens handoff={handoff} />
+    </DesktopHome.Provider>
+  );
+}
+
+function Screens({ handoff }: { handoff: string | null }) {
   const [result, setResult] = useState<BootResult | null>(null);
   const pendingHandoff = useRef(handoff);
   const running = useRef(false);
@@ -49,7 +58,7 @@ export function App({ handoff }: { handoff: string | null }) {
         <QueryClientProvider client={queryClient}>
           <QueueProvider onSessionLost={(reason) => setResult({ kind: "signedOut", reason })}>
             <BrowserRouter>
-              <Shell>
+              <Shell signedIn>
                 <Routes>
                   <Route path="/" element={<ProjectList />} />
                   <Route path="/p/:id" element={<ProjectPage />} />

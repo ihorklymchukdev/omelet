@@ -45,7 +45,15 @@ def _default_create(**kwargs):
 
 
 def _default_start(**kwargs):
+    import webbrowser
+
     import webview
+
+    from .shell import web_links_only
+
+    # pywebview looks webbrowser.open up at call time, so this covers its
+    # new-window handling on every backend.
+    webbrowser.open = web_links_only(webbrowser.open)
     webview.start(**kwargs)
 
 
@@ -89,14 +97,14 @@ def run(provider, state, *, create=_default_create, start=_default_start,
 
     shell = Shell()
     api = DesktopApi(provider, state, push=shell.push, steps_factory=steps_factory,
-                     navigate=shell.load)
+                     navigate=shell.load, local_url=shell.local_url)
     # Surfaced by a later task: the install screen reads this to show
     # host.core.install.RESUME_NOTICE when RunOnce reopened the window.
     api.resumed = resumed
 
     try:
         window = create(title=WINDOW_TITLE, url=str(ui_dir() / "index.html"),
-                        js_api=guarded(api, shell), width=WINDOW_SIZE[0],
+                        js_api=None, width=WINDOW_SIZE[0],
                         height=WINDOW_SIZE[1], min_size=MIN_SIZE)
     except Exception as e:
         # Deliberately broad: a missing runtime surfaces differently on each
@@ -109,6 +117,7 @@ def run(provider, state, *, create=_default_create, start=_default_start,
         return 3
 
     shell.window = window
+    window.expose(*guarded(api, shell))
     start(debug=False, menu=menu(menu_items(api, shell)))
     return 0
 

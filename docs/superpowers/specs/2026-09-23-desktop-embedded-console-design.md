@@ -24,9 +24,9 @@ What the user decided:
 
 The window keeps loading the local desktop UI (`host/desktop/ui/index.html`)
 first. When the machine is running it navigates the same window to the console
-with `window.load_url`. There is no frame, no second window and no change on
-the runtime side: the console, the API, `POST /sessions/handoff` and the
-runtime version are untouched, so this ships as a host release alone.
+with `window.load_url`. There is no frame and no second window. The console's
+own top bar (§7) is what makes the two feel like one app; the native menu
+stays as the fallback for a runtime older than that bar.
 
 Rejected:
 
@@ -108,8 +108,11 @@ So:
   `window.get_current_url()` and raises unless it equals that URL (ignoring
   the fragment). The console can see the method names and run none of them.
   The guard is applied to the class as a whole, not method by method, so a
-  method added later cannot forget it. The facade's members are bound
-  methods, because pywebview before 6.2 exposes nothing else.
+  method added later cannot forget it. The guarded functions are registered
+  with `window.expose()` and `js_api` stays `None`: pywebview resolves a
+  dotted call name from `js_api` with plain `getattr`, with no underscore
+  filter, so any object there lets a page walk `home.__func__.__globals__`
+  into the host process without passing the guard.
 - **What the guard does not cover.** It checks the page showing when the call
   is handled, not the page that sent it; pywebview does not expose the
   sender. The local UI is plain `http://127.0.0.1:<port>`, so a console page
@@ -134,8 +137,8 @@ So:
   `target="_blank"` and `window.open(..., "_blank")`; pywebview's
   `OPEN_EXTERNAL_LINKS_IN_BROWSER` (default on) sends them to the system
   browser. On WKWebView pywebview forwards only link activations, so the
-  console's `window.open` buttons do nothing there until the console renders
-  them as `<a target="_blank">` — a runtime-side change.
+  console opens every external address with an anchor click
+  (`desktop/desktop.ts`'s `openExternal`), never `window.open`.
 - **Install finishing.** The install screen returns to Home as today; there is
   no automatic jump into the console after an install (the launch flag is
   already spent). The user presses **Open Omelet**.
@@ -162,3 +165,38 @@ acceptance run instead: enter the console at launch, *Machine* and back,
 *Open in browser*, a project link and a `window.open` button opening in the
 system browser, and (from devtools in a debug build) a call to
 `window.pywebview.api.doctor()` from the console being refused.
+
+## 7. The console's top bar inside the desktop
+
+The native menu is the fallback. The primary way back is a bar the console
+draws itself, the same design as the rest of the page:
+
+```
+[‹ Home] | (egg) Projects                    ● KITCHEN OPEN   [↗]
+```
+
+- **How the console knows it is inside the desktop.** `enter_console()` adds
+  the local UI's address to the handoff link:
+  `#handoff=<code>&home=<percent-encoded http://127.0.0.1:<port>/index.html>`.
+  The console reads it before `takeHandoff()` clears the fragment
+  (`desktop/desktop.ts`), keeps it in `sessionStorage` so a reload keeps the
+  bar, and accepts only `http://127.0.0.1:<port>` with no userinfo — the link
+  can be crafted, and Home must never lead off the machine. In a plain browser
+  there is no `home`, and the bar is what it was.
+- **‹ Home** is a plain link to that address. The console gains no power by
+  it: leaving the page is what the *Machine* menu item already does, and the
+  local UI's one-shot launch flag is spent, so Home stays on Home. It shows on
+  the status screens too (signed out, not answering), which inside the app
+  were dead ends.
+- **Kitchen open** shows whenever the console is signed in — the API answered.
+- **Open in browser (↗)**, inside the desktop only, signs the system browser
+  in: `POST /api/sessions/handoff` mints a code with the page's own cookie
+  session (the middleware still checks the cookie and the `Origin`), and the
+  page opens `http://localhost:39080/#handoff=<code>`. A code minted by a
+  signed-in page is no more power than the cookie it already holds. The code
+  is fetched on hover/focus so the click itself opens the link: WKWebView
+  blocks a new window opened after an `await`. With no code (old API, lost
+  session) it opens the bare page, whose sign-in screen explains itself.
+- No sync marker: it stays hidden, as the web UI's scope already decided.
+
+This part is a runtime change and ships in the pending runtime 0.2.0.

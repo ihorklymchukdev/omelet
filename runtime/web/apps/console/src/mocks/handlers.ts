@@ -246,6 +246,7 @@ export function handlersFor(scenario: Scenario) {
       signedIn = false;
       return HttpResponse.json({ signed_in: false });
     }),
+    http.post("/api/sessions/handoff", () => HttpResponse.json({ code: "mock-code", expires_in: 60 })),
 
     http.get("/api/projects", async () => {
       if (scenario === "lost-mid-use") return expired();

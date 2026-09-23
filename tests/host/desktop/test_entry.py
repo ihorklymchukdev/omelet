@@ -26,6 +26,7 @@ class FakeWindow:
         self.url = url
         self.loaded = []
         self.evaluated = []
+        self.exposed = {}
 
     def get_current_url(self):
         return self.url
@@ -36,6 +37,9 @@ class FakeWindow:
 
     def evaluate_js(self, script):
         self.evaluated.append(script)
+
+    def expose(self, *functions):
+        self.exposed.update({f.__name__: f for f in functions})
 
 
 def test_ui_dir_points_at_the_bundled_assets():
@@ -90,17 +94,12 @@ def test_the_real_failure_reaches_stderr_under_the_runtime_message(tmp_path, cap
 def test_a_resumed_launch_is_recorded_for_the_install_screen(tmp_path):
     """RunOnce relaunches with --resume after a restart; the screen has to
     be able to say why it opened by itself."""
-    captured = {}
-
-    def create(**kwargs):
-        captured["api"] = kwargs["js_api"]
-        return FakeWindow()
-
+    window = FakeWindow()
     run(FakeProvider(), InstallState(tmp_path / "s.json"),
-        create=create, start=lambda **kwargs: None, resumed=True,
+        create=lambda **kwargs: window, start=lambda **kwargs: None, resumed=True,
         menu=lambda items: items)
 
-    assert captured["api"].home()["resumed"] is True
+    assert window.exposed["home"]()["resumed"] is True
 
 
 def test_javascript_gets_the_guarded_bridge_not_the_api(tmp_path):
@@ -109,15 +108,19 @@ def test_javascript_gets_the_guarded_bridge_not_the_api(tmp_path):
     window = FakeWindow()
 
     def create(**kwargs):
-        captured["api"] = kwargs["js_api"]
+        captured.update(kwargs)
         return window
 
     run(FakeProvider(), InstallState(tmp_path / "s.json"),
         create=create, start=lambda **kwargs: None, menu=lambda items: items)
-    captured["api"].reset_install()
+    # pywebview resolves a dotted call name from js_api with plain getattr, so
+    # any object there lets a page walk "home.__func__.__globals__" past the
+    # guard. Named functions are looked up by exact name only.
+    assert captured["js_api"] is None
+    window.exposed["reset_install"]()
     window.url = "http://localhost:39080/"
     with pytest.raises(NotLocalPage):
-        captured["api"].reset_install()
+        window.exposed["reset_install"]()
 
 
 def test_the_menu_offers_projects_machine_and_the_browser(tmp_path):
@@ -146,13 +149,9 @@ def test_machine_returns_the_window_to_the_local_ui(tmp_path):
 
 def _launch(tmp_path, window):
     captured = {}
-
-    def create(**kwargs):
-        captured["bridge"] = kwargs["js_api"]
-        return window
-
     # FakeProvider has no exec(), so every handoff fails, as on a stopped VM.
-    run(FakeProvider(), InstallState(tmp_path / "s.json"), create=create,
+    run(FakeProvider(), InstallState(tmp_path / "s.json"),
+        create=lambda **kwargs: window,
         start=lambda **kwargs: captured.update(menu=dict(kwargs["menu"])),
         menu=lambda items: items)
     return captured
@@ -170,7 +169,7 @@ def test_projects_from_a_dead_console_returns_to_the_machine_screen(tmp_path):
     # (stopped, something's wrong) is the explanation.
     window = FakeWindow()
     launched = _launch(tmp_path, window)
-    launched["bridge"].reset_install()
+    window.exposed["reset_install"]()
     window.url = "http://localhost:39080/"
     launched["menu"]["Projects"]()
     assert window.url == LOCAL

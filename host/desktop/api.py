@@ -11,6 +11,7 @@ window.
 from __future__ import annotations
 
 import webbrowser
+from urllib.parse import quote
 
 from host.core import constants
 from host.core.status import probe
@@ -24,7 +25,8 @@ class DesktopApi:
 
     def __init__(self, provider, state, *, push,
                  probe_fn=probe, browser_open=webbrowser.open, steps_factory=None,
-                 client_factory=None, install_dir_factory=None, navigate=None):
+                 client_factory=None, install_dir_factory=None, navigate=None,
+                 local_url=None):
         self._provider = provider
         self._state = state
         self._probe = probe_fn
@@ -34,6 +36,7 @@ class DesktopApi:
         self._install_dir_factory = install_dir_factory or self._default_install_dir
         self.jobs = JobRegistry(push)
         self._navigate = navigate or (lambda url: None)
+        self._local_url = local_url or (lambda: None)
         self._home_seen = False
 
     @staticmethod
@@ -112,7 +115,12 @@ class DesktopApi:
             # Never load the console without a code: its signed-out screen
             # sends the user to the desktop app they are already in.
             return {"ok": False, "message": f"{e}"}
-        self._navigate(f"http://localhost:{constants.EDGE_PORT}/#handoff={code}")
+        url = f"http://localhost:{constants.EDGE_PORT}/#handoff={code}"
+        home = self._local_url()
+        if home:
+            # The console's Home button comes back here.
+            url += f"&home={quote(home, safe='')}"
+        self._navigate(url)
         return {"ok": True}
 
     def start_install(self) -> dict:

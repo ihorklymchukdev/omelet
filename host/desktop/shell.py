@@ -41,6 +41,10 @@ class Shell:
         current = self._current()
         return current is not None and current == self._local
 
+    def local_url(self) -> str | None:
+        self._remember()
+        return self._local
+
     def load(self, url: str) -> None:
         self._remember()
         # Leaving before the local page is known would let the next page
@@ -66,18 +70,35 @@ def public_methods(cls: type) -> list[str]:
                   if callable(value) and not name.startswith("_"))
 
 
-def guarded(api: object, shell: Shell) -> object:
-    # Methods on a class, not functions on an instance: pywebview before 6.2
-    # exposes only what inspect.ismethod() accepts.
-    methods = {name: _guard(getattr(api, name), name, shell)
-               for name in public_methods(type(api))}
-    return type("DesktopBridge", (), methods)()
+def guarded(api: object, shell: Shell) -> list:
+    """Functions for window.expose(), never an object for js_api.
+
+    pywebview resolves a call name like "home.__func__.__globals__.clear"
+    from js_api with plain getattr, which would walk past the guard into the
+    host process. Exposed functions are matched by exact name only.
+    """
+    return [_guard(getattr(api, name), name, shell)
+            for name in public_methods(type(api))]
 
 
 def _guard(method, name: str, shell: Shell):
-    def call(self, *args, **kwargs):
+    def call(*args, **kwargs):
         if not shell.is_local():
             raise NotLocalPage(f"{name} is only available to Omelet's own screens")
         return method(*args, **kwargs)
     call.__name__ = name
     return call
+
+
+def web_links_only(open_url):
+    """Wrap webbrowser.open so a page can only hand the OS a web address.
+
+    pywebview gives every new-window request from any page in the window to
+    webbrowser.open, and on Windows that ends in os.startfile: a console page
+    from the VM could otherwise launch a file: path or a custom scheme.
+    """
+    def open_web(url, *args, **kwargs):
+        if not str(url).lower().startswith(("http://", "https://")):
+            return False
+        return open_url(url, *args, **kwargs)
+    return open_web
