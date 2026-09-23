@@ -17,6 +17,10 @@ export const SCENARIOS = [
   "fills-up",
   "busy",
   "locked",
+  "account-needed",
+  "account-pending",
+  "account-denied",
+  "account-unreachable",
 ] as const;
 export type Scenario = (typeof SCENARIOS)[number];
 
@@ -67,6 +71,19 @@ const busy = () => refuse("project_busy", "this project is busy with another job
 
 export function handlersFor(scenario: Scenario) {
   let signedIn = !["expired", "handoff-spent", "down", "wrong-host"].includes(scenario);
+  const MOCK_CODE = "WDJB-MJHT";
+  const pendingAccount = () => ({
+    state: "pending" as const,
+    user_code: MOCK_CODE,
+    url: `https://omelet.example/device?user_code=${MOCK_CODE}`,
+    expires_at: nowSec() + 600,
+  });
+  let account: Record<string, unknown> = scenario.startsWith("account-")
+    ? scenario === "account-pending"
+      ? pendingAccount()
+      : { state: "signed_out", error: null }
+    : { state: "signed_in", email: "ada@example.com", sync: { last_ok_at: nowSec(), last_error: null } };
+  let approveAt = 0;
   const projects = new Map<string, Project>();
   const discovered: Discovered[] = [];
   const jobs = new Map<string, Job>();
@@ -245,6 +262,28 @@ export function handlersFor(scenario: Scenario) {
     http.delete("/api/session", () => {
       signedIn = false;
       return HttpResponse.json({ signed_in: false });
+    }),
+    http.get("/api/account", () => {
+      if (account.state === "pending" && approveAt === 0) approveAt = Date.now() + 6000;
+      if (account.state === "pending" && Date.now() >= approveAt) {
+        account =
+          scenario === "account-denied"
+            ? { state: "signed_out", error: "access_denied" }
+            : { state: "signed_in", email: "ada@example.com", sync: { last_ok_at: nowSec(), last_error: null } };
+      }
+      return HttpResponse.json(account);
+    }),
+    http.post("/api/account/sign-in", () => {
+      if (scenario === "account-unreachable") {
+        return refuse("cloud_unavailable", "The Omelet service can't be reached. Check the internet connection and try again.", 503);
+      }
+      account = pendingAccount();
+      approveAt = 0;
+      return HttpResponse.json(account);
+    }),
+    http.post("/api/account/sign-out", () => {
+      account = { state: "signed_out", error: null };
+      return HttpResponse.json(account);
     }),
 
     http.get("/api/projects", async () => {

@@ -18,6 +18,7 @@ function api(routes: Record<string, Reply>) {
 
 const HEALTHY: Reply = { status: 200, body: { status: "ok", api: 1 } };
 const OK: Reply = { status: 200, body: { signed_in: true } };
+const ACCOUNT = (state: string): Reply => ({ status: 200, body: { state } });
 const refusal = (status: number, code: string): Reply => ({
   status,
   body: { error: { code, message: code } },
@@ -46,9 +47,13 @@ describe("boot", () => {
   });
 
   it("signs in with a fresh handoff code without asking for the session again", async () => {
-    const { fetch, calls } = api({ "GET /api/health": HEALTHY, "POST /api/session": OK });
+    const { fetch, calls } = api({
+      "GET /api/health": HEALTHY,
+      "POST /api/session": OK,
+      "GET /api/account": ACCOUNT("signed_in"),
+    });
     expect(await boot({ fetch, handoff: "code" })).toEqual({ kind: "signedIn" });
-    expect(calls).toEqual(["GET /api/health", "POST /api/session"]);
+    expect(calls).toEqual(["GET /api/health", "POST /api/session", "GET /api/account"]);
   });
 
   it("is still signed in when the handoff was spent but the cookie is good", async () => {
@@ -56,6 +61,7 @@ describe("boot", () => {
       "GET /api/health": HEALTHY,
       "POST /api/session": refusal(401, "handoff_invalid"),
       "GET /api/session": OK,
+      "GET /api/account": ACCOUNT("signed_in"),
     });
     expect(await boot({ fetch, handoff: "old" })).toEqual({ kind: "signedIn" });
   });
@@ -99,6 +105,22 @@ describe("boot", () => {
   it("is notAnswering when the handoff fails for a reason other than a spent code", async () => {
     const { fetch } = api({ "GET /api/health": HEALTHY, "POST /api/session": refusal(500, "internal") });
     expect(await boot({ fetch, handoff: "code" })).toEqual({ kind: "notAnswering" });
+  });
+
+  it("needs an account until the Omelet sign-in has finished", async () => {
+    for (const state of ["signed_out", "pending"]) {
+      const { fetch } = api({ "GET /api/health": HEALTHY, "GET /api/session": OK, "GET /api/account": ACCOUNT(state) });
+      expect(await boot({ fetch, handoff: null })).toEqual({ kind: "needsAccount" });
+    }
+  });
+
+  it("is notAnswering when the account check fails for another reason", async () => {
+    const { fetch } = api({
+      "GET /api/health": HEALTHY,
+      "GET /api/session": OK,
+      "GET /api/account": refusal(500, "internal_error"),
+    });
+    expect(await boot({ fetch, handoff: null })).toEqual({ kind: "notAnswering" });
   });
 });
 
