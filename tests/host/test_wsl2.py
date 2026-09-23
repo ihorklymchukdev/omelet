@@ -17,13 +17,15 @@ class FakeRunner:
         return R()
 
 
-def make(runner, install_dir=Path("/tmp/inst"), rootfs=Path("/tmp/ubuntu.tar.gz")):
+def make(runner, install_dir=Path("/tmp/inst"), rootfs=Path("/tmp/ubuntu.tar.gz"),
+         spawner=None):
     return Wsl2Provider(
         distro="omelet-vm",
         install_dir=install_dir,
         rootfs=rootfs,
         wsl="wsl.exe",
         runner=runner,
+        spawner=spawner if spawner is not None else [].append,
     )
 
 
@@ -53,7 +55,7 @@ def test_exists_false_when_absent():
     assert make(r).exists() is False
 
 
-def test_create_imports_then_enables_systemd_then_terminates(tmp_path):
+def test_create_imports_then_enables_systemd_then_reboots(tmp_path):
     rootfs = tmp_path / "ubuntu.tar.gz"
     rootfs.write_bytes(b"")
     install = tmp_path / "inst"
@@ -67,8 +69,9 @@ def test_create_imports_then_enables_systemd_then_terminates(tmp_path):
     assert argvs[0][-2:] == ["--version", "2"]
     # systemd fixup runs as root, writes wsl.conf
     assert any("-u" in a and "root" in a and "wsl.conf" in " ".join(a) for a in argvs)
-    # ends by terminating so systemd takes effect
-    assert argvs[-1] == ["wsl.exe", "--terminate", "omelet-vm"]
+    # terminates so systemd takes effect, then boots again
+    terminate = argvs.index(["wsl.exe", "--terminate", "omelet-vm"])
+    assert ["wsl.exe", "-d", "omelet-vm", "--", "true"] in argvs[terminate:]
 
 
 def test_create_rejects_a_rootfs_path_that_does_not_exist():
@@ -99,6 +102,20 @@ def test_stop_terminates_and_destroy_unregisters():
     assert r.calls[-1] == ["wsl.exe", "--terminate", "omelet-vm"]
     p.destroy()
     assert r.calls[-1] == ["wsl.exe", "--unregister", "omelet-vm"]
+
+
+def test_start_holds_the_vm_open_so_wsl_does_not_idle_it_out():
+    spawned = []
+    make(ScriptedRunner("pgrep"), spawner=spawned.append).start()
+    assert len(spawned) == 1
+    assert spawned[0][:5] == ["wsl.exe", "-d", "omelet-vm", "-u", "root"]
+    assert "exec -a omelet-hold sleep infinity" in spawned[0]
+
+
+def test_start_does_not_stack_a_second_hold_on_a_held_vm():
+    spawned = []
+    make(FakeRunner(), spawner=spawned.append).start()
+    assert spawned == []
 
 
 class ScriptedRunner(FakeRunner):

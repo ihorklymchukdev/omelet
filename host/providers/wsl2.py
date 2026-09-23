@@ -24,8 +24,21 @@ LOOPBACK = "127.0.0.1"
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
+# WSL terminates a distro seconds after its last attached wsl.exe exits, even
+# with systemd and Docker running inside. This session is that attached
+# process; its argv[0] is how start() finds one already holding the VM.
+HOLD_NAME = "omelet-hold"
+
+
 def _default_runner(argv):
     return subprocess.run(argv, capture_output=True, creationflags=_NO_WINDOW)
+
+
+def _default_spawner(argv):
+    # Not waited on and outlives the app: the browser UI must keep working
+    # after the window closes. `wsl --terminate` in stop() ends it.
+    subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                     stderr=subprocess.DEVNULL, creationflags=_NO_WINDOW)
 
 
 def _default_facts() -> dict:
@@ -148,12 +161,14 @@ class Wsl2Provider:
     def __init__(self, distro="omelet-vm", install_dir: Path | None = None,
                  rootfs: Path | None = None, wsl="wsl.exe", runner=_default_runner,
                  facts=_default_facts, elevator=_default_elevator,
-                 registry_writer=_default_registry_writer, arch=None):
+                 registry_writer=_default_registry_writer, arch=None,
+                 spawner=_default_spawner):
         self.distro = distro
         self.install_dir = Path(install_dir) if install_dir else None
         self.rootfs = Path(rootfs) if rootfs else None
         self.wsl = wsl
         self._run = runner
+        self._spawn = spawner
         self._facts = facts
         self._elevate = elevator
         self._write_registry = registry_writer
@@ -210,11 +225,16 @@ class Wsl2Provider:
                       root=True),
             f"systemd could not be turned on inside '{self.distro}'")
         self.stop()  # --terminate so the wsl.conf change takes effect on next boot
+        self.start()  # like Lima's create: the VM is left running
 
     def start(self) -> None:
-        # Running any command boots the distro.
+        # Running any command boots the distro, but only keeps it up while it
+        # runs -- the hold is what keeps it running afterwards.
         self._require(self.exec(["true"]),
                       f"the virtual machine '{self.distro}' could not be started")
+        if not self.exec(["pgrep", "-f", f"^{HOLD_NAME}"], root=True).ok:
+            self._spawn([self.wsl, "-d", self.distro, "-u", "root", "--",
+                         "bash", "-c", f"exec -a {HOLD_NAME} sleep infinity"])
 
     def stop(self) -> None:
         self._require(self._meta(["--terminate", self.distro]),
