@@ -82,6 +82,24 @@ def test_an_unreachable_service_is_recorded_and_retried_next_pass(tmp_path):
     assert state.get_account()["sync_error"] is None
 
 
+def test_a_pass_finishing_after_sign_out_does_not_write_stale_sync_fields(tmp_path):
+    class Wrapped(FakeCloud):
+        def create_project(self, token, name, client_ref):
+            out = super().create_project(token, name, client_ref)
+            account._forget(None)
+            return out
+
+    cloud = Wrapped(create_project=[{"id": "c-1"}])
+    state, account = setup(tmp_path, cloud, ["blog"])
+
+    run_pass(account, cloud, state)
+
+    row = state.get_account()
+    assert row["sync_ok_at"] is None
+    assert row["sync_error"] is None
+    assert account.signed_in is False
+
+
 def test_nothing_happens_when_signed_out(tmp_path):
     cloud = FakeCloud()
     state, account = setup(tmp_path, cloud, ["blog"])

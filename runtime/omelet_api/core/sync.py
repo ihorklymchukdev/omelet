@@ -89,12 +89,12 @@ def run_pass(account, cloud, state, clock=time.time) -> None:
     except NotSignedIn:
         return
     except (CloudError, CloudUnavailable) as e:
-        state.update_account(sync_error=str(e))
+        account.record_sync(error=str(e))
         return
     if errors:
-        state.update_account(sync_error="; ".join(errors))
+        account.record_sync(error="; ".join(errors))
     else:
-        state.update_account(sync_ok_at=clock(), sync_error=None)
+        account.record_sync(ok_at=clock())
 
 
 class SyncLoop:
