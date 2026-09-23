@@ -51,6 +51,7 @@ class Cloud:
                                          headers=headers, method=method)
         try:
             with self._open(request, timeout=self._timeout) as response:
+                status = response.status
                 raw = response.read()
         except urllib.error.HTTPError as e:
             raise _error_from(e.code, e.read()) from None
@@ -63,7 +64,7 @@ class Cloud:
         except ValueError:
             raise CloudError("bad_response",
                              "the Omelet service sent something that is not JSON",
-                             200) from None
+                             status) from None
 
     def device_code(self, client_name: str):
         return self.call("POST", "/v1/auth/device/code",

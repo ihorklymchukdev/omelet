@@ -8,7 +8,8 @@ from omelet_api.core.cloud import Cloud, CloudError, CloudUnavailable
 
 
 class _Response:
-    def __init__(self, body: bytes):
+    def __init__(self, status: int, body: bytes):
+        self.status = status
         self._body = body
 
     def read(self):
@@ -37,7 +38,7 @@ class Opener:
         if status >= 400:
             raise urllib.error.HTTPError(request.full_url, status, "error", {},
                                          io.BytesIO(body))
-        return _Response(body)
+        return _Response(status, body)
 
 
 def _error(code, message="m"):
@@ -81,3 +82,10 @@ def test_create_sends_the_token_the_name_and_the_client_ref():
     assert (request.get_method(), request.full_url) == ("POST", "https://svc/api/v1/projects")
     assert request.get_header("Authorization") == "Bearer tok"
     assert json.loads(request.data) == {"name": "blog", "client_ref": "dev/blog"}
+
+
+def test_a_2xx_response_with_non_json_body_reports_the_actual_status():
+    cloud = Cloud("https://svc/api", opener=Opener((201, b"Created")))
+    with pytest.raises(CloudError) as raised:
+        cloud.create_project("t", "n", "r")
+    assert (raised.value.code, raised.value.status) == ("bad_response", 201)
