@@ -180,6 +180,36 @@
   </section>
 </template>
 
+<template data-screen="unresponsive">
+  <section class="pad">
+    <span class="badge badge-bad">Not answering</span>
+    <h1 class="display">The kitchen stopped answering</h1>
+    <p class="lede">The machine your projects run on has stopped responding. It
+      happens now and then, often after the computer wakes from sleep.
+      Restarting it usually sorts it out. Your projects stay put.</p>
+    <div class="row">
+      <button class="btn-primary" data-action="recover">Restart the kitchen</button>
+      <button class="btn-secondary" data-action="go-home">Try again</button>
+    </div>
+    <details class="log"><summary>Show logs</summary>
+      <pre data-field="problem"></pre></details>
+  </section>
+</template>
+
+<template data-screen="recover-confirm">
+  <section class="pad">
+    <h2 class="title">Restarting the kitchen wasn't enough</h2>
+    <p class="lede">The next step restarts everything the kitchen runs on.</p>
+    <p class="warn" data-field="warning"></p>
+    <div class="row">
+      <button class="btn-danger" data-action="recover-everything">Restart everything</button>
+      <button class="btn-secondary" data-action="go-home">Not now</button>
+    </div>
+    <details class="log"><summary>Show logs</summary>
+      <pre data-field="message"></pre></details>
+  </section>
+</template>
+
 <template data-screen="updates-unavailable">
   <section class="pad centered">
     <h2 class="title">Nothing to check yet</h2>

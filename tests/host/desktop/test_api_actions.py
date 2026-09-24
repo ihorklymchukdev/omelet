@@ -142,3 +142,41 @@ def test_uninstall_touches_nothing_outside_the_injected_directory(tmp_path, monk
     api.start_uninstall(True)
     api.jobs.join(timeout=5)
     assert events[-1]["type"] == "done", events
+
+
+class Recovering(FakeProvider):
+    recover_warning = "other things stop too"
+
+    def __init__(self, fails=()):
+        super().__init__()
+        self.recovered = []
+        self._fails = fails
+
+    def recover(self, *, everything=False):
+        from host.core.provider import VmUnresponsive
+        self.recovered.append(everything)
+        if everything in self._fails:
+            raise VmUnresponsive("still hung")
+
+
+def _recover(tmp_path, provider, everything):
+    pushed = []
+    api = _api(tmp_path, provider, pushed)
+    api.recover_vm(everything)
+    api.jobs.join(timeout=5)
+    return pushed[-1]
+
+
+def test_a_recovery_that_did_not_help_asks_before_going_wider(tmp_path):
+    # Going wider stops everything else on the same platform, so the UI must
+    # get the warning to show rather than a crash notice.
+    event = _recover(tmp_path, Recovering(fails=(False,)), False)
+    assert event["type"] == "unresponsive"
+    assert event["everything"] is False
+    assert event["warning"] == "other things stop too"
+
+
+def test_recovery_passes_through_how_wide_to_go(tmp_path):
+    provider = Recovering()
+    assert _recover(tmp_path, provider, True)["type"] == "done"
+    assert provider.recovered == [True]

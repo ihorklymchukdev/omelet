@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from . import constants
+from .provider import VmUnresponsive
 
 
 @dataclass(frozen=True)
@@ -25,6 +26,8 @@ class Readiness:
     runtime_version: str | None = None
     api_version: int | None = None
     problem: str = ""
+    # `problem` came from the platform under the VM, not from anything in it.
+    unresponsive: bool = False
 
     @property
     def ready(self) -> bool:
@@ -58,7 +61,8 @@ def probe(provider, *, client_factory=None) -> Readiness:
     try:
         exists = provider.exists()
     except Exception as e:
-        return Readiness(problem=f"{e}")
+        return Readiness(problem=f"{e}",
+                         unresponsive=isinstance(e, VmUnresponsive))
     if not exists:
         return Readiness()
 
@@ -67,12 +71,14 @@ def probe(provider, *, client_factory=None) -> Readiness:
         if not provider.running():
             return Readiness(vm_exists=True)
     except Exception as e:
-        return Readiness(vm_exists=True, problem=f"{e}")
+        return Readiness(vm_exists=True, problem=f"{e}",
+                         unresponsive=isinstance(e, VmUnresponsive))
 
     try:
         reachable = provider.exec(["true"]).ok
     except Exception as e:
-        return Readiness(vm_exists=True, problem=f"{e}")
+        return Readiness(vm_exists=True, problem=f"{e}",
+                         unresponsive=isinstance(e, VmUnresponsive))
     if not reachable:
         return Readiness(vm_exists=True)
 
@@ -80,7 +86,8 @@ def probe(provider, *, client_factory=None) -> Readiness:
         marker = provider.exec(["cat", constants.RUNTIME_MARKER])
         runtime = marker.stdout.strip() if marker.ok else ""
     except Exception as e:
-        return Readiness(vm_exists=True, vm_reachable=True, problem=f"{e}")
+        return Readiness(vm_exists=True, vm_reachable=True, problem=f"{e}",
+                         unresponsive=isinstance(e, VmUnresponsive))
     if not runtime:
         return Readiness(vm_exists=True, vm_reachable=True)
 
@@ -93,6 +100,7 @@ def probe(provider, *, client_factory=None) -> Readiness:
         api = client_factory(provider).health().get("api", 1)
     except Exception as e:
         return Readiness(vm_exists=True, vm_reachable=True,
-                          runtime_version=runtime, problem=f"{e}")
+                          runtime_version=runtime, problem=f"{e}",
+                          unresponsive=isinstance(e, VmUnresponsive))
     return Readiness(vm_exists=True, vm_reachable=True,
                       runtime_version=runtime, api_version=api)

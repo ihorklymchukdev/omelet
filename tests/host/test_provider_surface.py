@@ -22,6 +22,7 @@ LIFECYCLE_SURFACE = {
     "destroy",
     "exec",
     "forward",
+    "recover",
 }
 
 
@@ -34,7 +35,8 @@ LIFECYCLE_SURFACE = {
 # of them and had neither -- `omelet setup` on macOS died with an
 # AttributeError before its first step.
 INSTALL_SURFACE = {"image", "register_resume", "location", "terminal",
-                   "remediable", "runtime", "access"}
+                   "remediable", "runtime", "access",
+                   "recover_warning"}
 
 
 def _protocol_methods() -> set[str]:

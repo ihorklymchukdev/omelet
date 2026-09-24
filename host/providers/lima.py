@@ -286,6 +286,15 @@ class LimaProvider:
         self._require(self._cmd(["delete", self.name]),
                       f"the virtual machine '{self.name}' could not be removed")
 
+    def recover(self, *, everything: bool = False) -> None:
+        # Nothing outside this instance to restart, so `everything` is the same
+        # forced restart. Nothing on this side raises VmUnresponsive yet.
+        self._require(self._cmd(["stop", "--force", self.name]),
+                      f"the virtual machine '{self.name}' could not be stopped")
+        self.start()
+
+    recover_warning = "This forces the virtual machine to stop first. Nothing is deleted."
+
     def exec(self, argv: list[str], *, root: bool = False) -> Completed:
         prefix = ["sudo", *argv] if root else list(argv)
         return self._cmd(["shell", self.name, *prefix])

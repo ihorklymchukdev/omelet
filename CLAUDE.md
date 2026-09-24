@@ -242,6 +242,11 @@ that document is written. Add a new entry here when you hit one.
   count must agree with `runtime/web/Dockerfile`'s `WORKDIR` (and the `COPY --from=fixtures`
   destination inside it). Changing one without the other passes `npm test`, which runs against the
   checkout, and fails only inside the image build.
+- WSL's service can hang (`Wsl/Service/CreateInstance/0x8007274c`, often after sleep) while
+  `wsl -l --running` still lists `omelet-vm`, so "listed as running" never proves it answers.
+  `Wsl2Provider` raises `VmUnresponsive` from `exec()` and `_meta()` on that code;
+  `recover()` tries `--terminate` first. Only `--shutdown` is sure to clear it, and that stops
+  every distro and Docker Desktop, so the desktop app asks before using it.
 - pywebview injects `window.pywebview.api` into every page the window loads, including the
   console served from the VM. `host/desktop/shell.py` refuses bridge calls and pushed events
   unless the local UI is showing; a new `DesktopApi` method is covered automatically. Keep

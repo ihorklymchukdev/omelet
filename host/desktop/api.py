@@ -256,6 +256,24 @@ class DesktopApi:
 
         return {"job": self.jobs.start("vm", work)}
 
+    def recover_vm(self, everything: bool) -> dict:
+        from host.core.provider import VmUnresponsive
+
+        everything = bool(everything)
+
+        def work(emit):
+            try:
+                self._provider.recover(everything=everything)
+            except VmUnresponsive as e:
+                # Not a crash: the first attempt failing is what earns the
+                # wider restart, and the user has to see its warning first.
+                return {"type": "unresponsive", "everything": everything,
+                        "message": f"{e}",
+                        "warning": self._provider.recover_warning}
+            return {"type": "done"}
+
+        return {"job": self.jobs.start("recover", work)}
+
     def start_repair(self) -> dict:
         from host.core.bootstrap import bootstrap
         from host.core.install import connect_step
