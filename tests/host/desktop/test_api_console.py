@@ -27,53 +27,46 @@ class HandoffClient:
         return self._code
 
 
-def _api(tmp_path, *, readiness=READY, client=None, loaded=None, home=None):
+def _api(tmp_path, *, readiness=READY, client=None, home=None):
     return DesktopApi(FakeProvider(), InstallState(tmp_path / "s.json"),
                       push=lambda event: None,
                       probe_fn=lambda provider: readiness,
                       client_factory=lambda provider: client or HandoffClient(code="abc"),
-                      navigate=(loaded.append if loaded is not None else None),
                       local_url=lambda: home)
 
 
-def test_entering_loads_the_edge_port_with_the_handoff_code(tmp_path):
-    loaded = []
-    assert _api(tmp_path, loaded=loaded).enter_console() == {"ok": True}
-    assert loaded == [f"http://localhost:{constants.EDGE_PORT}/#handoff=abc"]
+def test_entering_hands_back_the_edge_port_with_the_handoff_code(tmp_path):
+    assert _api(tmp_path).enter_console() == {
+        "ok": True, "url": f"http://localhost:{constants.EDGE_PORT}/#handoff=abc"}
 
 
 def test_the_console_is_told_where_home_is(tmp_path):
     # The console's Home button navigates here; the address travels encoded
     # so its own "&" or "#" cannot end the fragment early.
-    loaded = []
     home = "http://127.0.0.1:53817/index.html"
-    _api(tmp_path, loaded=loaded, home=home).enter_console()
-    assert loaded == [f"http://localhost:{constants.EDGE_PORT}/#handoff=abc"
-                      f"&home=http%3A%2F%2F127.0.0.1%3A53817%2Findex.html"]
+    assert _api(tmp_path, home=home).enter_console()["url"] == (f"http://localhost:{constants.EDGE_PORT}/#handoff=abc"
+                      f"&home=http%3A%2F%2F127.0.0.1%3A53817%2Findex.html")
 
 
-def test_a_failed_handoff_loads_nothing(tmp_path):
+def test_a_failed_handoff_gives_no_address(tmp_path):
     # Inside the app the console's signed-out screen says "open this from the
     # desktop app" -- a dead end for someone already in it.
-    loaded = []
     client = HandoffClient(error=ConnectionRefusedError("refused"))
-    result = _api(tmp_path, client=client, loaded=loaded).enter_console()
+    result = _api(tmp_path, client=client).enter_console()
     assert result["ok"] is False
     assert "refused" in result["message"]
-    assert loaded == []
+    assert "url" not in result
 
 
 def test_entering_is_refused_while_a_job_runs(tmp_path):
-    loaded = []
-    api = _api(tmp_path, loaded=loaded)
+    api = _api(tmp_path)
     release = threading.Event()
     api.jobs.start("import", lambda emit: release.wait(5) and {"type": "done"})
     try:
-        assert api.enter_console()["ok"] is False
+        assert "url" not in api.enter_console()
     finally:
         release.set()
         api.jobs.join(5)
-    assert loaded == []
 
 
 def test_a_running_machine_enters_the_console_at_launch(tmp_path):

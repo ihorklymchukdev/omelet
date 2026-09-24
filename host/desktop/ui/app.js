@@ -104,10 +104,10 @@ window.addEventListener('unhandledrejection', (event) => {
 });
 
 const ACTIONS = {
-  // Success navigates the window away; there is nothing to render after it.
   'enter-console': async () => {
     const result = await api().enter_console();
-    if (!result.ok) showNotice(result.message);
+    if (result.ok) window.location.assign(result.url);
+    else showNotice(result.message);
   },
   'go-home': () => refresh(),
   'dismiss-notice': () => { document.getElementById('notice').hidden = true; },
@@ -408,7 +408,7 @@ async function refresh() {
   if (home.first_run) return show('first-run', home);
   if (home.enter_console) {
     const result = await api().enter_console();
-    if (result.ok) return;
+    if (result.ok) return window.location.assign(result.url);
     showNotice(result.message);
   }
   show(home.route === 'home' ? `home:${home.state}` : home.route, home);

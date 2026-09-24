@@ -64,7 +64,7 @@ def run(provider, state, *, create=_default_create, start=_default_start,
 
     shell = Shell()
     api = DesktopApi(provider, state, push=shell.push, steps_factory=steps_factory,
-                     navigate=shell.load, local_url=shell.local_url)
+                     local_url=shell.local_url)
     # Surfaced by a later task: the install screen reads this to show
     # host.core.install.RESUME_NOTICE when RunOnce reopened the window.
     api.resumed = resumed

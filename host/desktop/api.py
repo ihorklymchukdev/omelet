@@ -24,8 +24,7 @@ class DesktopApi:
 
     def __init__(self, provider, state, *, push,
                  probe_fn=probe, steps_factory=None,
-                 client_factory=None, install_dir_factory=None, navigate=None,
-                 local_url=None):
+                 client_factory=None, install_dir_factory=None, local_url=None):
         self._provider = provider
         self._state = state
         self._probe = probe_fn
@@ -33,7 +32,6 @@ class DesktopApi:
         self._client_factory = client_factory or self._default_client_factory
         self._install_dir_factory = install_dir_factory or self._default_install_dir
         self.jobs = JobRegistry(push)
-        self._navigate = navigate or (lambda url: None)
         self._local_url = local_url or (lambda: None)
         self._home_seen = False
 
@@ -104,8 +102,10 @@ class DesktopApi:
         if home:
             # The console's Home button comes back here.
             url += f"&home={quote(home, safe='')}"
-        self._navigate(url)
-        return {"ok": True}
+        # The page navigates itself: pywebview resolves this call's promise
+        # with evaluate_js after we return, and a page loaded meanwhile lacks
+        # the callback.
+        return {"ok": True, "url": url}
 
     def start_install(self) -> dict:
         from host.core.install import run_install

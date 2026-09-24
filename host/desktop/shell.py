@@ -28,8 +28,9 @@ class Shell:
         return urldefrag(url)[0] if url else None
 
     def _remember(self) -> None:
-        # Until the first load() the window has only ever shown the local UI,
-        # so the first URL seen is ours. load() calls this before leaving.
+        # Until the console is entered the window has only ever shown the
+        # local UI, so the first URL seen is ours. The guard on enter_console
+        # calls this before the page leaves.
         # Before its first load WebView2 reports None and WKWebView "None".
         if self._local is None:
             current = self._current()
@@ -44,13 +45,6 @@ class Shell:
     def local_url(self) -> str | None:
         self._remember()
         return self._local
-
-    def load(self, url: str) -> None:
-        self._remember()
-        # Leaving before the local page is known would let the next page
-        # be recorded as ours.
-        if self._local is not None:
-            self.window.load_url(url)
 
     def push(self, event: dict) -> None:
         # json.dumps, never a format string: a message carrying a quote would
