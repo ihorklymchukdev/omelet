@@ -219,6 +219,13 @@ Do not add an `if windows` anywhere else — push the difference into a provider
   locked until sign-in (`GET /api/account`); the CLI and coding agents never wait on it.
   Service gaps are not worked around in our code; see
   `docs/superpowers/specs/2026-09-23-account-sign-in-sync-design.md` section 7.
+- `runtime/omelet_api/core/public.py` — a project's temporary public URL. The service owns the
+  Cloudflare tunnel and its routing; the VM asks for a URL, keeps the token in
+  `/opt/omelet/tunnel.token` (0640, present only while a URL is on) and starts the
+  profile-gated `tunnel` service in `stack.yml` through compose. The service rewrites Host to the
+  project's local hostname, so overlays are unchanged; apps that build absolute URLs from Host
+  send public visitors to `*.127-0-0-1.sslip.io`. Only the console turns it on; the CLI never
+  shows it. Reconciled on every sync pass.
 - `runtime/web/` — the browser UI at `localhost:<edge>`, shipped as the `omelet-web` nginx image
   and routed by Traefik below the API's `/api` router — a sibling of the API inside `runtime/`,
   never nested in the Python package. `packages/ui` is the kit (tokens, fonts,
@@ -265,6 +272,9 @@ that document is written. Add a new entry here when you hit one.
   does not cover" names the residual race. Any page can also open a new window, which pywebview
   hands to `webbrowser.open` (`os.startfile` on Windows), so `_default_start` wraps it with
   `web_links_only` — http(s) only.
+- The `tunnel` service is behind a compose profile. A plain `docker compose -f stack.yml up -d`
+  or `pull` never touches it; the API's own compose calls pass `--profile tunnel`, and so must
+  anything else that means to include it.
 
 ## Testing conventions
 
