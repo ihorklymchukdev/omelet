@@ -29,7 +29,7 @@ function wrong(project: Project): ProjectView | null {
 
 export function projectView(project: Project): ProjectView {
   const job = project.job;
-  if (job && (job.kind === "up" || job.kind === "restart")) return { kind: "starting", badge: "starting", job };
+  if (job && (job.kind === "up" || job.kind === "restart" || job.kind === "clone")) return { kind: "starting", badge: "starting", job };
   if (job && job.kind === "down") return { kind: "stopping", badge: "stopped", job };
   if (project.problem?.code === "folder_missing") return { kind: "gone", badge: "wrong" };
   if (project.empty) return { kind: "waiting", badge: "stopped" };
