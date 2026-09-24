@@ -148,6 +148,32 @@ def test_a_real_logout_failure_marks_the_account_failed(tmp_path):
     assert "root" in applied["error"] and "rate limited" in applied["error"]
 
 
+def test_a_failed_disconnect_keeps_the_login_so_a_retry_can_still_log_it_out(tmp_path):
+    env, gh_dir, log = setup(
+        tmp_path, desired={"generation": 5, "state": "disconnected"},
+        applied={"generation": 4, "ok": True, "login": "octo", "name": "Octo Cat",
+                 "email": "42+octo@users.noreply.github.com", "accounts": []})
+    (tmp_path / "root" / "logout-error").write_text("error: rate limited\n")
+    applied = run(env, gh_dir)
+
+    assert applied["ok"] is False
+    assert applied["login"] == "octo"
+    assert applied["name"] == "Octo Cat"
+    assert applied["email"] == "42+octo@users.noreply.github.com"
+
+    (tmp_path / "root" / "logout-error").unlink()
+    (gh_dir / "desired.json").write_text(json.dumps({"generation": 6, "state": "disconnected"}))
+    applied2 = run(env, gh_dir)
+
+    assert applied2["ok"] is True
+    assert applied2["login"] is None
+    # root's failed pass-1 logout never reaches the log (the fake gh exits
+    # before logging on that path); ada's pass-1 logout plus both accounts'
+    # pass-2 logout do.
+    assert (log / "gh").read_text().count(
+        "auth logout --hostname github.com --user octo") == 3
+
+
 def test_no_previous_login_skips_logout_and_leaves_a_hand_sign_in_alone(tmp_path):
     env, gh_dir, log = setup(
         tmp_path, desired={"generation": 5, "state": "disconnected"},

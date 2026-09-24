@@ -152,6 +152,10 @@ while :; do
 
   if [[ "$STATE" == connected ]]; then
     write_applied "$GEN" "$OK" "$ERROR" "$NAME" "$EMAIL" "$LOGIN" "${ROWS[@]}"
+  elif [[ "$OK" == 0 ]]; then
+    # A disconnect that did not fully log out must keep the previous
+    # identity, or a retry would no longer know who to log out.
+    write_applied "$GEN" "$OK" "$ERROR" "$PREV_NAME" "$PREV_EMAIL" "$PREV_LOGIN" "${ROWS[@]}"
   else
     write_applied "$GEN" "$OK" "$ERROR" "" "" "" "${ROWS[@]}"
   fi
