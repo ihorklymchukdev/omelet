@@ -42,6 +42,11 @@ RUN if getent group "${DOCKER_GID}" >/dev/null; then \
     fi \
     && useradd -m -u 1000 -g docker api
 
+# git for the GitHub clone job; ca-certificates so it can reach github.com.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Only the installable package. The stack manifest lives in runtime/ and the
