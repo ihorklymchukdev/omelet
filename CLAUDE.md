@@ -219,6 +219,14 @@ Do not add an `if windows` anywhere else — push the difference into a provider
   locked until sign-in (`GET /api/account`); the CLI and coding agents never wait on it.
   Service gaps are not worked around in our code; see
   `docs/superpowers/specs/2026-09-23-account-sign-in-sync-design.md` section 7.
+- `runtime/omelet_api/core/github.py` / `github_link.py` — Connect GitHub. The API runs GitHub's
+  Device Flow (`OMELET_GITHUB_CLIENT_ID`, no secret) and keeps the token in
+  `/opt/omelet/github/token` (0600). It never reaches a user home itself: it writes a token-free
+  `desired.json` with a rising `generation`, `omelet-github.path` runs
+  `runtime/install/lib/github-apply.sh` as root, and that echoes the generation into
+  `applied.json`. The UI says "ready" only when the two match; `applied.json` missing after 30 s
+  means the runtime predates the feature. `POST /github/clone` passes the token to git only
+  through the child's environment.
 - `runtime/web/` — the browser UI at `localhost:<edge>`, shipped as the `omelet-web` nginx image
   and routed by Traefik below the API's `/api` router — a sibling of the API inside `runtime/`,
   never nested in the Python package. `packages/ui` is the kit (tokens, fonts,
@@ -245,6 +253,11 @@ Do not add an `if windows` anywhere else — push the difference into a provider
 No `docs/architecture.md` exists to hold this list yet — gotchas live directly in this file until
 that document is written. Add a new entry here when you hit one.
 
+- `install.sh` step 4 runs `chmod -R g+rwX /opt/omelet` on every install, which widens
+  `/opt/omelet/github/token`. The modes are reasserted right after the sweep; keep that order.
+- Login accounts are never the API's uid 1000: WSL2 has only root, and Lima's user carries the
+  macOS uid. The API writes into projects through the docker group, so anything it creates there
+  needs `umask 002` (see `clone_argv`), and `/etc/gitconfig` trusts `safe.directory '*'`.
 - `runtime/web/apps/console/src/projects/slugify.test.ts` reaches
   `tests/fixtures/slugify-cases.json` by counting `../` segments from its own location, and that
   count must agree with `runtime/web/Dockerfile`'s `WORKDIR` (and the `COPY --from=fixtures`

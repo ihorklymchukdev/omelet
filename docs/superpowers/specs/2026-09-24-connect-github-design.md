@@ -197,7 +197,11 @@ the cookie at `/api`. None of them ever returns the token.
 
 ### 5.6 The clone job
 
-The clone runs in the existing job registry as `runner.exec` with an explicit env:
+The clone runs in the existing job registry as `runner.exec` with an explicit env.
+The repo is cloned into a hidden staging folder `projects_root/.clone-<hex>` first; if
+the project name is still unclaimed when done, it is renamed into place. If another
+request (POST /projects, an adopt, a coding agent's own mkdir) claims the name first,
+the staging folder is removed and an error is returned; nothing is left behind.
 
 ```
 sh -c 'umask 002 && exec "$@"' sh \
@@ -244,31 +248,42 @@ activates `omelet-github.service`, a root `Type=oneshot` that runs
 repair or a newly added account picks up the current state.
 
 The script is idempotent. It reads `desired.json`, applies it in full, and writes
-`applied.json` with the same generation:
+`applied.json` with the same generation. It loops up to 5 times: a desired.json written
+while a pass was running (e.g. a quick connect-then-disconnect) is not covered by
+PathChanged firing again after this run exits, so the script re-checks the generation
+and applies any new desired state:
 
 ```
 accounts = root:0:0:/root  +  getent passwd | login-users.sh /etc/shells
-for each account:
-  as() { runuser -u "$name" -- env -i HOME="$home" PATH=/usr/bin:/bin GH_PROMPT_DISABLED=1 "$@"; }
-  connected:
-    as gh auth login --hostname github.com --git-protocol https --insecure-storage --with-token < token
-    as gh auth setup-git --hostname github.com
-    as git config --global user.name  "$name_from_desired"
-    as git config --global user.email "$email_from_desired"
-  disconnected:
-    as gh auth logout --hostname github.com   (a "not logged in" exit is fine)
-    as git config --global --unset user.name / user.email, only if they still equal
-       the values in the previous applied.json (the user's own identity is kept)
+loop while generation moves (up to 5 passes):
+  for each account:
+    as() { runuser -u "$name" -- env HOME="$home" PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+           GH_PROMPT_DISABLED=1 GH_NO_UPDATE_NOTIFIER=1 "$@"; }
+    connected:
+      as gh auth login --hostname github.com --git-protocol https --insecure-storage --with-token < token
+      as gh auth setup-git --hostname github.com
+      as git config --global user.name  "$name_from_desired"
+      as git config --global user.email "$email_from_desired"
+    disconnected:
+      as gh auth logout --hostname github.com --user "$recorded_login"   (a "not logged in" exit is fine)
+      as git config --global --unset user.name / user.email, only if they still equal
+         the values in the previous applied.json (the user's own identity is kept)
 ```
 
 - **Nothing root-owned in user homes.** Every write in a home goes through `runuser` as
   that account with its own `HOME`, so `~/.config/gh/hosts.yml` and `~/.gitconfig` belong
   to the account.
+- **`runuser` without `-i`.** `runuser` without `-l` already carries the caller's
+  environment; wiping it here would drop nothing worth dropping. Overriding `HOME` and
+  `PATH` keeps `gh`/`git` pointed at the right account.
 - **Reading the token.** Root's shell opens the token for the `< token` redirect before
   `runuser` drops privileges. The account never needs read access to
   `/opt/omelet/github/token`.
 - **`--insecure-storage`.** It makes the storage deterministic. There is no keyring in a
   headless VM, and gh would fall back to the same file anyway.
+- **Logout with `--user`.** Since gh 2.40 one host can hold several accounts (a hand
+  sign-in, or a reconnect as someone else). Only log out the account we recorded signing
+  in, leaving a hand sign-in alone. Nothing to undo otherwise.
 - **Per-account result.** One account failing does not stop the others. `ok` is the AND
   of all accounts, and `error` holds the first failing account's name and gh's stderr.
   gh never echoes the token, but the script passes stderr through the same kind of
