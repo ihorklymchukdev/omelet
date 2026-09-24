@@ -11,6 +11,10 @@ ACCOUNT_FIELDS = frozenset({
     "device_code", "user_code", "verification_url", "code_expires_at",
     "poll_interval", "last_error", "sync_ok_at", "sync_error"})
 
+GITHUB_FIELDS = frozenset({
+    "generation", "desired_at", "login", "gh_id", "name", "email",
+    "needs_reconnect", "last_error", "checked_at"})
+
 
 class State:
     """The API's project list, on one connection shared by every thread.
@@ -121,6 +125,23 @@ class State:
         assignments = ", ".join(f"{name}=?" for name in fields)
         with self._lock:
             self._conn.execute(f"UPDATE account SET {assignments} WHERE id=1",
+                               tuple(fields.values()))
+            self._conn.commit()
+
+    def get_github(self) -> dict:
+        with self._lock:
+            return dict(self._conn.execute(
+                "SELECT * FROM github WHERE id=1").fetchone())
+
+    def update_github(self, **fields) -> None:
+        unknown = set(fields) - GITHUB_FIELDS
+        if unknown:
+            raise ValueError(f"unknown github fields: {sorted(unknown)}")
+        if not fields:
+            return
+        assignments = ", ".join(f"{name}=?" for name in fields)
+        with self._lock:
+            self._conn.execute(f"UPDATE github SET {assignments} WHERE id=1",
                                tuple(fields.values()))
             self._conn.commit()
 
