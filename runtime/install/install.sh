@@ -256,7 +256,7 @@ install -m 644 "$INSTALL_DIR/systemd/omelet-github.path" \
   "$INSTALL_DIR/systemd/omelet-github.service" /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now omelet-github.path
-if ! bash "$INSTALL_DIR/lib/github-apply.sh"; then
+if ! systemctl start omelet-github.service; then
   echo "could not apply the GitHub connection to this machine's accounts" >&2
   exit 1
 fi

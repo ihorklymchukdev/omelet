@@ -335,7 +335,9 @@ def test_install_reasserts_the_github_file_modes_after_the_permission_sweep():
 def test_install_enables_the_github_path_unit_and_applies_before_the_marker():
     text = INSTALL.read_text()
     assert "systemctl enable --now omelet-github.path" in text
-    apply = text.index('bash "$INSTALL_DIR/lib/github-apply.sh"')
+    # The oneshot service, not the script directly: the call still blocks,
+    # runs stay serialized, and the unit's environment is clean.
+    apply = text.index("systemctl start omelet-github.service")
     assert apply < text.index(f"> {constants.RUNTIME_MARKER}")
 
 
