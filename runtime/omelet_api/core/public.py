@@ -270,6 +270,9 @@ class Public:
         return True
 
     def _stop_unless_needed(self, local_id: str) -> None:
+        with self._lock:
+            if self._enabling - {local_id}:
+                return  # another project may be about to need the client
         if any(r["state"] == "on" and r["local_id"] != local_id
                for r in self._state.list_public()):
             return
@@ -286,12 +289,32 @@ class Public:
             except Exception:
                 log.exception("reconciling the public URL of %s failed",
                               row["local_id"])
-        wanted = any(r["state"] == "on" for r in self._state.list_public())
+        with self._lock:
+            # A concurrent enable may commit "on" and start the client right
+            # after this check; deciding the client's state here too could
+            # race it (stop what it just started, or skip a start it needs).
+            if self._enabling:
+                return
+        self._reconcile_client()
+
+    def _reconcile_client(self) -> None:
+        on_rows = [r for r in self._state.list_public() if r["state"] == "on"]
         running = self._client.running()
-        if wanted and not running:
+        if on_rows:
+            if running:
+                return
             if self._token_path.exists():
-                self._client.start()
-        elif not wanted and (running or self._token_path.exists()):
+                started = self._client.start()
+                if not started.ok:
+                    log.warning("restarting the tunnel client failed: %s",
+                                started.stderr)
+            else:
+                for row in on_rows:
+                    if self._end(row, "client_failed"):
+                        log.warning(
+                            "public URL of %s had no tunnel token; ended it",
+                            row["local_id"])
+        elif running or self._token_path.exists():
             self._client.stop()
             remove_token(self._token_path)
 
@@ -302,8 +325,6 @@ class Public:
                 return
         if local_id not in projects:
             self.disable(local_id, force=True)
-            if (self._state.get_public(local_id) or {}).get("state") != "releasing":
-                self._state.delete_public(local_id)
             return
         if state == "on":
             if row["expires_at"] <= self._clock():
@@ -315,19 +336,30 @@ class Public:
             except CloudError as e:
                 if e.status == 404:
                     self._end(row, "released_elsewhere")
+                else:
+                    log.warning("checking public URL %s failed: %s",
+                                row["cloud_id"], e)
             except (CloudUnavailable, NotSignedIn):
                 pass
         elif state == "releasing":
             if self._release(row["cloud_id"]):
                 self._state.delete_public(local_id)
         elif state == "enabling":
-            self._release(row["cloud_id"])
-            self._fail(local_id, row["cloud_id"], "interrupted")
+            if self._release(row["cloud_id"]):
+                self._fail(local_id, row["cloud_id"], "interrupted")
+            else:
+                self._state.transition_public(local_id, "enabling",
+                                               state="releasing",
+                                               reason_code="interrupted")
 
-    def _end(self, row: dict, code: str) -> None:
-        self._state.put_public(row["local_id"], cloud_id=row["cloud_id"],
-                               state="ended", reason_code=code)
-        self._stop_unless_needed(row["local_id"])
+    def _end(self, row: dict, code: str) -> bool:
+        # Guarded: the row may have moved (a fresh enable, a disable) since
+        # this snapshot was read, e.g. across the get_public_url call above.
+        ended = self._state.transition_public(row["local_id"], "on",
+                                              state="ended", reason_code=code)
+        if ended:
+            self._stop_unless_needed(row["local_id"])
+        return ended
 
     def release_all(self) -> None:
         for row in self._state.list_public():

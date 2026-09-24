@@ -314,6 +314,22 @@ def test_reconcile_releases_an_enable_the_api_restart_interrupted(tmp_path):
     assert public.status("blog")["reason"]["code"] == "interrupted"
 
 
+def test_reconcile_of_an_interrupted_enable_retries_a_failed_release(tmp_path):
+    cloud = FakeCloud(release_public_url=[CloudUnavailable("down"), None])
+    public, state, _, _ = make(tmp_path, cloud)
+    state.put_public("blog", cloud_id="c-blog", state="enabling")
+
+    public.reconcile()
+
+    row = state.get_public("blog")
+    assert row["state"] == "releasing" and row["reason_code"] == "interrupted"
+    assert public.status("blog")["reason"]["code"] == "interrupted"
+
+    public.reconcile()
+
+    assert state.get_public("blog") is None
+
+
 def test_reconcile_restarts_a_client_that_is_down_while_a_url_is_on(tmp_path):
     cloud = FakeCloud(create_public_url=[ON], get_public_url=[ON])
     public, _, runner, _ = make(tmp_path, cloud)
@@ -333,6 +349,24 @@ def test_reconcile_stops_a_client_nothing_needs(tmp_path):
     public.reconcile()
 
     assert not runner.up and not (tmp_path / "tunnel.token").exists()
+
+
+def test_reconcile_leaves_the_client_alone_while_another_row_is_enabling(tmp_path):
+    """A commit from the live enable thread can land between reconcile's per-row
+    pass and its client decision; if no row reads "on" yet, the client must be
+    left as-is rather than stopped out from under that in-flight enable."""
+    cloud = FakeCloud(create_public_url=[ON])
+    public, state, runner, _ = make(tmp_path, cloud)
+    held = []
+    public._spawn = held.append
+    public.enable("blog")  # row is "enabling"; the thread never runs
+    runner.up = True
+    (tmp_path / "tunnel.token").write_text("stale")
+
+    public.reconcile()
+
+    assert runner.up and (tmp_path / "tunnel.token").exists()
+    assert state.get_public("blog")["state"] == "enabling"
 
 
 def test_reconcile_releases_the_url_of_a_project_deleted_meanwhile(tmp_path):

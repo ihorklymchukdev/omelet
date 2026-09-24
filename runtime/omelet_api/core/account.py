@@ -258,4 +258,7 @@ class Account:
                 refresh_token=None, access_expires_at=None, last_error=error,
                 sync_ok_at=None, sync_error=None)
             self._state.clear_cloud_projects()
-        self.on_forget()
+        try:
+            self.on_forget()
+        except Exception:
+            log.exception("the forget hook failed")
