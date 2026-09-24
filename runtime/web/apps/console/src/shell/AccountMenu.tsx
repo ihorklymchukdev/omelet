@@ -80,7 +80,7 @@ function GitHubLine() {
         <Button variant="quiet" onClick={() => { setLeft(false); setOpen(true); }}>Connect GitHub</Button>
       </span>
     );
-  } else if (view.kind === "ready" || view.kind === "applying" || view.kind === "setupFailed") {
+  } else if (view.kind === "ready" || view.kind === "applying" || view.kind === "setupFailed" || view.kind === "reconnect") {
     content = confirming ? (
       <>
         <span>Disconnect @{view.login}?</span>
@@ -89,6 +89,11 @@ function GitHubLine() {
         </Button>
         <Button variant="quiet" onClick={() => setConfirming(false)}>Keep</Button>
       </>
+    ) : view.kind === "reconnect" ? (
+      <>
+        <Button variant="quiet" onClick={() => setOpen(true)}>Reconnect GitHub</Button>
+        <Button variant="quiet" onClick={() => setConfirming(true)}>Disconnect GitHub</Button>
+      </>
     ) : (
       <>
         <span>GitHub: @{view.login}</span>
@@ -96,11 +101,7 @@ function GitHubLine() {
       </>
     );
   } else {
-    content = (
-      <Button variant="quiet" onClick={() => setOpen(true)}>
-        {view.kind === "reconnect" ? "Reconnect GitHub" : "Connect GitHub"}
-      </Button>
-    );
+    content = <Button variant="quiet" onClick={() => setOpen(true)}>Connect GitHub</Button>;
   }
 
   return (
