@@ -106,3 +106,20 @@ def test_the_web_service_port_label_matches_the_port_nginx_listens_on():
     match = re.search(r"listen\s+(\d+);", NGINX_CONF.read_text())
     assert match, "web/nginx.conf must have a `listen <port>;` directive"
     assert labeled_port == match[1]
+
+
+def test_the_tunnel_client_runs_only_on_demand_from_a_token_file():
+    tunnel = yaml.safe_load(_text())["services"]["tunnel"]
+    assert tunnel["profiles"] == ["tunnel"]
+    assert "--token-file" in tunnel["command"]
+    assert "/opt/omelet/tunnel.token:/run/omelet/tunnel.token:ro" in tunnel["volumes"]
+    assert "environment" not in tunnel, "the token must not travel in the environment"
+
+
+def test_the_tunnel_client_reaches_only_traefik():
+    # Cloudflare's config, not ours, picks where the client sends traffic.
+    services = yaml.safe_load(_text())["services"]
+    assert services["tunnel"]["networks"] == ["tunnel"]
+    assert "tunnel" in services["traefik"]["networks"]
+    for name in ("api", "web"):
+        assert "tunnel" not in services[name]["networks"]

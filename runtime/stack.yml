@@ -35,6 +35,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - edge
+      - tunnel
 
   api:
     image: ${OMELET_API_IMAGE:-ghcr.io/ihorklymchukdev/omelet-api:0.2.0}
@@ -95,6 +96,23 @@ services:
       - "traefik.http.routers.omelet-web.priority=10"
       - "traefik.http.services.omelet-web.loadbalancer.server.port=8080"
 
+  # Started and stopped by the api service while a public URL is on; the
+  # installer's profile-less `up -d` never starts it. Its own network: the
+  # service's remote config picks the origin, and Traefik is all it may reach.
+  tunnel:
+    image: cloudflare/cloudflared:2026.9.3
+    profiles: [tunnel]
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token-file /run/omelet/tunnel.token
+    volumes:
+      - /opt/omelet/tunnel.token:/run/omelet/tunnel.token:ro
+    # cloudflared runs as a non-root user; the token is 0640 root:docker.
+    group_add:
+      - "${OMELET_DOCKER_GID:-999}"
+    networks:
+      - tunnel
+
 networks:
   edge:
     external: true
+  tunnel: {}
