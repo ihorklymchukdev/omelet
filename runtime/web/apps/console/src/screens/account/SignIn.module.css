@@ -1,0 +1,4 @@
+.code { margin: 0; font: 800 34px var(--font-mono); letter-spacing: .12em; color: var(--ink); }
+.qr { padding: 12px; background: #fff; border-radius: 12px; border: 1px solid var(--line); line-height: 0; }
+.link { color: var(--ink); font-weight: 600; }
+.error { margin: 0; color: var(--ink-2); }

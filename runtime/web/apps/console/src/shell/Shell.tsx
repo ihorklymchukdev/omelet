@@ -9,10 +9,12 @@ import s from "./Shell.module.css";
 export function Shell({
   tone = "yolk",
   signedIn = false,
+  trailing,
   children,
 }: {
   tone?: "yolk" | "cold";
   signedIn?: boolean;
+  trailing?: ReactNode;
   children?: ReactNode;
 }) {
   const home = useDesktopHome();
@@ -27,10 +29,11 @@ export function Shell({
         )}
         <Egg tone={tone} size={22} />
         <span className={s.brand}>{home ? "Projects" : "Omelet"}</span>
-        {signedIn && (
+        {(signedIn || trailing) && (
           <div className={s.end}>
-            <span className={s.open}><span className={s.dot} aria-hidden="true" />Kitchen open</span>
-            {home && <OpenInBrowser />}
+            {signedIn && <span className={s.open}><span className={s.dot} aria-hidden="true" />Kitchen open</span>}
+            {signedIn && home && <OpenInBrowser />}
+            {trailing && <div className={s.trailing}>{trailing}</div>}
           </div>
         )}
       </header>

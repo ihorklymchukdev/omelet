@@ -21,6 +21,8 @@ from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from ..core import constants, disk, files, lifecycle
+from ..core.account import Account
+from ..core.cloud import Cloud, CloudError, CloudUnavailable
 from ..core.config import ApiConfig
 from ..core.detect import AmbiguousError
 from ..core.exec import LocalRunner
@@ -31,6 +33,7 @@ from ..core.project import STARTED_OK, Project, _slug, load_project
 from ..core.reconcile import discover, examine
 from ..core.sessions import COOKIE, HANDOFF_TTL, SESSION_TTL, Sessions
 from ..core.state import State
+from ..core.sync import SyncLoop, run_pass
 from ..core.uploads import CHUNK_SIZE, UploadError, UploadStore
 from .jobs import JobFailed, JobRegistry
 
@@ -143,7 +146,8 @@ def _read_token(path: Path) -> str:
 
 def create_app(*, config: ApiConfig | None = None, runner=None, state=None,
                jobs: JobRegistry | None = None, http_probe=None,
-               sessions: Sessions | None = None) -> FastAPI:
+               sessions: Sessions | None = None, cloud=None,
+               account: Account | None = None) -> FastAPI:
     config = config or ApiConfig.from_env()
     runner = runner or LocalRunner()
     http_probe = http_probe or default_probe
@@ -155,6 +159,10 @@ def create_app(*, config: ApiConfig | None = None, runner=None, state=None,
                           free_bytes=lambda: disk.usage(
                               Path(config.projects_root))["free_bytes"])
     uploads.sweep()
+    cloud = cloud or Cloud(config.cloud_url)
+    account = account or Account(state, cloud)
+    sync = SyncLoop(lambda: run_pass(account, cloud, state))
+    account.on_signed_in = sync.wake
 
     app = FastAPI(title="omelet-api", version=config.version)
     app.state.config = config
@@ -162,6 +170,8 @@ def create_app(*, config: ApiConfig | None = None, runner=None, state=None,
     app.state.state = state
     app.state.jobs = jobs
     app.state.sessions = sessions
+    app.state.account = account
+    app.state.sync = sync
     router = APIRouter()
 
     @app.exception_handler(ApiError)
@@ -393,6 +403,26 @@ def create_app(*, config: ApiConfig | None = None, runner=None, state=None,
     def disk_usage() -> dict:
         return disk.usage(Path(config.projects_root))
 
+    @router.get("/account")
+    def account_status() -> dict:
+        return account.status()
+
+    @router.post("/account/sign-in")
+    def account_sign_in() -> dict:
+        try:
+            return account.start_sign_in()
+        except CloudUnavailable:
+            raise ApiError("cloud_unavailable",
+                           "The Omelet service can't be reached. Check the "
+                           "internet connection and try again.", 503) from None
+        except CloudError as e:
+            raise ApiError("cloud_error", "The Omelet service would not start "
+                           f"a sign-in: {e.message}", 502) from None
+
+    @router.post("/account/sign-out")
+    def account_sign_out() -> dict:
+        return account.sign_out()
+
     @router.post("/projects", status_code=201)
     def create_project(body: CreateProject) -> dict:
         # Same slug rule load_project applies to a directory name, so an id
@@ -413,6 +443,7 @@ def create_app(*, config: ApiConfig | None = None, runner=None, state=None,
                 {"id": project_id, "web": [w.model_dump() for w in body.web]},
                 sort_keys=False))
         state.add_project(project_id, str(d), body.domain or config.domain)
+        sync.wake()
         return payload(state.get_project(project_id))
 
     @router.post("/projects/{project_id}/adopt", status_code=201)
@@ -429,6 +460,7 @@ def create_app(*, config: ApiConfig | None = None, runner=None, state=None,
             raise ApiError("not_adoptable",
                            f"'{project_id}' cannot be adopted: {found.reason}", 409)
         state.add_project(project_id, str(folder), config.domain)
+        sync.wake()
         return payload(state.get_project(project_id))
 
     @router.get("/projects")
@@ -678,6 +710,7 @@ def create_app(*, config: ApiConfig | None = None, runner=None, state=None,
                     if not removed.ok and result.ok:
                         result = removed
             state.remove_project(project_id)
+            sync.wake()
         return {"id": project_id, "stopped": result.ok,
                 "detail": "" if result.ok else (result.stderr or result.stdout).strip()}
 

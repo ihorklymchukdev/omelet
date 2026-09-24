@@ -9,9 +9,11 @@ import { NeedsUpdate } from "./screens/NeedsUpdate";
 import { NotAnswering } from "./screens/NotAnswering";
 import { ProjectList } from "./screens/list/ProjectList";
 import { ProjectPage } from "./screens/project/ProjectPage";
+import { SignIn } from "./screens/account/SignIn";
 import { SignedOut } from "./screens/SignedOut";
 import { WrongHost } from "./screens/WrongHost";
 import { DesktopHome } from "./desktop/DesktopContext";
+import { AccountMenu } from "./shell/AccountMenu";
 import { Shell } from "./shell/Shell";
 import { QueueProvider } from "./uploads/QueueProvider";
 
@@ -50,6 +52,8 @@ function Screens({ handoff }: { handoff: string | null }) {
     createQueryClient((reason) => setResult({ kind: "signedOut", reason })),
   );
 
+  const needAccount = useCallback(() => setResult({ kind: "needsAccount" }), []);
+
   if (result === null) return <Shell />;
 
   switch (result.kind) {
@@ -58,7 +62,7 @@ function Screens({ handoff }: { handoff: string | null }) {
         <QueryClientProvider client={queryClient}>
           <QueueProvider onSessionLost={(reason) => setResult({ kind: "signedOut", reason })}>
             <BrowserRouter>
-              <Shell signedIn>
+              <Shell signedIn trailing={<AccountMenu onSignedOut={needAccount} />}>
                 <Routes>
                   <Route path="/" element={<ProjectList />} />
                   <Route path="/p/:id" element={<ProjectPage />} />
@@ -71,6 +75,8 @@ function Screens({ handoff }: { handoff: string | null }) {
           </QueueProvider>
         </QueryClientProvider>
       );
+    case "needsAccount":
+      return <SignIn onSignedIn={run} onSessionLost={(reason) => setResult({ kind: "signedOut", reason })} />;
     case "signedOut":
       return <SignedOut reason={result.reason} onRetry={run} />;
     case "needsUpdate":

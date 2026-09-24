@@ -9,6 +9,7 @@ place.
 from __future__ import annotations
 
 import sqlite3
+import uuid
 
 
 class SchemaTooNew(RuntimeError):
@@ -53,12 +54,44 @@ def _v3_web_ui(conn: sqlite3.Connection) -> None:
     _add_column(conn, "projects", "compose_name", "TEXT")
 
 
+def _v4_account(conn: sqlite3.Connection) -> None:
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS account (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            device_id TEXT NOT NULL,
+            email TEXT,
+            org_id TEXT,
+            access_token TEXT,
+            refresh_token TEXT,
+            access_expires_at REAL,
+            device_code TEXT,
+            user_code TEXT,
+            verification_url TEXT,
+            code_expires_at REAL,
+            poll_interval REAL,
+            last_error TEXT,
+            sync_ok_at REAL,
+            sync_error TEXT
+        )""")
+    # Minted here, once: a device id that changed on restart would orphan
+    # every record this device made on the service.
+    conn.execute("INSERT OR IGNORE INTO account(id, device_id) VALUES (1, ?)",
+                 (str(uuid.uuid4()),))
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS cloud_projects (
+            local_id TEXT PRIMARY KEY,
+            cloud_id TEXT NOT NULL,
+            org_id TEXT NOT NULL
+        )""")
+
+
 # Append only. Editing an entry that has already shipped changes nothing on a
 # database that ran it -- add the next one instead.
 MIGRATIONS = [
     _v1_projects,
     _v2_project_problem,
     _v3_web_ui,
+    _v4_account,
 ]
 SCHEMA_VERSION = len(MIGRATIONS)
 

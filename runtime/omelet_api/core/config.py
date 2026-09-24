@@ -44,6 +44,7 @@ class ApiConfig:
     # A runaway/abuse guard on file uploads, not a policy -- generous enough
     # that no real project hits it. Raise via env, no rebuild needed.
     max_upload_bytes: int = 512 * 1024 * 1024
+    cloud_url: str = "https://omelet.bridgie.chat/api"
     version: str = __version__
 
     @classmethod
@@ -65,5 +66,6 @@ class ApiConfig:
                                       f"{constants.GUEST_ROOT}/uploads")),
             max_upload_bytes=int(env.get("OMELET_MAX_UPLOAD_BYTES",
                                          512 * 1024 * 1024)),
+            cloud_url=env.get("OMELET_CLOUD_URL", "https://omelet.bridgie.chat/api"),
             version=env.get("OMELET_SERVICE_VERSION", __version__),
         )

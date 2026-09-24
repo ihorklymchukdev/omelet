@@ -113,3 +113,27 @@ def test_state_adopts_a_pre_migration_database_without_losing_projects(tmp_path)
     assert state.get_project("blog")["status"] == "started_ok"
     state.set_problem("blog", "bound_to_loopback", "listen on 0.0.0.0")
     assert state.get_project("blog")["problem_code"] == "bound_to_loopback"
+
+
+def _v3_database(path):
+    conn = sqlite3.connect(path)
+    conn.execute("CREATE TABLE schema_version (version INTEGER NOT NULL)")
+    for step in migrate.MIGRATIONS[:3]:
+        step(conn)
+    conn.execute("INSERT INTO schema_version(version) VALUES (3)")
+    conn.execute("INSERT INTO projects(id, guest_path, domain, status) "
+                 "VALUES ('blog', '/g/blog', 'd.io', 'started_ok')")
+    conn.commit()
+    conn.close()
+
+
+def test_a_v3_database_gains_an_account_and_keeps_its_projects(tmp_path):
+    db = tmp_path / "state.db"
+    _v3_database(db)
+
+    state = State(db)
+    assert state.get_project("blog")["status"] == "started_ok"
+    account = state.get_account()
+    assert account["device_id"], "a device id is minted once, by the migration"
+    assert account["access_token"] is None
+    assert state.cloud_mapping() == {}
