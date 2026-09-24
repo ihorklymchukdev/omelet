@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 import threading
 from pathlib import Path
@@ -146,6 +147,44 @@ class State:
     def clear_cloud_projects(self) -> None:
         with self._lock:
             self._conn.execute("DELETE FROM cloud_projects")
+            self._conn.commit()
+
+    @staticmethod
+    def _public_row(row) -> dict:
+        out = dict(row)
+        out["urls"] = json.loads(out["urls"]) if out["urls"] is not None else None
+        return out
+
+    def get_public(self, local_id):
+        with self._lock:
+            row = self._conn.execute("SELECT * FROM public_urls WHERE local_id=?",
+                                     (local_id,)).fetchone()
+        return self._public_row(row) if row else None
+
+    def list_public(self):
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT * FROM public_urls ORDER BY local_id").fetchall()
+        return [self._public_row(r) for r in rows]
+
+    def put_public(self, local_id, *, cloud_id, state, urls=None, expires_at=None,
+                   reason_code=None, reason_message=None):
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO public_urls(local_id, cloud_id, state, urls, "
+                "expires_at, reason_code, reason_message) VALUES (?,?,?,?,?,?,?)",
+                (local_id, cloud_id, state, json.dumps(urls) if urls is not None else None,
+                 expires_at, reason_code, reason_message))
+            self._conn.commit()
+
+    def delete_public(self, local_id):
+        with self._lock:
+            self._conn.execute("DELETE FROM public_urls WHERE local_id=?", (local_id,))
+            self._conn.commit()
+
+    def clear_public(self):
+        with self._lock:
+            self._conn.execute("DELETE FROM public_urls")
             self._conn.commit()
 
     def close(self):

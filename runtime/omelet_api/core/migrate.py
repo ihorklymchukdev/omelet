@@ -85,6 +85,19 @@ def _v4_account(conn: sqlite3.Connection) -> None:
         )""")
 
 
+def _v5_public_urls(conn: sqlite3.Connection) -> None:
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS public_urls (
+            local_id TEXT PRIMARY KEY,
+            cloud_id TEXT NOT NULL,
+            state TEXT NOT NULL,
+            urls TEXT,
+            expires_at REAL,
+            reason_code TEXT,
+            reason_message TEXT
+        )""")
+
+
 # Append only. Editing an entry that has already shipped changes nothing on a
 # database that ran it -- add the next one instead.
 MIGRATIONS = [
@@ -92,6 +105,7 @@ MIGRATIONS = [
     _v2_project_problem,
     _v3_web_ui,
     _v4_account,
+    _v5_public_urls,
 ]
 SCHEMA_VERSION = len(MIGRATIONS)
 
