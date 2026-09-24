@@ -277,11 +277,13 @@ class GitHubLink:
             self._github.user(token)
         except GitHubError as e:
             if e.code == "bad_credentials":
-                with self._lock:
-                    # A disconnect/reconnect that landed during the call
-                    # above must win over marking this (possibly stale)
-                    # token bad.
-                    if self._is_current(token):
-                        self.mark_bad_credentials()
+                self.mark_bad_if_current(token)
         except GitHubUnavailable:
             pass
+
+    def mark_bad_if_current(self, token: str) -> None:
+        # A disconnect/reconnect that landed while `token` was out on a
+        # GitHub call must win over marking that (possibly stale) token bad.
+        with self._lock:
+            if self._is_current(token):
+                self.mark_bad_credentials()

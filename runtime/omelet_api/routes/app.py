@@ -504,7 +504,7 @@ def create_app(*, config: ApiConfig | None = None, runner=None, state=None,
             raise _github_down() from None
         except GitHubError as e:
             if e.code == "bad_credentials":
-                github_link.mark_bad_credentials()
+                github_link.mark_bad_if_current(token)
                 raise _reconnect() from None
             raise ApiError("github_error", f"GitHub refused the repository list: "
                            f"{e.message or e.code}", 502) from None

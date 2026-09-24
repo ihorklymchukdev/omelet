@@ -77,6 +77,16 @@ def test_a_revoked_token_on_repos_asks_for_a_reconnect(env):
     assert client.get("/github").json() == {"state": "needs_reconnect", "login": "octo"}
 
 
+def test_a_401_on_repos_racing_a_disconnect_does_not_mark_anything(env):
+    holder = {}
+    github = connected_github(repos=[
+        lambda: (holder["link"].disconnect(), err("bad_credentials"))[1]])
+    client, _, _, link = make(env, github)
+    holder["link"] = link
+    client.get("/github/repos")
+    assert client.get("/github").json() == {"state": "disconnected", "error": None}
+
+
 @pytest.mark.parametrize("repo", ["../x", "a/b/c", "https://github.com/a/b"])
 def test_clone_refuses_anything_but_owner_slash_name(env, repo):
     client, *_ = make(env, connected_github())
