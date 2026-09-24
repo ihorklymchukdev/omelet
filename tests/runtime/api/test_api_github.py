@@ -123,7 +123,11 @@ def test_clone_passes_the_token_only_through_the_environment_then_starts_the_pro
 
 
 def test_a_failed_clone_leaves_no_project_and_no_token_in_its_output(env):
-    client, runner, app, _ = make(env, connected_github())
+    # The second `user` reply is what the clone job's confirm_bad() sees
+    # after the 403; the first is consumed by connect()+poll_once() in make().
+    github = FakeGitHub(device_code=[CODE], device_token=[{"access_token": TOKEN}],
+                        user=[USER, err("bad_credentials")])
+    client, runner, app, _ = make(env, github)
 
     def half_clone(dest):
         Path(dest).mkdir(parents=True)
@@ -141,6 +145,26 @@ def test_a_failed_clone_leaves_no_project_and_no_token_in_its_output(env):
     assert client.get("/projects/app").status_code == 404
     assert client.get("/github").json()["state"] == "needs_reconnect"
     assert _staging_dirs(env) == []
+
+
+def test_a_403_clone_with_a_still_valid_token_stays_connected(env):
+    # A 403 also covers SSO/permission refusals on a token GitHub still
+    # accepts, so confirm_bad() must not mark it dead when `user` says ok.
+    github = FakeGitHub(device_code=[CODE], device_token=[{"access_token": TOKEN}],
+                        user=[USER, USER])
+    client, runner, app, _ = make(env, github)
+
+    def half_clone(dest):
+        Path(dest).mkdir(parents=True)
+        (Path(dest) / ".git").mkdir()
+
+    runner.on_clone = half_clone
+    runner.clone = Completed(128, "", "error: 403")
+    job = finish(app, client, client.post("/github/clone", json={"repo": "octo/app"}))
+
+    assert job["state"] == "failed"
+    assert not (env.config.projects_root / "app").exists()
+    assert client.get("/github").json()["state"] == "connected"
 
 
 def test_clone_into_a_taken_name_is_refused(env):

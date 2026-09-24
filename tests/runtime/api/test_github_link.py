@@ -189,6 +189,35 @@ def test_check_token_racing_a_disconnect_is_dropped(tmp_path):
     assert link.status() == {"state": "disconnected", "error": None}
 
 
+def test_confirm_bad_leaves_a_still_working_token_connected(tmp_path):
+    link, _, github = connected(tmp_path)
+    token = (tmp_path / "github" / "token").read_text()
+    github.scripts["user"] = [USER]
+    link.confirm_bad(token)
+    assert link.status()["state"] == "connected"
+    assert (tmp_path / "github" / "token").exists()
+
+
+def test_confirm_bad_with_bad_credentials_needs_a_reconnect(tmp_path):
+    link, _, github = connected(tmp_path)
+    token = (tmp_path / "github" / "token").read_text()
+    github.scripts["user"] = [err("bad_credentials")]
+    link.confirm_bad(token)
+    assert link.status() == {"state": "needs_reconnect", "login": "octo"}
+    assert not (tmp_path / "github" / "token").exists()
+
+
+def test_confirm_bad_racing_a_disconnect_stays_disconnected(tmp_path):
+    holder = {}
+    link, _, github = connected(tmp_path)
+    holder["link"] = link
+    token = (tmp_path / "github" / "token").read_text()
+    github.scripts["user"] = [
+        lambda: (holder["link"].disconnect(), err("bad_credentials"))[1]]
+    link.confirm_bad(token)
+    assert link.status() == {"state": "disconnected", "error": None}
+
+
 ROW = {"generation": 3, "desired_at": 1000.0}
 
 

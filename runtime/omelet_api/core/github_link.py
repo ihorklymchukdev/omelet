@@ -267,6 +267,12 @@ class GitHubLink:
                 return
             self._state.update_github(checked_at=self._clock())
             token = self._token_path.read_text().strip()
+        self.confirm_bad(token)
+
+    def confirm_bad(self, token: str) -> None:
+        # A git 403 covers SSO/permission refusals on a token that still
+        # works, not only a revoked one, so re-check with GitHub before
+        # marking it bad.
         try:
             self._github.user(token)
         except GitHubError as e:

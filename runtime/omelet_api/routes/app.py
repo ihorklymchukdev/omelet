@@ -550,7 +550,7 @@ def create_app(*, config: ApiConfig | None = None, runner=None, state=None,
                     output = redact((result.stderr or result.stdout).strip(), token)
                     shutil.rmtree(staging, ignore_errors=True)
                     if auth_failed(output):
-                        github_link.mark_bad_credentials()
+                        github_link.confirm_bad(token)
                     raise JobFailed(output or "git clone failed")
                 if directory.exists() or state.get_project(project_id) is not None:
                     shutil.rmtree(staging, ignore_errors=True)
