@@ -47,6 +47,16 @@ def test_connect_says_when_github_cannot_be_reached(env):
     assert (resp.status_code, resp.json()["error"]["code"]) == (503, "github_unavailable")
 
 
+def test_reapply_reports_a_github_error_that_is_not_bad_credentials(env):
+    # The first `user` reply is consumed by connect()+poll_once() inside
+    # make(); the second is what reapply() itself sees.
+    github = FakeGitHub(device_code=[CODE], device_token=[{"access_token": TOKEN}],
+                        user=[USER, err("service_down")])
+    client, *_ = make(env, github)
+    resp = client.post("/github/reapply")
+    assert (resp.status_code, resp.json()["error"]["code"]) == (502, "github_error")
+
+
 def test_repos_are_mapped_and_never_carry_the_token(env):
     client, *_ = make(env, connected_github(repos=[([REPO], True)]))
     resp = client.get("/github/repos?page=1")
@@ -80,10 +90,17 @@ def test_clone_while_disconnected_is_refused(env):
     assert (resp.status_code, resp.json()["error"]["code"]) == (409, "github_not_connected")
 
 
+def _staging_dirs(env):
+    return [p for p in env.config.projects_root.iterdir()
+           if p.is_dir() and p.name.startswith(".clone-")]
+
+
 def test_clone_passes_the_token_only_through_the_environment_then_starts_the_project(env):
     client, runner, app, _ = make(env, connected_github())
 
     def put_compose(dest):
+        # `dest` is the staging directory git actually clones into; the route
+        # renames it to the real project folder only once the clone succeeds.
         Path(dest).mkdir(parents=True)
         (Path(dest) / "docker-compose.yml").write_text(COMPOSE_ONE_WEB)
 
@@ -95,11 +112,14 @@ def test_clone_passes_the_token_only_through_the_environment_then_starts_the_pro
     assert job["state"] == "done", job
     clone = next(argv for argv in runner.calls if argv[0] == "sh")
     assert TOKEN not in " ".join(clone)
+    dest = clone[-1]
+    assert dest != str(env.config.projects_root / "app")
     assert "https://github.com/octo/app.git" in clone
     env_used = runner.envs[runner.calls.index(clone)]
     assert env_used == {"OMELET_GH_TOKEN": TOKEN, "GIT_TERMINAL_PROMPT": "0"}
     assert client.get("/projects/app").status_code == 200
     assert runner.argv_containing("up")
+    assert _staging_dirs(env) == []
 
 
 def test_a_failed_clone_leaves_no_project_and_no_token_in_its_output(env):
@@ -120,6 +140,7 @@ def test_a_failed_clone_leaves_no_project_and_no_token_in_its_output(env):
     assert not (env.config.projects_root / "app").exists()
     assert client.get("/projects/app").status_code == 404
     assert client.get("/github").json()["state"] == "needs_reconnect"
+    assert _staging_dirs(env) == []
 
 
 def test_clone_into_a_taken_name_is_refused(env):
@@ -127,3 +148,75 @@ def test_clone_into_a_taken_name_is_refused(env):
     (env.config.projects_root / "app").mkdir(parents=True)
     resp = client.post("/github/clone", json={"repo": "octo/app"})
     assert (resp.status_code, resp.json()["error"]["code"]) == (409, "project_exists")
+
+
+def test_a_failed_clone_never_removes_a_destination_created_after_the_202(env):
+    client, runner, app, _ = make(env, connected_github())
+
+    def race_a_folder_into_place(_dest):
+        # Ignores the staging path it's handed -- simulating a folder that
+        # landed at the *real* project path while the clone was in flight.
+        target = env.config.projects_root / "app"
+        target.mkdir(parents=True)
+        (target / "keep.txt").write_text("keep me")
+
+    runner.on_clone = race_a_folder_into_place
+    runner.clone = Completed(128, "", "fatal: could not read from remote")
+    job = finish(app, client, client.post("/github/clone", json={"repo": "octo/app"}))
+
+    assert job["state"] == "failed"
+    assert (env.config.projects_root / "app" / "keep.txt").read_text() == "keep me"
+    assert _staging_dirs(env) == []
+
+
+def test_a_clone_whose_destination_appears_mid_job_fails_without_touching_it(env):
+    client, runner, app, _ = make(env, connected_github())
+
+    def finish_clone_but_lose_the_race(dest):
+        Path(dest).mkdir(parents=True)
+        (Path(dest) / "docker-compose.yml").write_text(COMPOSE_ONE_WEB)
+        target = env.config.projects_root / "app"
+        target.mkdir(parents=True)
+        (target / "existing.txt").write_text("do not touch")
+
+    runner.on_clone = finish_clone_but_lose_the_race
+    job = finish(app, client, client.post("/github/clone", json={"repo": "octo/app"}))
+
+    assert job["state"] == "failed"
+    assert "appeared" in job["detail"]
+    assert (env.config.projects_root / "app" / "existing.txt").read_text() == "do not touch"
+    assert client.get("/projects/app").status_code == 404
+    assert _staging_dirs(env) == []
+
+
+def test_a_second_clone_after_a_failed_one_is_not_blocked_by_the_lock(env):
+    client, runner, app, _ = make(env, connected_github())
+    runner.clone = Completed(128, "", "fatal: could not read from remote")
+    first = finish(app, client, client.post("/github/clone", json={"repo": "octo/app"}))
+    assert first["state"] == "failed"
+
+    def put_compose(dest):
+        Path(dest).mkdir(parents=True)
+        (Path(dest) / "docker-compose.yml").write_text(COMPOSE_ONE_WEB)
+
+    runner.clone = Completed(0, "", "")
+    runner.on_clone = put_compose
+    second = client.post("/github/clone", json={"repo": "octo/app"})
+    assert second.status_code == 202
+
+
+def test_clone_without_a_compose_file_finishes_stopped_without_starting_it(env):
+    client, runner, app, _ = make(env, connected_github())
+
+    def put_readme_only(dest):
+        Path(dest).mkdir(parents=True)
+        (Path(dest) / "README.md").write_text("hi")
+
+    runner.on_clone = put_readme_only
+    resp = client.post("/github/clone", json={"repo": "octo/app"})
+    job = finish(app, client, resp)
+
+    assert job["state"] == "done", job
+    assert job["result"] == {"id": "app", "status": "stopped"}
+    assert client.get("/projects/app").status_code == 200
+    assert not runner.argv_containing("up")
