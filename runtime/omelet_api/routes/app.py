@@ -390,11 +390,18 @@ def create_app(*, config: ApiConfig | None = None, runner=None, state=None,
                 state.set_problem(row["id"])
                 problem = None
         active = jobs.active_for(row["id"])
+        try:
+            public_status = public.status(row["id"])
+        except Exception:
+            # A broken public-URL row must not take the whole listing down
+            # with it; the rest of the project's status is still good.
+            log.exception("reading the public URL status of %s failed", row["id"])
+            public_status = {"state": "off", "note": None}
         return {"id": row["id"], "status": row["status"], "domain": row["domain"],
                 "path": row["guest_path"], "urls": urls, "problem": problem,
                 "empty": folder.is_dir() and not (folder / constants.COMPOSE_FILE).exists(),
                 "web": web,
-                "public": public.status(row["id"]),
+                "public": public_status,
                 "first_run": row.get("last_started_at") is None,
                 "job": None if active is None else {
                     "id": active.id, "kind": active.kind,

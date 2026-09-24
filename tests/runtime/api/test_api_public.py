@@ -1,3 +1,5 @@
+import time
+
 from fastapi.testclient import TestClient
 
 from omelet_api.core.account import Account
@@ -71,3 +73,45 @@ def test_signing_out_releases_the_public_url(env):
 
     assert cloud.names()[-2:] == ["release_public_url", "logout"]
     assert state.list_public() == [] and not tunnel.up
+
+
+def test_the_default_public_wiring_reaches_the_service_with_real_hosts_and_origin(env):
+    """No `public=` override here: this exercises the production
+    `public_hosts` closure inside create_app -- the real `load()`/`host_for()`
+    wiring that decides which hostnames and origin actually reach the
+    service, which every other test in this file bypasses by passing its own
+    `public=`."""
+    # create_app builds the default Public with the real clock, not a fixed
+    # one, so expires_at must be genuinely in the future rather than ON's
+    # hardcoded (and by now past) timestamp.
+    reply = {**ON, "urls": [{"hostname": "blog.test.local",
+                             "url": "https://k3x9.example.dev"}],
+             "expires_at": "2099-01-01T00:00:00Z"}
+    cloud = FakeCloud(create_public_url=[reply])
+    state = State(env.config.state_db.with_name("wiring.db"))
+    state.update_account(access_token="at", refresh_token="rt",
+                         access_expires_at=10**12, org_id="org-1")
+    account = Account(state, cloud, spawn=lambda fn: None)
+    # The default Public's own spawn is a daemon thread; FakeRunner answers
+    # both the project lifecycle argv and TunnelClient's compose calls (it
+    # returns ok for anything it doesn't specifically recognize).
+    app = create_app(config=env.config, runner=FakeRunner(), state=state,
+                     account=account, cloud=cloud)
+    client = TestClient(app, headers=AUTH)
+    client.post("/projects", json={"id": "blog"})
+    state.map_cloud_project("blog", "c-blog", "org-1")
+    (env.config.projects_root / "blog" / "docker-compose.yml").write_text(COMPOSE_ONE_WEB)
+
+    assert client.post("/projects/blog/public").status_code == 202
+
+    deadline = time.time() + 5
+    status = client.get("/projects/blog/public").json()
+    while status["state"] == "enabling" and time.time() < deadline:
+        time.sleep(0.02)
+        status = client.get("/projects/blog/public").json()
+
+    assert status["state"] == "on"
+    assert status["urls"] == [{"url": "https://k3x9.example.dev", "service": "web",
+                               "local_url": "http://blog.test.local:41080"}]
+    assert cloud.calls[0] == ("create_public_url", "at", "c-blog",
+                              ["blog.test.local"], "http://traefik:41080")
