@@ -384,6 +384,8 @@ export function handlersFor(scenario: Scenario) {
       return HttpResponse.json({ id: target.id, stopped, detail: stopped ? "" : "a container didn't stop in time" });
     }),
     http.post("/api/projects/:id/public", ({ params }) => {
+      const denied = guard();
+      if (denied) return denied;
       const target = projects.get(String(params.id));
       if (!target) return notFound(String(params.id));
       if (scenario === "public-unavailable")
@@ -398,6 +400,8 @@ export function handlersFor(scenario: Scenario) {
       return HttpResponse.json(target.public, { status: 202 });
     }),
     http.delete("/api/projects/:id/public", ({ params }) => {
+      const denied = guard();
+      if (denied) return denied;
       const target = projects.get(String(params.id));
       if (!target) return notFound(String(params.id));
       target.public = { state: "off", note: null };
