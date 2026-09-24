@@ -26,14 +26,15 @@ before this change, a cloud VM) the console falls back to the browser: a `Mac` i
 
 ## Content: JSON files, no per-agent code
 
-Static files in the `omelet-web` image, `runtime/web/apps/console/public/agents/`, fetched at page
-load. Adding an agent is a data change plus a runtime release.
+Static files in the `omelet-web` image, `runtime/web/apps/console/agent-guides/`, served at
+`/agent-guides/` (never under a console route: nginx serves that path with no SPA fallback) and
+fetched at page load. Adding an agent is a data change plus a runtime release.
 
 ```
-agents/index.json                  {"agents": ["claude-code", "codex"]}   picker order
-agents/<id>/agent.json
-agents/<id>/icon.svg
-agents/<id>/<platform>/<n>.png     screenshots, optional
+agent-guides/index.json            {"agents": ["claude-code", "codex"]}   picker order
+agent-guides/<id>/agent.json
+agent-guides/<id>/icon.svg
+agent-guides/<id>/<platform>/<n>.png     screenshots, optional
 ```
 
 ```json

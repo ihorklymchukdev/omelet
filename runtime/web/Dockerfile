@@ -17,5 +17,5 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY security-headers.inc /etc/nginx/security-headers.inc
 COPY --from=build /runtime/web/apps/console/dist /usr/share/nginx/html
 # Outside Vite's build output: guides are data read at page load, not bundled.
-COPY --from=build /runtime/web/apps/console/agents /usr/share/nginx/html/agents
+COPY --from=build /runtime/web/apps/console/agent-guides /usr/share/nginx/html/agent-guides
 EXPOSE 8080

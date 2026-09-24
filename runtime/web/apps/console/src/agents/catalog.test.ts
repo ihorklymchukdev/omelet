@@ -64,8 +64,8 @@ describe("platformFor", () => {
 describe("loadCatalog", () => {
   it("keeps the good agents when one fails to load", async () => {
     const files: Record<string, unknown> = {
-      "/agents/index.json": { agents: ["claude-code", "codex"] },
-      "/agents/claude-code/agent.json": { name: "Claude Code", icon: "icon.svg", platforms: { mac: guide() } },
+      "/agent-guides/index.json": { agents: ["claude-code", "codex"] },
+      "/agent-guides/claude-code/agent.json": { name: "Claude Code", icon: "icon.svg", platforms: { mac: guide() } },
     };
     const fetchJson = async (url: string) => {
       if (!(url in files)) throw new Error("404");

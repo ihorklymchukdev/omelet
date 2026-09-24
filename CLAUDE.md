@@ -243,7 +243,7 @@ Do not add an `if windows` anywhere else — push the difference into a provider
   browser"; open external addresses with its `openExternal` (an anchor click), never
   `window.open` — WKWebView hands only link activations to the system browser.
   `/agents` and `/agents/:id` are the "Connect an agent" guide, all content in
-  `apps/console/agents/` (`index.json` for order, `<id>/agent.json` with a `windows` and a `mac`
+  `apps/console/agent-guides/` (served at `/agent-guides/`) (`index.json` for order, `<id>/agent.json` with a `windows` and a `mac`
   block, `via_ssh`, steps and optional screenshots); `src/agents/catalog.ts` validates it and
   `content.test.ts` fails on a shipped file that doesn't parse or names a missing image.
 
@@ -273,9 +273,10 @@ that document is written. Add a new entry here when you hit one.
   hands to `webbrowser.open` (`os.startfile` on Windows), so `_default_start` wraps it with
   `web_links_only` — http(s) only.
 
-- `runtime/web/apps/console/agents/` is outside Vite's build output (`publicDir` is dev-only):
+- `runtime/web/apps/console/agent-guides/` is outside Vite's build output (`publicDir` is dev-only):
   the Dockerfile copies it into the nginx root, so `npm run build` + `preview` shows no guides.
-  nginx's `/agents/` location has no SPA fallback, so a missing file is a real 404.
+  nginx's `/agent-guides/` location has no SPA fallback, so its path must never be a console
+  route prefix: `/agents/` once turned every guide reload into a bare 404. `content.test.ts` checks.
 
 ## Testing conventions
 

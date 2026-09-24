@@ -63,7 +63,7 @@ export function platformFor(connect: Connect | undefined, userAgent: string): Pl
   return /Mac/.test(userAgent) ? "mac" : "windows";
 }
 
-export async function loadCatalog(fetchJson: (url: string) => Promise<unknown>, base = "/agents"): Promise<Agent[]> {
+export async function loadCatalog(fetchJson: (url: string) => Promise<unknown>, base = "/agent-guides"): Promise<Agent[]> {
   const ids = parseIndex(await fetchJson(`${base}/index.json`));
   const agents = await Promise.all(
     ids.map(async (id) => {
