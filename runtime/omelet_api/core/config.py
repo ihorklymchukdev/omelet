@@ -45,6 +45,8 @@ class ApiConfig:
     # that no real project hits it. Raise via env, no rebuild needed.
     max_upload_bytes: int = 512 * 1024 * 1024
     cloud_url: str = "https://omelet.bridgie.chat/api"
+    stack_file: Path = Path(f"{constants.GUEST_ROOT}/stack.yml")
+    tunnel_token_path: Path = Path(f"{constants.GUEST_ROOT}/tunnel.token")
     version: str = __version__
 
     @classmethod
@@ -67,5 +69,9 @@ class ApiConfig:
             max_upload_bytes=int(env.get("OMELET_MAX_UPLOAD_BYTES",
                                          512 * 1024 * 1024)),
             cloud_url=env.get("OMELET_CLOUD_URL", "https://omelet.bridgie.chat/api"),
+            stack_file=Path(env.get("OMELET_STACK_FILE",
+                                    f"{constants.GUEST_ROOT}/stack.yml")),
+            tunnel_token_path=Path(env.get("OMELET_TUNNEL_TOKEN",
+                                           f"{constants.GUEST_ROOT}/tunnel.token")),
             version=env.get("OMELET_SERVICE_VERSION", __version__),
         )

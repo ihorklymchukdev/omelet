@@ -30,6 +30,7 @@ from ..core.exec import LocalRunner
 from ..core.health import answers, default_probe, diagnose
 from ..core.overlay import host_for
 from ..core.project import STARTED_OK, Project, _slug, load_project
+from ..core.public import Public, PublicBusy, TunnelClient, Unavailable
 from ..core.reconcile import discover, examine
 from ..core.sessions import COOKIE, HANDOFF_TTL, SESSION_TTL, Sessions
 from ..core.state import State
@@ -147,7 +148,8 @@ def _read_token(path: Path) -> str:
 def create_app(*, config: ApiConfig | None = None, runner=None, state=None,
                jobs: JobRegistry | None = None, http_probe=None,
                sessions: Sessions | None = None, cloud=None,
-               account: Account | None = None) -> FastAPI:
+               account: Account | None = None,
+               public: Public | None = None) -> FastAPI:
     config = config or ApiConfig.from_env()
     runner = runner or LocalRunner()
     http_probe = http_probe or default_probe
@@ -161,7 +163,33 @@ def create_app(*, config: ApiConfig | None = None, runner=None, state=None,
     uploads.sweep()
     cloud = cloud or Cloud(config.cloud_url)
     account = account or Account(state, cloud)
-    sync = SyncLoop(lambda: run_pass(account, cloud, state))
+
+    def public_hosts(project_id: str) -> list[dict]:
+        row = state.get_project(project_id)
+        if row is None:
+            return []
+        try:
+            project = load(project_id)
+        except ApiError:
+            return []
+        hosts = [host_for(project.id, web, row["domain"]) for web in project.webs]
+        return [{"service": web.service, "hostname": host,
+                 "local_url": f"http://{host}:{config.edge_port}"}
+                for web, host in zip(project.webs, hosts)]
+
+    public = public or Public(
+        state=state, account=account, cloud=cloud,
+        client=TunnelClient(runner, config.stack_file),
+        token_path=config.tunnel_token_path,
+        origin=f"http://{config.traefik_host}:{config.edge_port}",
+        hosts_for=public_hosts)
+    account.on_forget = public.forget_local
+
+    def sync_pass() -> None:
+        public.reconcile()
+        run_pass(account, cloud, state)
+
+    sync = SyncLoop(sync_pass)
     account.on_signed_in = sync.wake
 
     app = FastAPI(title="omelet-api", version=config.version)
@@ -172,6 +200,7 @@ def create_app(*, config: ApiConfig | None = None, runner=None, state=None,
     app.state.sessions = sessions
     app.state.account = account
     app.state.sync = sync
+    app.state.public = public
     router = APIRouter()
 
     @app.exception_handler(ApiError)
@@ -365,6 +394,7 @@ def create_app(*, config: ApiConfig | None = None, runner=None, state=None,
                 "path": row["guest_path"], "urls": urls, "problem": problem,
                 "empty": folder.is_dir() and not (folder / constants.COMPOSE_FILE).exists(),
                 "web": web,
+                "public": public.status(row["id"]),
                 "first_run": row.get("last_started_at") is None,
                 "job": None if active is None else {
                     "id": active.id, "kind": active.kind,
@@ -421,6 +451,7 @@ def create_app(*, config: ApiConfig | None = None, runner=None, state=None,
 
     @router.post("/account/sign-out")
     def account_sign_out() -> dict:
+        public.release_all()
         return account.sign_out()
 
     @router.post("/projects", status_code=201)
@@ -478,6 +509,29 @@ def create_app(*, config: ApiConfig | None = None, runner=None, state=None,
     @router.get("/projects/{project_id}")
     def get_project(project_id: str) -> dict:
         return payload(require_row(project_id), recheck=True)
+
+    @router.get("/projects/{project_id}/public")
+    def public_status(project_id: str) -> dict:
+        require_row(project_id)
+        return public.status(project_id)
+
+    @router.post("/projects/{project_id}/public", status_code=202)
+    def public_on(project_id: str) -> dict:
+        require_row(project_id)
+        try:
+            return public.enable(project_id)
+        except PublicBusy:
+            raise _busy(project_id) from None
+        except Unavailable as e:
+            raise ApiError(e.code, e.message, 409) from None
+
+    @router.delete("/projects/{project_id}/public")
+    def public_off(project_id: str) -> dict:
+        require_row(project_id)
+        try:
+            return public.disable(project_id)
+        except PublicBusy:
+            raise _busy(project_id) from None
 
     def resolve_path(project_id: str, rel_path: str) -> Path:
         try:
@@ -699,6 +753,7 @@ def create_app(*, config: ApiConfig | None = None, runner=None, state=None,
         # replace-import all wait on this answer. Removal is by compose label,
         # not `compose down`, so a broken compose file can never block it.
         with locks.held(project_id):
+            public.disable(project_id, force=True)
             result = lifecycle.remove_by_label(
                 runner, resolve_compose_name(project_id, row), volumes=purge)
             if purge:
