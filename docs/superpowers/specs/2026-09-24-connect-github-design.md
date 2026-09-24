@@ -23,7 +23,8 @@ additive on the shared router, so `API_VERSION` does not change. **No host relea
 
 | Piece | Location | Why there |
 |---|---|---|
-| Device flow, GitHub HTTP, identity, desired state | `runtime/omelet_api/core/github.py` | Platform-free logic next to its twin `core/account.py` |
+| GitHub HTTP, identity, clone argv | `runtime/omelet_api/core/github.py` |
+| Device flow, token/desired/applied files, setup state | `runtime/omelet_api/core/github_link.py` | Platform-free logic next to its twin `core/account.py` |
 | Routes `/github*` | `runtime/omelet_api/routes/app.py` | One router, mounted at `/` (bearer) and `/api` (cookie) |
 | Per-account `gh`/git setup | `runtime/install/lib/github-apply.sh`, run as root by systemd | The API is uid 1000 in a container and cannot write to user homes |
 | systemd units | `runtime/install/systemd/omelet-github.{path,service}`, installed by `install.sh` | Same release path as the rest of the guest setup |
@@ -305,8 +306,10 @@ for each account:
     with **Copy code**, **Open GitHub again** and the expiry.
 - **`screens/github/RepoPicker.tsx`** — the repos list (name, private badge, "updated 3
   days ago" via the existing `projects/format.ts`) and **Load more** while `has_more`.
-  Picking a repo calls `POST /api/github/clone` and navigates to the new project page,
-  which already shows job progress.
+  Picking a repo calls `POST /api/github/clone`, waits in the modal while the job is in
+  its `cloning` phase, then opens the project page, which shows the rest of the job. The
+  project row is only added once the clone has landed, so a failed clone leaves nothing
+  behind and the error stays in the modal.
 - **Entry points:**
   - The empty-state "From GitHub" card: drop "Soon", enable the button.
   - A "From GitHub" button in the list header.
