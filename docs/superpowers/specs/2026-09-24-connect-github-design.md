@@ -348,8 +348,10 @@ loop while generation moves (up to 5 passes):
   > If `gh auth status` fails or a GitHub operation says unauthorized, do **not** run
   > `gh auth login` and do not ask for a token. Tell the user to click **Connect GitHub**
   > in Omelet, then try again.
-- **Version** — additive runtime change: bump `__version__`, `SERVICE_VERSION` and both
-  `stack.yml` tags together, then release a `runtime-v*` tag. `API_VERSION` stays.
+- **Version** — additive runtime change, `API_VERSION` stays. No bump while 0.2.0 is
+  untagged (the highest tag is `runtime-v0.0.5`). Bump `__version__`, `SERVICE_VERSION`
+  and both `stack.yml` tags together, then release a `runtime-v*` tag, only if the 0.2.0
+  images were already pushed.
 
 ## 9. Testing
 
