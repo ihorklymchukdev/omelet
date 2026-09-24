@@ -265,3 +265,97 @@ def test_enable_meeting_a_stuck_releasing_row_retries_release_not_create(tmp_pat
     assert row["state"] == "releasing" and row["reason_code"] == "cloud_unavailable"
     assert public.status("blog") == {"state": "failed", "reason": {
         "code": "cloud_unavailable", "message": MESSAGES["cloud_unavailable"]}}
+
+
+def test_reconcile_ends_an_expired_url_and_stops_the_client(tmp_path):
+    public, state, runner, clock = make(tmp_path, FakeCloud(create_public_url=[ON]))
+    public.enable("blog")
+    clock.now = EXPIRES + 1
+
+    public.reconcile()
+
+    row = state.get_public("blog")
+    assert (row["state"], row["reason_code"], row["urls"]) == ("ended", "expired", None)
+    assert not runner.up and not (tmp_path / "tunnel.token").exists()
+
+
+def test_reconcile_notices_a_url_turned_off_from_the_website(tmp_path):
+    cloud = FakeCloud(create_public_url=[ON],
+                      get_public_url=[CloudError("not_found", "none", 404)])
+    public, _, runner, _ = make(tmp_path, cloud)
+    public.enable("blog")
+
+    public.reconcile()
+
+    assert public.status("blog")["note"]["code"] == "released_elsewhere"
+    assert not runner.up
+
+
+def test_reconcile_retries_a_release_and_forgets_the_row_once_done(tmp_path):
+    cloud = FakeCloud(create_public_url=[ON],
+                      release_public_url=[CloudUnavailable("down"), None])
+    public, state, _, _ = make(tmp_path, cloud)
+    public.enable("blog")
+    public.disable("blog")
+
+    public.reconcile()
+
+    assert state.get_public("blog") is None
+
+
+def test_reconcile_releases_an_enable_the_api_restart_interrupted(tmp_path):
+    cloud = FakeCloud(release_public_url=[None])
+    public, state, _, _ = make(tmp_path, cloud)
+    state.put_public("blog", cloud_id="c-blog", state="enabling")
+
+    public.reconcile()
+
+    assert cloud.names() == ["release_public_url"]
+    assert public.status("blog")["reason"]["code"] == "interrupted"
+
+
+def test_reconcile_restarts_a_client_that_is_down_while_a_url_is_on(tmp_path):
+    cloud = FakeCloud(create_public_url=[ON], get_public_url=[ON])
+    public, _, runner, _ = make(tmp_path, cloud)
+    public.enable("blog")
+    runner.up = False  # the VM rebooted, or someone removed the container
+
+    public.reconcile()
+
+    assert runner.up
+
+
+def test_reconcile_stops_a_client_nothing_needs(tmp_path):
+    public, _, runner, _ = make(tmp_path, FakeCloud())
+    runner.up = True
+    (tmp_path / "tunnel.token").write_text("stale")
+
+    public.reconcile()
+
+    assert not runner.up and not (tmp_path / "tunnel.token").exists()
+
+
+def test_reconcile_releases_the_url_of_a_project_deleted_meanwhile(tmp_path):
+    cloud = FakeCloud(create_public_url=[ON], release_public_url=[None])
+    public, state, _, _ = make(tmp_path, cloud)
+    public.enable("blog")
+    state.remove_project("blog")
+
+    public.reconcile()
+
+    assert state.get_public("blog") is None
+    assert "release_public_url" in cloud.names()
+
+
+def test_signing_out_releases_then_forgets_every_public_url(tmp_path):
+    cloud = FakeCloud(create_public_url=[ON], release_public_url=[None], logout=[None])
+    public, state, runner, _ = make(tmp_path, cloud)
+    public._account.on_forget = public.forget_local
+    public.enable("blog")
+
+    public.release_all()
+    public._account.sign_out()
+
+    assert cloud.names() == ["create_public_url", "release_public_url", "logout"]
+    assert state.list_public() == []
+    assert not runner.up and not (tmp_path / "tunnel.token").exists()

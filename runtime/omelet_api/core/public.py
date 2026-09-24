@@ -275,3 +275,66 @@ class Public:
             return
         self._client.stop()
         remove_token(self._token_path)
+
+    # --- keeping it true -------------------------------------------------
+
+    def reconcile(self) -> None:
+        projects = {row["id"] for row in self._state.list_projects()}
+        for row in self._state.list_public():
+            try:
+                self._reconcile_row(row, projects)
+            except Exception:
+                log.exception("reconciling the public URL of %s failed",
+                              row["local_id"])
+        wanted = any(r["state"] == "on" for r in self._state.list_public())
+        running = self._client.running()
+        if wanted and not running:
+            if self._token_path.exists():
+                self._client.start()
+        elif not wanted and (running or self._token_path.exists()):
+            self._client.stop()
+            remove_token(self._token_path)
+
+    def _reconcile_row(self, row: dict, projects: set[str]) -> None:
+        local_id, state = row["local_id"], row["state"]
+        with self._lock:
+            if local_id in self._enabling:
+                return
+        if local_id not in projects:
+            self.disable(local_id, force=True)
+            if (self._state.get_public(local_id) or {}).get("state") != "releasing":
+                self._state.delete_public(local_id)
+            return
+        if state == "on":
+            if row["expires_at"] <= self._clock():
+                self._end(row, "expired")
+                return
+            try:
+                self._account.authed(lambda token: self._cloud.get_public_url(
+                    token, row["cloud_id"]))
+            except CloudError as e:
+                if e.status == 404:
+                    self._end(row, "released_elsewhere")
+            except (CloudUnavailable, NotSignedIn):
+                pass
+        elif state == "releasing":
+            if self._release(row["cloud_id"]):
+                self._state.delete_public(local_id)
+        elif state == "enabling":
+            self._release(row["cloud_id"])
+            self._fail(local_id, row["cloud_id"], "interrupted")
+
+    def _end(self, row: dict, code: str) -> None:
+        self._state.put_public(row["local_id"], cloud_id=row["cloud_id"],
+                               state="ended", reason_code=code)
+        self._stop_unless_needed(row["local_id"])
+
+    def release_all(self) -> None:
+        for row in self._state.list_public():
+            if row["state"] in ("on", "enabling", "releasing"):
+                self._release(row["cloud_id"])
+
+    def forget_local(self) -> None:
+        self._state.clear_public()
+        self._client.stop()
+        remove_token(self._token_path)
