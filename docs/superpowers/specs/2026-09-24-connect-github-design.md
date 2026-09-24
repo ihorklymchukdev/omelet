@@ -23,7 +23,7 @@ additive on the shared router, so `API_VERSION` does not change. **No host relea
 
 | Piece | Location | Why there |
 |---|---|---|
-| GitHub HTTP, identity, clone argv | `runtime/omelet_api/core/github.py` |
+| GitHub HTTP, identity, clone argv | `runtime/omelet_api/core/github.py` | Stdlib client shaped like `core/cloud.py` |
 | Device flow, token/desired/applied files, setup state | `runtime/omelet_api/core/github_link.py` | Platform-free logic next to its twin `core/account.py` |
 | Routes `/github*` | `runtime/omelet_api/routes/app.py` | One router, mounted at `/` (bearer) and `/api` (cookie) |
 | Per-account `gh`/git setup | `runtime/install/lib/github-apply.sh`, run as root by systemd | The API is uid 1000 in a container and cannot write to user homes |
