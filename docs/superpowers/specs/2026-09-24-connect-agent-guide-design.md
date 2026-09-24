@@ -63,7 +63,7 @@ agents/<id>/<platform>/<n>.png     screenshots, optional
 ## `via_ssh` and the connection card
 
 - `via_ssh: true` — a "Your kitchen's key" card under the steps with four separate lines, each
-  with its own copy button: **Host** `localhost`, **Port** `39022`, **User** `<guest login user>`,
+  with its own copy button: **Host** `127.0.0.1`, **Port** `39022`, **User** `<guest login user>`,
   **Key file** `~/.lima/_config/user`. A one-line note says the port is the one the VM asks for.
   No command line, no password (Lima is key-only).
 - `via_ssh: false` — no card. The steps themselves say how to pick the WSL machine in the app.
@@ -83,7 +83,7 @@ agents/<id>/<platform>/<n>.png     screenshots, optional
 `GET /connect` (so also `/api/connect`, behind the same auth as every route) reads it and answers:
 
 ```json
-{"vm": "lima", "ssh": {"host": "localhost", "port": 39022, "user": "ihor", "key_file": "~/.lima/_config/user"}}
+{"vm": "lima", "ssh": {"host": "127.0.0.1", "port": 39022, "user": "ihor", "key_file": "~/.lima/_config/user"}}
 ```
 
 `ssh` is `null` unless `vm` is `lima` and `user` is non-empty. A missing or unreadable file answers
