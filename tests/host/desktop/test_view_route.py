@@ -64,3 +64,13 @@ def test_ready_is_running():
     readiness = Readiness(vm_exists=True, vm_reachable=True,
                           runtime_version="runtime-v0.1.0", api_version=1)
     assert route_for(readiness) == ("home", "running")
+
+
+def test_a_vm_that_stopped_answering_is_unresponsive_not_unreachable():
+    # Same facts as the unreachable row above, but Repair works through the
+    # very command that is hanging, so offering it would spin forever.
+    readiness = Readiness(vm_exists=True, vm_reachable=True,
+                          runtime_version="runtime-v0.1.0",
+                          problem="Wsl/Service/CreateInstance/0x8007274c",
+                          unresponsive=True)
+    assert route_for(readiness) == ("unresponsive", "")

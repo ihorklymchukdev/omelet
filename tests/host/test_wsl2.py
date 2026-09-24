@@ -191,3 +191,56 @@ def test_running_false_when_the_distro_is_stopped():
     r = FakeRunner(stdout="There are no running distributions.\r\n".encode("utf-16-le"),
                    returncode=1)
     assert make(r).running() is False
+
+
+# What wsl.exe prints when its service gives up on the utility VM. It comes
+# back through exec()'s passthrough as well as from wsl.exe's own commands.
+_HUNG = ("A connection attempt failed because the connected party did not "
+         "properly respond after a period of time.\r\n"
+         "Error code: Wsl/Service/CreateInstance/0x8007274c\r\n")
+
+
+def test_a_hung_wsl_is_reported_as_unresponsive_not_as_a_failed_command():
+    from host.core.provider import VmUnresponsive
+
+    for stderr in (_HUNG.encode(), _HUNG.encode("utf-16-le")):
+        r = FakeRunner(stderr=stderr, returncode=4294967295)
+        try:
+            make(r).exec(["cat", "/opt/omelet/api.token"], root=True)
+        except VmUnresponsive as e:
+            assert "0x8007274c" in str(e)
+        else:
+            raise AssertionError("a hung WSL must not look like a missing file")
+
+
+def test_a_command_failing_inside_the_vm_still_returns_its_result():
+    r = FakeRunner(stderr=b"cat: /opt/omelet/api.token: No such file or directory",
+                   returncode=1)
+    result = make(r).exec(["cat", "/opt/omelet/api.token"], root=True)
+    assert result.returncode == 1
+
+
+def test_recover_restarts_only_this_vm():
+    r = FakeRunner()
+    make(r).recover()
+    assert r.calls[0] == ["wsl.exe", "--terminate", "omelet-vm"]
+    assert ["wsl.exe", "--shutdown"] not in r.calls
+    assert ["wsl.exe", "-d", "omelet-vm", "--", "true"] in r.calls
+
+
+def test_recover_everything_shuts_all_of_wsl_down_first():
+    r = FakeRunner()
+    make(r).recover(everything=True)
+    assert r.calls[0] == ["wsl.exe", "--shutdown"]
+    assert ["wsl.exe", "-d", "omelet-vm", "--", "true"] in r.calls
+
+
+def test_recover_reports_a_vm_still_not_answering():
+    from host.core.provider import VmUnresponsive
+
+    r = ScriptedRunner("-- true", stderr=_HUNG.encode())
+    try:
+        make(r).recover()
+    except VmUnresponsive:
+        return
+    raise AssertionError("a restart that did not help must say so")

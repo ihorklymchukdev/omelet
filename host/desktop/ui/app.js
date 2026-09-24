@@ -42,7 +42,8 @@ function fill(root, data) {
 
 // These resolve as soon as the job starts; the screen only changes when the
 // job's terminal event calls refresh(), so they stay busy until show().
-const JOB_ACTIONS = new Set(['start-vm', 'stop-vm', 'restart-vm', 'repair', 'do-uninstall']);
+const JOB_ACTIONS = new Set(['start-vm', 'stop-vm', 'restart-vm', 'repair', 'do-uninstall',
+  'recover', 'recover-everything']);
 
 function wire(root) {
   root.querySelectorAll('[data-action]').forEach((node) => {
@@ -357,6 +358,8 @@ ACTIONS['repair'] = async () => { await api().start_repair(); };
 ACTIONS['start-vm'] = async () => { await api().start_vm(); };
 ACTIONS['stop-vm'] = async () => { await api().stop_vm(); };
 ACTIONS['restart-vm'] = async () => { await api().restart_vm(); };
+ACTIONS['recover'] = async () => { await api().recover_vm(false); };
+ACTIONS['recover-everything'] = async () => { await api().recover_vm(true); };
 
 ACTIONS['uninstall'] = () => show('uninstall-confirm', {});
 ACTIONS['do-uninstall'] = async () => {
@@ -376,6 +379,13 @@ window.omelet.handlers.repair = (event) => {
   // repair did nothing, and a second click then rejects on JobBusy.
   if (event.type === 'stage') return;
   if (event.type === 'crashed') showNotice(event.message);
+  refresh();
+};
+window.omelet.handlers.recover = (event) => {
+  // The wider restart stops more than this machine, so it is offered, never
+  // taken; if even that fails, the probe lands back on the unresponsive screen.
+  if (event.type === 'unresponsive' && !event.everything) return show('recover-confirm', event);
+  if (event.type === 'unresponsive' || event.type === 'crashed') showNotice(event.message);
   refresh();
 };
 window.omelet.handlers.uninstall = (event) => {
@@ -401,7 +411,7 @@ async function refresh() {
     if (result.ok) return;
     showNotice(result.message);
   }
-  show(home.route === 'unreachable' ? 'unreachable' : `home:${home.state}`, home);
+  show(home.route === 'home' ? `home:${home.state}` : home.route, home);
 }
 
 window.addEventListener('pywebviewready', refresh);

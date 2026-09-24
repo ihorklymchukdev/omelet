@@ -27,6 +27,10 @@ def route_for(readiness: Readiness) -> tuple[str, str]:
     to "no VM yet" -- and routing that to "not installed" would offer a Set up
     button on a machine where setup cannot run.
     """
+    if readiness.unresponsive:
+        # Ahead of "unreachable": its Repair runs through the very command
+        # that is hanging.
+        return ("unresponsive", "")
     if readiness.problem:
         # The api service refusing /health is the only failure the unreachable
         # screen describes truthfully: its copy claims we can see the machine

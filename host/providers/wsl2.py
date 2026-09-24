@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 from ..core.images import WSL_IMAGES
-from ..core.provider import Access, AccessField, Completed, Diagnosis
+from ..core.provider import Access, AccessField, Completed, Diagnosis, VmUnresponsive
 from .wsl_encoding import decode_wsl
 from .wsl_checks import diagnose_wsl2, preflight_checks
 
@@ -28,6 +28,10 @@ _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 # with systemd and Docker running inside. This session is that attached
 # process; its argv[0] is how start() finds one already holding the VM.
 HOLD_NAME = "omelet-hold"
+
+# WSAETIMEDOUT from WSL's service: the utility VM behind every distro stopped
+# answering. `wsl -l --running` still lists the distro; `wsl --shutdown` clears it.
+_HUNG_CODE = "0x8007274c"
 
 
 def _default_runner(argv):
@@ -178,7 +182,18 @@ class Wsl2Provider:
     # --- wsl.exe's own output is UTF-16LE ---
     def _meta(self, args: list[str]) -> Completed:
         p = self._run([self.wsl, *args])
-        return Completed(p.returncode, decode_wsl(p.stdout), decode_wsl(p.stderr))
+        return self._answered(
+            Completed(p.returncode, decode_wsl(p.stdout), decode_wsl(p.stderr)))
+
+    def _answered(self, result: Completed) -> Completed:
+        if result.ok:
+            return result
+        # exec() decodes as UTF-8, but wsl.exe's own errors may be UTF-16LE.
+        detail = (result.stderr or result.stdout).replace("\x00", "").strip()
+        if _HUNG_CODE in detail:
+            raise VmUnresponsive(
+                f"the virtual machine '{self.distro}' is not answering: {detail}")
+        return result
 
     @staticmethod
     def _require(result: Completed, what: str) -> Completed:
@@ -251,9 +266,23 @@ class Wsl2Provider:
         base += ["--", *argv]
         p = self._run(base)
         # command passthrough is UTF-8
-        return Completed(p.returncode,
-                         p.stdout.decode("utf-8", "replace").strip("\n"),
-                         p.stderr.decode("utf-8", "replace").strip("\n"))
+        return self._answered(
+            Completed(p.returncode,
+                      p.stdout.decode("utf-8", "replace").strip("\n"),
+                      p.stderr.decode("utf-8", "replace").strip("\n")))
+
+    def recover(self, *, everything: bool = False) -> None:
+        # --terminate touches only this distro; a hang in the utility VM that
+        # every distro shares clears only with --shutdown.
+        if everything:
+            self._require(self._meta(["--shutdown"]), "WSL could not be restarted")
+        else:
+            self.stop()
+        self.start()
+
+    recover_warning = ("Restarting everything also stops every other Linux "
+                       "distribution and Docker Desktop on this computer. "
+                       "Nothing is deleted.")
 
     # --- port forwarding ---
     #

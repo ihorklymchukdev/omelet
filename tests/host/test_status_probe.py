@@ -179,3 +179,27 @@ def test_a_stopped_vm_is_reported_without_touching_the_guest():
     result = probe(provider, client_factory=_client())
     assert result == Readiness(vm_exists=True)
     assert provider.calls == []
+
+
+def test_a_hung_vm_platform_is_unresponsive_whichever_stage_it_hangs_at():
+    # The token read is where it first showed up: exec(["true"]) and the
+    # marker read passed a moment earlier, then WSL stopped answering.
+    from host.core.provider import VmUnresponsive
+
+    hung = VmUnresponsive("Wsl/Service/CreateInstance/0x8007274c")
+
+    class Hung(FakeProvider):
+        def exec(self, argv, *, root=False):
+            raise hung
+
+    assert probe(Hung()).unresponsive is True
+
+    result = probe(FakeProvider(), client_factory=_client_factory_raising(hung))
+    assert result.unresponsive is True
+    assert result.runtime_version == "0.1.0", "facts already learned are kept"
+
+
+def test_an_ordinary_failure_is_not_unresponsive():
+    result = probe(FakeProvider(), client_factory=_client_factory_raising(
+        RuntimeError("connection refused")))
+    assert result.unresponsive is False

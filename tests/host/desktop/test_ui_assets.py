@@ -214,7 +214,7 @@ def test_only_a_dead_end_removes_the_retry_button():
 def test_the_utility_screens_have_templates():
     markup = (UI / "index.html").read_text()
     for screen in ("import", "import:progress", "ports", "doctor",
-                   "uninstall-confirm"):
+                   "uninstall-confirm", "unresponsive", "recover-confirm"):
         assert f'data-screen="{screen}"' in markup, f"no template for {screen}"
 
 
