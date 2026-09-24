@@ -95,3 +95,17 @@ class Cloud:
         return self.call("DELETE",
                          f"/v1/projects/{urllib.parse.quote(cloud_id, safe='')}",
                          token=token)
+
+    def _public_url_path(self, cloud_id: str) -> str:
+        return f"/v1/tunnels/projects/{urllib.parse.quote(cloud_id, safe='')}/url"
+
+    def create_public_url(self, token: str, cloud_id: str, hostnames: list[str],
+                          origin: str):
+        return self.call("POST", self._public_url_path(cloud_id), token=token,
+                         body={"hostnames": hostnames, "origin": origin})
+
+    def get_public_url(self, token: str, cloud_id: str):
+        return self.call("GET", self._public_url_path(cloud_id), token=token)
+
+    def release_public_url(self, token: str, cloud_id: str):
+        return self.call("DELETE", self._public_url_path(cloud_id), token=token)

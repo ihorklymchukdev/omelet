@@ -39,6 +39,15 @@ class FakeCloud:
     def delete_project(self, token, cloud_id):
         return self._next("delete_project", token, cloud_id)
 
+    def create_public_url(self, token, cloud_id, hostnames, origin):
+        return self._next("create_public_url", token, cloud_id, hostnames, origin)
+
+    def get_public_url(self, token, cloud_id):
+        return self._next("get_public_url", token, cloud_id)
+
+    def release_public_url(self, token, cloud_id):
+        return self._next("release_public_url", token, cloud_id)
+
 
 CODE = {"device_code": "dc-1", "user_code": "ABCD-EFGH",
         "verification_uri": "https://svc/device",
