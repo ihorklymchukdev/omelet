@@ -201,3 +201,67 @@ def test_an_expired_url_reads_as_off_before_anything_cleans_up(tmp_path):
 
     assert public.status("blog") == {"state": "off", "note": {
         "code": "expired", "message": MESSAGES["expired"]}}
+
+
+def test_a_row_cleared_after_the_client_starts_does_not_resurrect_it(tmp_path):
+    """A sign-out (state.clear_public()) landing between the client starting
+    and the final "on" write must not have that write bring the row back."""
+    cloud = FakeCloud(create_public_url=[ON], release_public_url=[None])
+    state = State(tmp_path / "state.db")
+    state.add_project("blog", "/p/blog", "d.io")
+    state.update_account(access_token="at", refresh_token="rt",
+                         access_expires_at=10**12, org_id="org-1")
+    state.map_cloud_project("blog", "c-blog", "org-1")
+    account = Account(state, cloud, spawn=lambda fn: None)
+
+    class RacingRunner(TunnelRunner):
+        def __init__(self, state):
+            super().__init__()
+            self._state = state
+
+        def exec(self, argv, *, root=False):
+            result = super().exec(argv, root=root)
+            if "up" in argv:
+                self._state.clear_public()
+            return result
+
+    runner = RacingRunner(state)
+    public = Public(state=state, account=account, cloud=cloud,
+                    client=TunnelClient(runner, tmp_path / "stack.yml"),
+                    token_path=tmp_path / "tunnel.token", origin="http://traefik:39080",
+                    hosts_for=lambda pid: list(HOSTS), clock=Clock(),
+                    spawn=lambda fn: fn())
+
+    public.enable("blog")
+
+    assert state.get_public("blog") is None
+    assert not runner.up
+    assert not (tmp_path / "tunnel.token").exists()
+    assert cloud.names() == ["create_public_url", "release_public_url"]
+
+
+def test_a_malformed_reply_is_cleaned_up_like_a_failed_start(tmp_path):
+    bad = {k: v for k, v in ON.items() if k != "expires_at"}
+    cloud = FakeCloud(create_public_url=[bad], release_public_url=[None])
+    public, _, runner, _ = make(tmp_path, cloud)
+
+    public.enable("blog")
+
+    assert cloud.names() == ["create_public_url", "release_public_url"]
+    assert not runner.up
+    assert not (tmp_path / "tunnel.token").exists()
+    assert public.status("blog")["reason"]["code"] == "client_failed"
+
+
+def test_enable_meeting_a_stuck_releasing_row_retries_release_not_create(tmp_path):
+    cloud = FakeCloud(release_public_url=[CloudUnavailable("down")])
+    public, state, runner, _ = make(tmp_path, cloud)
+    state.put_public("blog", cloud_id="c-blog", state="releasing")
+
+    public.enable("blog")
+
+    assert cloud.names() == ["release_public_url"]
+    row = state.get_public("blog")
+    assert row["state"] == "releasing" and row["reason_code"] == "cloud_unavailable"
+    assert public.status("blog") == {"state": "failed", "reason": {
+        "code": "cloud_unavailable", "message": MESSAGES["cloud_unavailable"]}}

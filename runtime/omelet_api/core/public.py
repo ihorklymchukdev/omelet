@@ -48,7 +48,7 @@ def _daemon(fn) -> None:
 
 
 def write_token(path: Path, token: str) -> None:
-    # mkstemp opens at 0600, so the mode is narrowed before any byte lands.
+    # fchmod sets the mode before any byte is written, independent of umask.
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".tunnel-")
     try:
         with os.fdopen(fd, "w") as f:
@@ -160,9 +160,9 @@ class Public:
         try:
             if prior is not None and prior["state"] == "releasing":
                 if not self._release(prior["cloud_id"]):
-                    self._state.put_public(local_id, cloud_id=prior["cloud_id"],
-                                           state="releasing",
-                                           reason_code="cloud_unavailable")
+                    self._state.transition_public(local_id, "enabling",
+                                                   state="releasing",
+                                                   reason_code="cloud_unavailable")
                     return
             self._turn_on(local_id, cloud_id)
         except Exception:
@@ -187,29 +187,42 @@ class Public:
             self._fail_from_service(local_id, cloud_id, e)
             return
 
-        write_token(self._token_path, out["credentials"]["token"])
-        started = self._client.start()
-        still_wanted = (self._state.get_public(local_id) or {}).get("state") == "enabling"
-        if not started.ok or not still_wanted:
+        # Everything past this point holds a live service-side URL: any
+        # failure here -- a bad client start, a malformed reply -- must
+        # release it, not just mark the row failed.
+        try:
+            write_token(self._token_path, out["credentials"]["token"])
+            started = self._client.start()
+            if not started.ok:
+                raise RuntimeError("tunnel client failed to start")
+            by_host = {h["hostname"]: h for h in hosts}
+            urls = [{"url": u["url"], "service": by_host[u["hostname"]]["service"],
+                     "local_url": by_host[u["hostname"]]["local_url"]}
+                    for u in out["urls"] if u["hostname"] in by_host]
+            expires_at = _epoch(out["expires_at"])
+        except Exception:
             self._stop_unless_needed(local_id)
             self._release(cloud_id)
-            if still_wanted:
-                self._fail(local_id, cloud_id, "client_failed")
+            self._fail(local_id, cloud_id, "client_failed")
             return
-        by_host = {h["hostname"]: h for h in hosts}
-        urls = [{"url": u["url"], "service": by_host[u["hostname"]]["service"],
-                 "local_url": by_host[u["hostname"]]["local_url"]}
-                for u in out["urls"] if u["hostname"] in by_host]
-        self._state.put_public(local_id, cloud_id=cloud_id, state="on", urls=urls,
-                               expires_at=_epoch(out["expires_at"]))
+
+        # The row may have been force-disabled or cleared (sign-out) while
+        # the create/start calls were in flight; only take the "on" write if
+        # it is still the same "enabling" attempt, or a wanted-off row would
+        # come back on.
+        committed = self._state.transition_public(
+            local_id, "enabling", state="on", urls=urls, expires_at=expires_at)
+        if not committed:
+            self._stop_unless_needed(local_id)
+            self._release(cloud_id)
 
     def _fail(self, local_id: str, cloud_id: str, code: str,
               message: str | None = None) -> None:
-        if self._state.get_public(local_id) is None:
-            return
-        self._state.put_public(local_id, cloud_id=cloud_id, state="failed",
-                               reason_code=code,
-                               reason_message=message or MESSAGES.get(code))
+        # Only takes if the row is still this attempt's "enabling" row, so a
+        # row already moved or deleted by a disable/sign-out is left alone.
+        self._state.transition_public(local_id, "enabling", state="failed",
+                                      reason_code=code,
+                                      reason_message=message or MESSAGES.get(code))
 
     def _fail_from_service(self, local_id: str, cloud_id: str, e: CloudError) -> None:
         if e.code == "public_url_active":

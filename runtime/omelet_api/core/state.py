@@ -177,6 +177,20 @@ class State:
                  expires_at, reason_code, reason_message))
             self._conn.commit()
 
+    def transition_public(self, local_id, from_state, *, state, urls=None,
+                          expires_at=None, reason_code=None, reason_message=None) -> bool:
+        """Whole-row replace like `put_public`, but only takes if the row is
+        still `from_state` -- the guard against a write racing a disable or
+        sign-out that already moved or deleted the row. `cloud_id` is kept."""
+        with self._lock:
+            cur = self._conn.execute(
+                "UPDATE public_urls SET state=?, urls=?, expires_at=?, reason_code=?, "
+                "reason_message=? WHERE local_id=? AND state=?",
+                (state, json.dumps(urls) if urls is not None else None, expires_at,
+                 reason_code, reason_message, local_id, from_state))
+            self._conn.commit()
+            return cur.rowcount > 0
+
     def delete_public(self, local_id):
         with self._lock:
             self._conn.execute("DELETE FROM public_urls WHERE local_id=?", (local_id,))
