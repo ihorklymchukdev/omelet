@@ -15,6 +15,14 @@ exec "$@"
 """
 FAKE_GH = """#!/usr/bin/env bash
 if [[ -e "$HOME/gh-fails" ]]; then echo "boom $(cat "$TOKEN_FILE")" >&2; exit 1; fi
+if [[ " $* " == *" logout "* && -e "$HOME/logout-error" ]]; then
+  cat "$HOME/logout-error" >&2
+  exit 1
+fi
+if [[ " $* " == *" login "* && -n "${REWRITE_DESIRED:-}" && ! -e "${REWRITE_MARKER:-/nonexistent}" ]]; then
+  touch "$REWRITE_MARKER"
+  printf '{"generation": 5, "state": "disconnected"}' > "$REWRITE_DESIRED"
+fi
 stdin=""
 if [[ " $* " == *" --with-token "* ]]; then stdin=$(cat); fi
 echo "$HOME gh $* stdin=$stdin" >> "$LOG/gh"
@@ -74,6 +82,7 @@ def test_connected_signs_in_every_account_as_itself_with_the_token_on_stdin(tmp_
     applied = run(env, gh_dir)
 
     assert applied["generation"] == 4 and applied["ok"] is True
+    assert applied["login"] == "octo"
     assert [a["name"] for a in applied["accounts"]] == ["root", "ada"]
     runuser = (log / "runuser").read_text()
     assert f"HOME={tmp_path / 'root'}" in runuser and "root env" in runuser
@@ -101,7 +110,7 @@ def test_one_failing_account_does_not_stop_the_others_and_its_error_has_no_token
 def test_disconnected_logs_out_and_keeps_an_identity_the_user_set_themselves(tmp_path):
     env, gh_dir, log = setup(
         tmp_path, desired={"generation": 5, "state": "disconnected"},
-        applied={"generation": 4, "ok": True, "name": "Octo Cat",
+        applied={"generation": 4, "ok": True, "login": "octo", "name": "Octo Cat",
                  "email": "42+octo@users.noreply.github.com", "accounts": []})
     for home, name in ((tmp_path / "root", "Octo Cat"), (tmp_path / "ada", "Ada L")):
         subprocess.run(["git", "config", "--global", "user.name", name],
@@ -109,9 +118,55 @@ def test_disconnected_logs_out_and_keeps_an_identity_the_user_set_themselves(tmp
     applied = run(env, gh_dir)
 
     assert (applied["generation"], applied["ok"]) == (5, True)
-    assert (log / "gh").read_text().count("auth logout --hostname github.com") == 2
+    assert (log / "gh").read_text().count(
+        "auth logout --hostname github.com --user octo") == 2
     assert git_get(tmp_path / "root", "user.name") == ""
     assert git_get(tmp_path / "ada", "user.name") == "Ada L"
+
+
+def test_a_not_logged_in_logout_failure_still_counts_as_ok(tmp_path):
+    env, gh_dir, log = setup(
+        tmp_path, desired={"generation": 5, "state": "disconnected"},
+        applied={"generation": 4, "ok": True, "login": "octo", "accounts": []})
+    (tmp_path / "root" / "logout-error").write_text("error: not logged in to github.com\n")
+    applied = run(env, gh_dir)
+
+    assert applied["ok"] is True
+    assert applied["accounts"] == [{"name": "root", "ok": True}, {"name": "ada", "ok": True}]
+    assert "--user octo" in (log / "gh").read_text()
+
+
+def test_a_real_logout_failure_marks_the_account_failed(tmp_path):
+    env, gh_dir, log = setup(
+        tmp_path, desired={"generation": 5, "state": "disconnected"},
+        applied={"generation": 4, "ok": True, "login": "octo", "accounts": []})
+    (tmp_path / "root" / "logout-error").write_text("error: rate limited\n")
+    applied = run(env, gh_dir)
+
+    assert applied["ok"] is False
+    assert applied["accounts"] == [{"name": "root", "ok": False}, {"name": "ada", "ok": True}]
+    assert "root" in applied["error"] and "rate limited" in applied["error"]
+
+
+def test_no_previous_login_skips_logout_and_leaves_a_hand_sign_in_alone(tmp_path):
+    env, gh_dir, log = setup(
+        tmp_path, desired={"generation": 5, "state": "disconnected"},
+        applied={"generation": 4, "ok": True, "accounts": []})
+    applied = run(env, gh_dir)
+
+    assert (applied["generation"], applied["ok"]) == (5, True)
+    assert not (log / "gh").exists()
+
+
+def test_a_desired_json_rewritten_mid_run_is_re_applied_before_returning(tmp_path):
+    env, gh_dir, log = setup(tmp_path, desired=CONNECTED)
+    env["REWRITE_DESIRED"] = str(gh_dir / "desired.json")
+    env["REWRITE_MARKER"] = str(tmp_path / "rewritten")
+    applied = run(env, gh_dir)
+
+    assert applied["generation"] == 5
+    assert applied["ok"] is True
+    assert "auth logout --hostname github.com --user octo" in (log / "gh").read_text()
 
 
 def test_no_desired_state_yet_touches_nothing_and_reports_generation_zero(tmp_path):
