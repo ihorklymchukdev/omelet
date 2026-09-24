@@ -323,7 +323,7 @@ ON = {"id": "u1", "project_id": "c-blog",
       "urls": [{"hostname": "blog.d.io", "url": "https://k3x9.example.dev"}],
       "expires_at": "2026-09-24T15:00:00Z",
       "credentials": {"provider": "cloudflare", "token": "tun-1"}}
-EXPIRES = 1790175600.0  # 2026-09-24T15:00:00Z
+EXPIRES = 1790262000.0  # 2026-09-24T15:00:00Z
 
 
 class Clock:
