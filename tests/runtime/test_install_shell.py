@@ -323,3 +323,29 @@ def test_install_removes_what_an_engine_v_install_left_behind():
     for stale in ("/opt/omelet/engine ", "/opt/omelet/engine.version",
                   "/opt/omelet/agent.token"):
         assert stale in cleanup, f"cleanup no longer removes {stale!r}"
+
+
+def test_install_reasserts_the_github_file_modes_after_the_permission_sweep():
+    text = INSTALL.read_text()
+    sweep = text.index("chmod -R g+rwX /opt/omelet")
+    assert text.index("chmod 600 /opt/omelet/github/token") > sweep
+    assert "install -d -m 2770 -o root -g docker /opt/omelet/github" in text
+
+
+def test_install_enables_the_github_path_unit_and_applies_before_the_marker():
+    text = INSTALL.read_text()
+    assert "systemctl enable --now omelet-github.path" in text
+    apply = text.index('bash "$INSTALL_DIR/lib/github-apply.sh"')
+    assert apply < text.index(f"> {constants.RUNTIME_MARKER}")
+
+
+def test_install_trusts_repositories_owned_by_the_api():
+    assert "safe.directory '*'" in INSTALL.read_text()
+
+
+def test_the_agent_instructions_never_ask_for_a_github_login():
+    text = (ROOT / "runtime" / "instructions" / "omelet.md").read_text()
+    text_joined = " ".join(text.split())
+    assert "Connect GitHub" in text
+    assert "do not run `gh auth login`" in text_joined
+    assert "read the user the code it prints" not in text_joined
