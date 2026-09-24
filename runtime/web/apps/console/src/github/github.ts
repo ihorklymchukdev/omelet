@@ -44,8 +44,19 @@ function useStatusMutation(path: string) {
 }
 
 export const useConnectGitHub = () => useStatusMutation("/api/github/connect");
-export const useDisconnectGitHub = () => useStatusMutation("/api/github/disconnect");
 export const useReapplyGitHub = () => useStatusMutation("/api/github/reapply");
+
+export function useDisconnectGitHub() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post<GitHubStatus>("/api/github/disconnect"),
+    onSuccess: (status) => {
+      client.setQueryData(GITHUB, status);
+      // Repos belonged to the account that just disconnected.
+      client.removeQueries({ queryKey: [...GITHUB, "repos"] });
+    },
+  });
+}
 
 export function useRepos(enabled: boolean) {
   return useInfiniteQuery({
