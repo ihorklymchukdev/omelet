@@ -63,21 +63,32 @@ as_user() {
     GH_PROMPT_DISABLED=1 GH_NO_UPDATE_NOTIFIER=1 "$@"
 }
 
-connect() {
-  local name=$1 home=$2
-  [[ -n "$SECRET" ]] || { echo "the token file is missing"; return 1; }
-  as_user "$name" "$home" gh auth login --hostname github.com \
-      --git-protocol https --insecure-storage --with-token < "$TOKEN" &&
-    as_user "$name" "$home" gh auth setup-git --hostname github.com &&
-    as_user "$name" "$home" git config --global user.name "$NAME" &&
-    as_user "$name" "$home" git config --global user.email "$EMAIL"
-}
-
 # gh's exact wording for "there was nothing of ours to log out of" varies by
 # version, so match loosely and case-insensitively rather than pin one phrase.
 logout_was_a_noop() {
   local lower=${1,,}
   [[ "$lower" == *"not logged in"* || "$lower" == *"no account"* ]]
+}
+
+connect() {
+  local name=$1 home=$2 out
+  [[ -n "$SECRET" ]] || { echo "the token file is missing"; return 1; }
+  # gh 2.40+ keeps several accounts per host, so signing in as a new login
+  # leaves the previous one still active too. Log it out first, or a later
+  # disconnect (which only logs out the *current* login) would leave it live.
+  if [[ -n "$PREV_LOGIN" && "$PREV_LOGIN" != "$LOGIN" ]]; then
+    out="$(as_user "$name" "$home" gh auth logout --hostname github.com \
+      --user "$PREV_LOGIN" 2>&1)"
+    if (( $? != 0 )) && ! logout_was_a_noop "$out"; then
+      printf '%s\n' "$out"
+      return 1
+    fi
+  fi
+  as_user "$name" "$home" gh auth login --hostname github.com \
+      --git-protocol https --insecure-storage --with-token < "$TOKEN" &&
+    as_user "$name" "$home" gh auth setup-git --hostname github.com &&
+    as_user "$name" "$home" git config --global user.name "$NAME" &&
+    as_user "$name" "$home" git config --global user.email "$EMAIL"
 }
 
 unset_if_ours() {

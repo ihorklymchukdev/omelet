@@ -158,6 +158,32 @@ def test_no_previous_login_skips_logout_and_leaves_a_hand_sign_in_alone(tmp_path
     assert not (log / "gh").exists()
 
 
+def test_reconnecting_as_a_different_login_logs_the_previous_one_out_first(tmp_path):
+    env, gh_dir, log = setup(
+        tmp_path,
+        desired={"generation": 5, "state": "connected", "login": "bebe",
+                 "name": "Bebe", "email": "bebe@example.com"},
+        applied={"generation": 4, "ok": True, "login": "ada", "accounts": []})
+    applied = run(env, gh_dir)
+
+    assert applied["ok"] is True and applied["login"] == "bebe"
+    gh = (log / "gh").read_text()
+    logout_at = gh.index("auth logout --hostname github.com --user ada")
+    login_at = gh.index("auth login --hostname github.com")
+    assert logout_at < login_at
+
+
+def test_reconnecting_as_the_same_login_does_not_log_it_out_first(tmp_path):
+    env, gh_dir, log = setup(
+        tmp_path,
+        desired={"generation": 5, "state": "connected", "login": "octo",
+                 "name": "Octo Cat", "email": "42+octo@users.noreply.github.com"},
+        applied={"generation": 4, "ok": True, "login": "octo", "accounts": []})
+    run(env, gh_dir)
+
+    assert "logout" not in (log / "gh").read_text()
+
+
 def test_a_desired_json_rewritten_mid_run_is_re_applied_before_returning(tmp_path):
     env, gh_dir, log = setup(tmp_path, desired=CONNECTED)
     env["REWRITE_DESIRED"] = str(gh_dir / "desired.json")
