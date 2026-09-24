@@ -165,6 +165,30 @@ def test_reapply_while_disconnected_is_refused(tmp_path):
         link.reapply()
 
 
+def test_reapply_racing_a_disconnect_is_dropped(tmp_path):
+    holder = {}
+    link, _, github = connected(tmp_path)
+    holder["link"] = link
+    github.scripts["user"] = [
+        lambda: (holder["link"].disconnect(), USER)[1]]
+    with pytest.raises(NotConnected):
+        link.reapply()
+    assert link.status()["state"] == "disconnected"
+    assert desired(tmp_path) == {"generation": 2, "state": "disconnected"}
+    assert not (tmp_path / "github" / "token").exists()
+
+
+def test_check_token_racing_a_disconnect_is_dropped(tmp_path):
+    holder = {}
+    link, clock, github = connected(tmp_path)
+    holder["link"] = link
+    github.scripts["user"] = [
+        lambda: (holder["link"].disconnect(), err("bad_credentials"))[1]]
+    clock.now += 301
+    link.check_token()
+    assert link.status() == {"state": "disconnected", "error": None}
+
+
 ROW = {"generation": 3, "desired_at": 1000.0}
 
 

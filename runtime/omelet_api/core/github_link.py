@@ -224,15 +224,33 @@ class GitHubLink:
         token = self.token()
         try:
             identity = identity_from(self._github.user(token))
+            error = None
         except GitHubError as e:
-            if e.code == "bad_credentials":
-                self.mark_bad_credentials()
-                raise NotConnected() from None
-            raise
+            identity, error = None, e
+
         with self._lock:
+            # A disconnect/reconnect racing the network call above must win:
+            # a reply about a token that is no longer the stored one must
+            # neither write a stale identity nor mark a fresh one bad.
+            if not self._is_current(token):
+                raise NotConnected()
+            if error is not None:
+                if error.code == "bad_credentials":
+                    self.mark_bad_credentials()
+                    raise NotConnected() from None
+                raise error
             self._state.update_github(**identity)
             self._write_desired("connected")
             return self.status()
+
+    def _is_current(self, token: str) -> bool:
+        row = self._state.get_github()
+        if not row["login"] or row["needs_reconnect"]:
+            return False
+        try:
+            return self._token_path.read_text().strip() == token
+        except OSError:
+            return False
 
     def mark_bad_credentials(self) -> None:
         # No new generation: the accounts keep the dead token until the user
@@ -253,6 +271,11 @@ class GitHubLink:
             self._github.user(token)
         except GitHubError as e:
             if e.code == "bad_credentials":
-                self.mark_bad_credentials()
+                with self._lock:
+                    # A disconnect/reconnect that landed during the call
+                    # above must win over marking this (possibly stale)
+                    # token bad.
+                    if self._is_current(token):
+                        self.mark_bad_credentials()
         except GitHubUnavailable:
             pass
