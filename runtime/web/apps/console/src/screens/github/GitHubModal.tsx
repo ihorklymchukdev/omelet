@@ -64,9 +64,12 @@ export function GitHubModal({ open, onClose }: { open: boolean; onClose: () => v
     }
   }
 
+  // Rendered only while open: with it always mounted (from ProjectList and
+  // the account menu), an always-rendered RepoPicker would poll GitHub and
+  // keep its clone state alive even with the dialog closed.
   return (
     <Modal open={open} onClose={onClose} title="GitHub">
-      <div className={s.body}>{body}</div>
+      <div className={s.body}>{open && body}</div>
     </Modal>
   );
 }

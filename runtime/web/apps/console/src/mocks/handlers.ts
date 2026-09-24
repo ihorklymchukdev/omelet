@@ -27,6 +27,7 @@ export const SCENARIOS = [
   "github-applying",
   "github-outdated",
   "github-reconnect",
+  "github-clone-fails",
 ] as const;
 export type Scenario = (typeof SCENARIOS)[number];
 
@@ -126,6 +127,15 @@ export function handlersFor(scenario: Scenario) {
     target.job = { id, kind, phase: steps[0], started_at: job.started_at };
     let step = 0;
     const tick = () => {
+      // github-clone-fails exercises the failure path while still on the
+      // "cloning" phase, before any other step runs.
+      if (kind === "clone" && scenario === "github-clone-fails" && step === 0) {
+        target.job = null;
+        job.state = "failed";
+        job.detail = "fatal: repository not found";
+        job.finished_at = nowSec();
+        return;
+      }
       step += 1;
       if (step < steps.length) {
         job.phase = steps[step];

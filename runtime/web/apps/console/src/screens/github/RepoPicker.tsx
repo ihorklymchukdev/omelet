@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { Button } from "@omelet/ui";
 import { useCloneRepo, useRepos } from "../../github/github";
@@ -11,7 +11,16 @@ export function RepoPicker({ login, onDone }: { login: string; onDone: () => voi
   const clone = useCloneRepo();
   const [started, setStarted] = useState<{ job_id: string; id: string } | null>(null);
 
-  if (started) return <Cloning jobId={started.job_id} id={started.id} onDone={onDone} />;
+  if (started) {
+    return (
+      <Cloning
+        jobId={started.job_id}
+        id={started.id}
+        onDone={onDone}
+        onRetry={() => setStarted(null)}
+      />
+    );
+  }
 
   const all = repos.data?.pages.flatMap((page) => page.repos) ?? [];
   return (
@@ -48,16 +57,37 @@ export function RepoPicker({ login, onDone }: { login: string; onDone: () => voi
 
 // The project exists only once the clone lands, so the page opens after
 // the "cloning" phase, not on submit.
-function Cloning({ jobId, id, onDone }: { jobId: string; id: string; onDone: () => void }) {
+function Cloning({
+  jobId,
+  id,
+  onDone,
+  onRetry,
+}: {
+  jobId: string;
+  id: string;
+  onDone: () => void;
+  onRetry: () => void;
+}) {
   const job = useJob(jobId).data;
   const navigate = useNavigate();
   const cloned = job !== undefined && job.state !== "failed" && (job.phase !== "cloning" || job.state === "done");
+  // onDone/navigate get a new identity on every parent render, which would
+  // otherwise re-run this effect and push a second history entry.
+  const fired = useRef(false);
   useEffect(() => {
-    if (cloned) {
+    if (cloned && !fired.current) {
+      fired.current = true;
       onDone();
       navigate(`/p/${encodeURIComponent(id)}`);
     }
   }, [cloned, id, navigate, onDone]);
-  if (job?.state === "failed") return <p className={s.error}>Couldn't download it: {job.detail}</p>;
+  if (job?.state === "failed") {
+    return (
+      <>
+        <p className={s.error}>Couldn't download it: {job.detail}</p>
+        <Button variant="quiet" onClick={onRetry}>Pick another</Button>
+      </>
+    );
+  }
   return <p>Downloading {id} from GitHub…</p>;
 }
