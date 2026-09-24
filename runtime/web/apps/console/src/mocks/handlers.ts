@@ -21,6 +21,10 @@ export const SCENARIOS = [
   "account-pending",
   "account-denied",
   "account-unreachable",
+  "public-on",
+  "public-expiring",
+  "public-active-elsewhere",
+  "public-unavailable",
 ] as const;
 export type Scenario = (typeof SCENARIOS)[number];
 
@@ -48,6 +52,7 @@ function project(id: string, over: Partial<Project> = {}): Project {
     web: [{ url: address(id), service: "web", primary: true }],
     first_run: false,
     job: null,
+    public: { state: "off", note: null },
     ...over,
   };
 }
@@ -161,6 +166,14 @@ export function handlersFor(scenario: Scenario) {
       { name: "spice-rack", seen_at: minutesAgo(20), adoptable: false, reason: "compose_missing" },
       { name: "Tax Stuff", seen_at: minutesAgo(130), adoptable: false, reason: "bad_name" },
     );
+    if (scenario === "public-on" || scenario === "public-expiring") {
+      const box = projects.get("recipe-box")!;
+      box.public = {
+        state: "on",
+        urls: [{ url: "https://k3x9.trycloudflare.example", service: "web", local_url: address("recipe-box") }],
+        expires_at: nowSec() + (scenario === "public-expiring" ? 20 : 42 * 60),
+      };
+    }
   }
 
   const GB = 1024 ** 3;
@@ -369,6 +382,26 @@ export function handlersFor(scenario: Scenario) {
       // photo-sorter shows the "may still be running" outcome.
       const stopped = target.id !== "photo-sorter";
       return HttpResponse.json({ id: target.id, stopped, detail: stopped ? "" : "a container didn't stop in time" });
+    }),
+    http.post("/api/projects/:id/public", ({ params }) => {
+      const target = projects.get(String(params.id));
+      if (!target) return notFound(String(params.id));
+      if (scenario === "public-unavailable")
+        return refuse("not_registered", "This project isn't linked to your account yet. Try again in a minute.", 409);
+      target.public = { state: "enabling" };
+      window.setTimeout(() => {
+        target.public =
+          scenario === "public-active-elsewhere"
+            ? { state: "failed", reason: { code: "public_url_active", message: "One is already on for another project or computer. Turn it off there first." } }
+            : { state: "on", urls: target.web.map((w, i) => ({ url: `https://m${i}x7.trycloudflare.example`, service: w.service, local_url: w.url })), expires_at: nowSec() + 60 * 60 };
+      }, 2000);
+      return HttpResponse.json(target.public, { status: 202 });
+    }),
+    http.delete("/api/projects/:id/public", ({ params }) => {
+      const target = projects.get(String(params.id));
+      if (!target) return notFound(String(params.id));
+      target.public = { state: "off", note: null };
+      return HttpResponse.json(target.public);
     }),
     http.get("/api/disk", () => {
       const denied = guard();
