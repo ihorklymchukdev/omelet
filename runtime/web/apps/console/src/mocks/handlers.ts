@@ -21,6 +21,7 @@ export const SCENARIOS = [
   "account-pending",
   "account-denied",
   "account-unreachable",
+  "windows",
 ] as const;
 export type Scenario = (typeof SCENARIOS)[number];
 
@@ -369,6 +370,12 @@ export function handlersFor(scenario: Scenario) {
       // photo-sorter shows the "may still be running" outcome.
       const stopped = target.id !== "photo-sorter";
       return HttpResponse.json({ id: target.id, stopped, detail: stopped ? "" : "a container didn't stop in time" });
+    }),
+    http.get("/api/connect", () => {
+      const denied = guard();
+      if (denied) return denied;
+      if (scenario === "windows") return HttpResponse.json({ vm: "wsl", ssh: null });
+      return HttpResponse.json({ vm: "lima", ssh: { host: "127.0.0.1", port: 39022, user: "ada", key_file: "~/.lima/_config/user" } });
     }),
     http.get("/api/disk", () => {
       const denied = guard();
