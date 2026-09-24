@@ -9,6 +9,7 @@ import type { Project } from "../../projects/types";
 import { projectView } from "../../projects/view";
 import { ARROW } from "../icons";
 import s from "./ProjectList.module.css";
+import { openExternal } from "../../desktop/desktop";
 
 export function ProjectRow({ project }: { project: Project }) {
   const view = projectView(project);
@@ -33,7 +34,7 @@ export function ProjectRow({ project }: { project: Project }) {
       actions = (
         <>
           {primary && (
-            <Button aria-label={`Open ${project.id}`} onClick={() => window.open(primary, "_blank", "noopener,noreferrer")}>
+            <Button aria-label={`Open ${project.id}`} onClick={() => openExternal(primary)}>
               Open{ARROW}
             </Button>
           )}

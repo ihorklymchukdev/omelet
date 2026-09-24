@@ -11,3 +11,7 @@ export const GLOBE = (
   <svg {...svg}><circle cx="9" cy="9" r="6.5" {...line} /><path d="M2.5 9h13M9 2.5c2 2.2 2 10.8 0 13M9 2.5c-2 2.2-2 10.8 0 13" {...line} /></svg>
 );
 export const TRASH = <svg {...svg}><path d="M3.5 5h11M7.2 5V3.5h3.6V5M5 5l.7 9.5h6.6L13 5" {...line} /></svg>;
+export const BACK = <svg {...svg}><path d="M11 4 6 9l5 5" {...line} /></svg>;
+export const EXTERNAL = (
+  <svg {...svg}><path d="M10.5 3.5h4v4M14.5 3.5 8.5 9.5M13 10.5v3A1.5 1.5 0 0 1 11.5 15h-7A1.5 1.5 0 0 1 3 13.5v-7A1.5 1.5 0 0 1 4.5 5h3" {...line} /></svg>
+);

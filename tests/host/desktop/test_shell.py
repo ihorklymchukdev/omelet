@@ -6,14 +6,13 @@ root. These pin that such a page can see the bridge and use none of it.
 """
 from __future__ import annotations
 
-import inspect
 import json
 
 import pytest
 
 from host.core.install import InstallState
 from host.desktop.api import DesktopApi
-from host.desktop.shell import NotLocalPage, Shell, guarded, public_methods
+from host.desktop.shell import NotLocalPage, Shell, guarded, public_methods, web_links_only
 
 # pywebview serves an absolute local path through its own bottle server.
 LOCAL = "http://127.0.0.1:53817/index.html"
@@ -67,15 +66,6 @@ def test_the_fragment_does_not_make_the_local_page_foreign():
     assert shell.is_local() is True
 
 
-def test_load_local_returns_to_the_original_page_not_the_console():
-    window = FakeWindow(LOCAL)
-    shell = Shell(window)
-    shell.load(CONSOLE)
-    shell.load_local()
-    assert window.url == LOCAL
-    assert shell.is_local() is True
-
-
 def test_events_reach_the_local_page_as_one_json_argument():
     window = FakeWindow(LOCAL)
     Shell(window).push({"kind": "vm", "message": 'a "quote"'})
@@ -92,36 +82,29 @@ def test_events_never_reach_the_console():
     assert window.evaluated == []
 
 
+def _bridge(tmp_path, shell):
+    return {f.__name__: f for f in guarded(_api(tmp_path), shell)}
+
+
 def test_every_public_method_is_refused_from_the_console(tmp_path):
     shell = Shell(FakeWindow(LOCAL))
-    bridge = guarded(_api(tmp_path), shell)
+    bridge = _bridge(tmp_path, shell)
     shell.load(CONSOLE)
     names = public_methods(DesktopApi)
     assert "reboot_now" in names and "start_import" in names
     for name in names:
         with pytest.raises(NotLocalPage):
-            getattr(bridge, name)()
+            bridge[name]()
 
 
 def test_the_bridge_exposes_only_the_public_methods(tmp_path):
-    # JobRegistry sits on DesktopApi as .jobs; pywebview exposes nested
-    # objects, so the facade must not carry it (or anything else) along.
-    bridge = guarded(_api(tmp_path), Shell(FakeWindow(LOCAL)))
-    exposed = {n for n in dir(bridge) if not n.startswith("_")}
-    assert exposed == set(public_methods(DesktopApi))
+    # JobRegistry sits on DesktopApi as .jobs; nothing but the guarded
+    # public methods may reach pywebview.
+    assert sorted(_bridge(tmp_path, Shell(FakeWindow(LOCAL)))) == public_methods(DesktopApi)
 
 
 def test_the_local_page_reaches_the_real_method(tmp_path):
-    bridge = guarded(_api(tmp_path), Shell(FakeWindow(LOCAL)))
-    assert bridge.reset_install() == {"ok": True}
-
-
-def test_load_local_leaves_an_already_local_page_alone():
-    # Reloading mid-job redraws Home and strands the job's events.
-    window = FakeWindow(LOCAL)
-    shell = Shell(window)
-    shell.load_local()
-    assert window.loaded == []
+    assert _bridge(tmp_path, Shell(FakeWindow(LOCAL)))["reset_install"]() == {"ok": True}
 
 
 @pytest.mark.parametrize("before_first_load", [None, "None", "about:blank"])
@@ -134,10 +117,22 @@ def test_nothing_is_recorded_before_the_local_page_has_loaded(before_first_load)
     assert window.loaded == []
 
 
-def test_pywebview_discovers_every_bridge_method(tmp_path):
-    # Before 6.2, pywebview exposes only what inspect.ismethod accepts.
-    bridge = guarded(_api(tmp_path), Shell(FakeWindow(LOCAL)))
-    for name in public_methods(DesktopApi):
-        attr = getattr(bridge, name)
-        assert inspect.ismethod(attr), name
-        inspect.getfullargspec(attr)
+@pytest.mark.parametrize("url", [
+    "file:///C:/Windows/System32/calc.exe",
+    "ms-settings:privacy",
+    "javascript:alert(1)",
+    "\\\\server\\share\\run.exe",
+])
+def test_a_page_cannot_hand_the_os_anything_but_a_web_link(url):
+    # pywebview gives every new-window request from any page, the console
+    # included, to webbrowser.open; on Windows that is os.startfile.
+    opened = []
+    web_links_only(opened.append)(url)
+    assert opened == []
+
+
+def test_web_links_still_reach_the_browser():
+    opened = []
+    open_ = web_links_only(lambda url, *args: opened.append((url, args)))
+    open_("http://recipe-box.localhost:39080/", 2, True)
+    assert opened == [("http://recipe-box.localhost:39080/", (2, True))]

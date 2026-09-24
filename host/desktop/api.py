@@ -10,7 +10,7 @@ window.
 """
 from __future__ import annotations
 
-import webbrowser
+from urllib.parse import quote
 
 from host.core import constants
 from host.core.status import probe
@@ -23,17 +23,18 @@ class DesktopApi:
     IMPORT_MODES = ("merge", "replace")
 
     def __init__(self, provider, state, *, push,
-                 probe_fn=probe, browser_open=webbrowser.open, steps_factory=None,
-                 client_factory=None, install_dir_factory=None, navigate=None):
+                 probe_fn=probe, steps_factory=None,
+                 client_factory=None, install_dir_factory=None, navigate=None,
+                 local_url=None):
         self._provider = provider
         self._state = state
         self._probe = probe_fn
-        self._open = browser_open
         self._steps_factory = steps_factory
         self._client_factory = client_factory or self._default_client_factory
         self._install_dir_factory = install_dir_factory or self._default_install_dir
         self.jobs = JobRegistry(push)
         self._navigate = navigate or (lambda url: None)
+        self._local_url = local_url or (lambda: None)
         self._home_seen = False
 
     @staticmethod
@@ -64,8 +65,8 @@ class DesktopApi:
         resumed = getattr(self, "resumed", False)
         self.resumed = False
         first_run = not readiness.vm_exists and not self._state.completed()
-        # One-shot like `resumed`: the Machine menu item reloads this page,
-        # and a second True would bounce the user back into the console.
+        # One-shot like `resumed`: the console's Home link reloads this
+        # page, and a second True would bounce the user back into it.
         enter_console = (not self._home_seen and (route, state) == ("home", "running")
                          and not first_run and not resumed)
         self._home_seen = True
@@ -88,20 +89,6 @@ class DesktopApi:
 
     # --- actions ------------------------------------------------------
 
-    def open_omelet(self) -> dict:
-        # The edge port, never the API port: the page and its /api live
-        # behind Traefik.
-        url = f"http://localhost:{constants.EDGE_PORT}"
-        try:
-            code = self._client_factory(self._provider).handoff_code()
-        except Exception:
-            # An older API, a stopped VM, an unreadable token: the bare page
-            # shows its own "open from the desktop app" screen, so opening it
-            # is always better than an error here.
-            code = None
-        self._open(f"{url}/#handoff={code}" if code else url)
-        return {"ok": True}
-
     def enter_console(self) -> dict:
         if self.jobs.running():
             # Leaving the local UI now would strand the job's events.
@@ -112,7 +99,12 @@ class DesktopApi:
             # Never load the console without a code: its signed-out screen
             # sends the user to the desktop app they are already in.
             return {"ok": False, "message": f"{e}"}
-        self._navigate(f"http://localhost:{constants.EDGE_PORT}/#handoff={code}")
+        url = f"http://localhost:{constants.EDGE_PORT}/#handoff={code}"
+        home = self._local_url()
+        if home:
+            # The console's Home button comes back here.
+            url += f"&home={quote(home, safe='')}"
+        self._navigate(url)
         return {"ok": True}
 
     def start_install(self) -> dict:

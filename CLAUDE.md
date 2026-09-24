@@ -157,12 +157,13 @@ Do not add an `if windows` anywhere else — push the difference into a provider
   `host/core` values to what a screen needs — no provider, no client, nothing reaching the VM or
   the network (it does walk the local filesystem in `inspect_folder()`) — which is what makes
   it the only module here worth unit-testing. `api.py` is the only object JavaScript can reach —
-  through `shell.py`'s `guarded()` facade, which refuses every call unless the local UI is the
+  through `shell.py`'s `guarded()` functions, which refuse every call unless the local UI is the
   page showing — so it stays a thin, fixed list of methods taking scalars, with every real
   decision pushed into `view.py`. When the machine is running the same window shows the projects
-  console (`localhost:<edge>`, entered with a handoff code); a native "Omelet" menu switches
-  between it and the local screens and offers "Open in browser". `jobs.py` runs one slow job at a time on a worker thread: `InstallState` is a JSON
-  file, and two installs writing it at once would race. `ui/` holds the HTML, CSS, JS and bundled
+  console (`localhost:<edge>`, entered with a handoff code); the console's own top bar links
+  back to the local screens and opens itself in the system browser — there is no native menu.
+  `jobs.py` runs one slow job at a time on a worker thread: `InstallState` is a JSON file, and
+  two installs writing it at once would race. `ui/` holds the HTML, CSS, JS and bundled
   fonts and must work fully offline. `cli.setup` launches it; `--headless` still bypasses it
   entirely for a machine without a webview runtime.
 - `runtime/install/get.sh` — the entrypoint: `resolve_ref` (explicit `OMELET_RUNTIME_REF` →
@@ -192,7 +193,8 @@ Do not add an `if windows` anywhere else — push the difference into a provider
   Every route is on one `APIRouter` mounted twice: at `/` behind the bearer token
   (host, in-VM CLI) and at `/api` behind the `omelet_session` cookie plus a
   `Host`/`Origin` allowlist (the browser UI, reached through Traefik on the edge
-  port). The desktop gets the browser a session through `POST /sessions/handoff`;
+  port). The desktop gets the browser a session through `POST /sessions/handoff`, and a
+  signed-in page gets the system browser one through `POST /api/sessions/handoff`;
   see `docs/superpowers/specs/2026-09-21-web-ui-agent-prerequisites-design.md`.
   `DELETE /projects/{id}?purge=true` removes volumes and the folder; plain DELETE keeps them.
 - `runtime/omelet_api/core/exec.py` — `LocalRunner`, the in-VM twin of `VmProvider.exec`: same
@@ -233,6 +235,10 @@ Do not add an `if windows` anywhere else — push the difference into a provider
   `uploads/queue.ts` owns the chunked-upload protocol (resume at the API's offset, busy retry on
   the last chunk, hold on `disk_full`) with no React in it; one instance lives above the router in
   `uploads/QueueProvider.tsx`, so uploads carry on across screens but stop when the page closes.
+  `desktop/desktop.ts` reads the `home=` address the desktop window adds to the handoff link
+  (only `http://127.0.0.1:<port>`), which switches on the shell's Home button and "open in
+  browser"; open external addresses with its `openExternal` (an anchor click), never
+  `window.open` — WKWebView hands only link activations to the system browser.
 
 ### Things that will bite you
 
@@ -246,11 +252,14 @@ that document is written. Add a new entry here when you hit one.
   checkout, and fails only inside the image build.
 - pywebview injects `window.pywebview.api` into every page the window loads, including the
   console served from the VM. `host/desktop/shell.py` refuses bridge calls and pushed events
-  unless the local UI is showing; a new `DesktopApi` method is covered automatically, but
-  anything handed to `create_window(js_api=...)` other than `guarded(...)` is not. It checks
-  the page showing, not the sender, and the local UI is plain `http://127.0.0.1:<port>`;
-  the spec's "What the guard does not cover" names the residual race. The facade's members
-  must stay bound methods: pywebview before 6.2 exposes nothing else.
+  unless the local UI is showing; a new `DesktopApi` method is covered automatically. Keep
+  `create_window(js_api=None)` and register functions with `window.expose()`: pywebview
+  resolves a dotted call name from `js_api` with plain `getattr`, so any object there lets a
+  page walk `home.__func__.__globals__` past the guard. It checks the page showing, not the
+  sender, and the local UI is plain `http://127.0.0.1:<port>`; the spec's "What the guard
+  does not cover" names the residual race. Any page can also open a new window, which pywebview
+  hands to `webbrowser.open` (`os.startfile` on Windows), so `_default_start` wraps it with
+  `web_links_only` — http(s) only.
 
 ## Testing conventions
 

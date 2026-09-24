@@ -27,18 +27,29 @@ class HandoffClient:
         return self._code
 
 
-def _api(tmp_path, *, readiness=READY, client=None, loaded=None):
+def _api(tmp_path, *, readiness=READY, client=None, loaded=None, home=None):
     return DesktopApi(FakeProvider(), InstallState(tmp_path / "s.json"),
                       push=lambda event: None,
                       probe_fn=lambda provider: readiness,
                       client_factory=lambda provider: client or HandoffClient(code="abc"),
-                      navigate=(loaded.append if loaded is not None else None))
+                      navigate=(loaded.append if loaded is not None else None),
+                      local_url=lambda: home)
 
 
 def test_entering_loads_the_edge_port_with_the_handoff_code(tmp_path):
     loaded = []
     assert _api(tmp_path, loaded=loaded).enter_console() == {"ok": True}
     assert loaded == [f"http://localhost:{constants.EDGE_PORT}/#handoff=abc"]
+
+
+def test_the_console_is_told_where_home_is(tmp_path):
+    # The console's Home button navigates here; the address travels encoded
+    # so its own "&" or "#" cannot end the fragment early.
+    loaded = []
+    home = "http://127.0.0.1:53817/index.html"
+    _api(tmp_path, loaded=loaded, home=home).enter_console()
+    assert loaded == [f"http://localhost:{constants.EDGE_PORT}/#handoff=abc"
+                      f"&home=http%3A%2F%2F127.0.0.1%3A53817%2Findex.html"]
 
 
 def test_a_failed_handoff_loads_nothing(tmp_path):
@@ -70,7 +81,7 @@ def test_a_running_machine_enters_the_console_at_launch(tmp_path):
 
 
 def test_the_launch_flag_is_spent_by_the_first_home_call(tmp_path):
-    # The Machine menu item reloads the local UI, which calls home() again;
+    # The console's Home link reloads the local UI, which calls home() again;
     # a second True would bounce the user straight back into the console.
     api = _api(tmp_path)
     api.home()

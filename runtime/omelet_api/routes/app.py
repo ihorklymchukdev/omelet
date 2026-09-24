@@ -838,6 +838,12 @@ def create_app(*, config: ApiConfig | None = None, runner=None, state=None,
     def issue_handoff() -> dict:
         return {"code": sessions.issue_handoff(), "expires_in": HANDOFF_TTL}
 
+    # A signed-in page signing the system browser in (the desktop window's
+    # "open in browser"). The middleware has already checked cookie and Origin.
+    @app.post("/api/sessions/handoff")
+    def issue_browser_handoff() -> dict:
+        return issue_handoff()
+
     @app.post("/api/session")
     def start_session(body: Handoff, response: Response) -> dict:
         session_id = sessions.redeem(body.code)

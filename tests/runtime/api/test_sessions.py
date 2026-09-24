@@ -41,10 +41,26 @@ def test_a_handoff_code_works_only_once(env):
     assert again.json()["error"]["code"] == "handoff_invalid"
 
 
-def test_handoff_is_not_reachable_from_the_browser_mount(env):
+def test_handoff_needs_a_session_on_the_browser_mount(env):
     resp = TestClient(env.app, headers={**BROWSER, **ORIGIN}).post(
         "/api/sessions/handoff")
     assert resp.status_code == 401
+
+
+def test_a_signed_in_page_can_sign_a_second_browser_in(env):
+    # The desktop window's "open in browser" button: the page mints a code
+    # and the system browser redeems it.
+    code = _signed_in(env).post("/api/sessions/handoff").json()["code"]
+    other = TestClient(env.app, headers={**BROWSER, **ORIGIN})
+    assert other.post("/api/session", json={"code": code}).status_code == 200
+    assert other.get("/api/projects").status_code == 200
+
+
+def test_a_foreign_origin_cannot_mint_a_code_with_the_cookie(env):
+    browser = _signed_in(env)
+    resp = browser.post("/api/sessions/handoff",
+                        headers={"Origin": "http://evil.example"})
+    assert resp.status_code == 403
 
 
 def test_the_cookie_is_scoped_to_the_api_path_and_script_proof(env):

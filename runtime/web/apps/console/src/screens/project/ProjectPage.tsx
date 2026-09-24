@@ -15,6 +15,7 @@ import { StartingBody } from "./StartingBody";
 import { Tiles } from "./Tiles";
 import { WrongBody } from "./WrongBody";
 import s from "./ProjectPage.module.css";
+import { openExternal } from "../../desktop/desktop";
 
 export function ProjectPage() {
   const { id = "" } = useParams();
@@ -100,7 +101,7 @@ export function ProjectPage() {
           {head(count > 0 ? `${count} ${count === 1 ? "address" : "addresses"} open` : undefined)}
           <div className={s.actions}>
             {primary && (
-              <Button variant="primary" onClick={() => window.open(primary, "_blank", "noopener,noreferrer")}>
+              <Button variant="primary" onClick={() => openExternal(primary)}>
                 Open in browser{ARROW}
               </Button>
             )}
