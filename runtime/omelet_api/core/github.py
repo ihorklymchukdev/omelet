@@ -118,7 +118,8 @@ def clone_argv(full_name: str, dest: Path) -> list[str]:
     # and the macOS uid on Lima, never this API's uid 1000 -- it writes
     # through the docker group the projects folder hands down.
     return ["sh", "-c", 'umask 002 && exec "$@"', "sh",
-            "git", "-c", "credential.helper=", "-c", f"credential.helper={_HELPER}",
+            "git", "-c", "credential.helper=",
+            "-c", f"credential.https://github.com.helper={_HELPER}",
             "-c", "core.sharedRepository=group",
             "clone", "--", f"https://github.com/{full_name}.git", str(dest)]
 
