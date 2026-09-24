@@ -45,9 +45,6 @@ if [[ ! -f "$DESIRED" ]]; then
   exit 0
 fi
 
-SECRET=""
-[[ -r "$TOKEN" ]] && SECRET="$(cat "$TOKEN")"
-
 accounts() {
   echo "root:0:0:$ROOT_HOME"
   getent passwd | bash "$LIB/login-users.sh" "$SHELLS"
@@ -120,6 +117,8 @@ disconnect() {
 PASS=0
 while :; do
   PASS=$((PASS + 1))
+  SECRET=""
+  [[ -r "$TOKEN" ]] && SECRET="$(cat "$TOKEN")"
   GEN="$(field "$DESIRED" generation)"
   STATE="$(field "$DESIRED" state)"
   NAME="$(field "$DESIRED" name)"
