@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 
 export const DEVICE_URL = "https://github.com/login/device";
@@ -19,6 +19,12 @@ export type RepoPage = { repos: Repo[]; has_more: boolean };
 
 export function polling(status?: GitHubStatus): boolean {
   return status?.state === "pending" || (status?.state === "connected" && status.setup === "applying");
+}
+
+// A server-side move to needs_reconnect (e.g. a clone that failed on a
+// revoked token) would otherwise stay hidden behind the last-fetched status.
+export function invalidateGitHub(client: QueryClient) {
+  return client.invalidateQueries({ queryKey: GITHUB });
 }
 
 export function useGitHub() {

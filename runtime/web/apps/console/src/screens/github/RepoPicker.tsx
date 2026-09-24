@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@omelet/ui";
-import { useCloneRepo, useRepos } from "../../github/github";
+import { invalidateGitHub, useCloneRepo, useRepos } from "../../github/github";
 import { relativeTime } from "../../projects/format";
 import { useJob } from "../../projects/queries";
 import s from "./GitHubModal.module.css";
@@ -70,7 +71,9 @@ function Cloning({
 }) {
   const job = useJob(jobId).data;
   const navigate = useNavigate();
+  const client = useQueryClient();
   const cloned = job !== undefined && job.state !== "failed" && (job.phase !== "cloning" || job.state === "done");
+  const failed = job?.state === "failed";
   // onDone/navigate get a new identity on every parent render, which would
   // otherwise re-run this effect and push a second history entry.
   const fired = useRef(false);
@@ -81,6 +84,15 @@ function Cloning({
       navigate(`/p/${encodeURIComponent(id)}`);
     }
   }, [cloned, id, navigate, onDone]);
+  // A failed clone may have moved the connection to needs_reconnect
+  // server-side (e.g. a revoked token); refresh once so the modal reflects it.
+  const invalidated = useRef(false);
+  useEffect(() => {
+    if (failed && !invalidated.current) {
+      invalidated.current = true;
+      void invalidateGitHub(client);
+    }
+  }, [failed, client]);
   if (job?.state === "failed") {
     return (
       <>
