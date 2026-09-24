@@ -147,6 +147,7 @@ Migration `_v5_public_urls`:
 
 ```
 public_urls(local_id TEXT PRIMARY KEY,
+            cloud_id TEXT NOT NULL,     -- kept so a release survives sync dropping the mapping
             state TEXT NOT NULL,        -- enabling | on | releasing | failed | ended
             urls TEXT,                  -- JSON, only while state = 'on'
             expires_at REAL,            -- only while state = 'on'
@@ -163,7 +164,10 @@ It exists only while a URL is on. Turning off, expiry, sign-out and delete remov
 
 1. Refuse at once, as `unavailable`, when: not signed in (`signed_out`); the project
    has no `cloud_projects` mapping yet (`not_registered`); the project has no web
-   service (`no_web`). A project already `enabling` answers 409 `busy`.
+   service (`no_web`). A project already `enabling` answers 409 `project_busy`, and so
+   does turning it off while it is `enabling`. A row already `on` is returned as is.
+   A `releasing` row is released first; if that fails the row stays `releasing`
+   with `cloud_unavailable` as its reason.
 2. Set the row to `enabling`, return, and do the rest on a spawned thread.
 3. `POST` with the project's local hostnames (`host_for` for each web service) and
    `origin`.
@@ -216,7 +220,9 @@ On the shared router (`/api/...` for the console, `/...` behind the bearer token
 Additive: `API_VERSION` does not change and the host never calls them.
 
 - `GET /projects/{id}/public` — the status.
-- `POST /projects/{id}/public` — 202 with `enabling`, or an `unavailable` status.
+- `POST /projects/{id}/public` — 202 with `enabling`. A precondition failure answers
+  409 with the unavailable reason's code and message; a project already `enabling`
+  answers 409 `project_busy`.
 - `DELETE /projects/{id}/public` — the `off` status.
 - The project payload (list and single) gains `public` with the same status. The
   in-VM CLI does not print it.
@@ -231,7 +237,8 @@ Additive: `API_VERSION` does not change and the host never calls them.
 {"state": "failed", "reason": {"code": "…", "message": "…"}}
 ```
 
-`ended` and `releasing` rows both read as `off`. `unavailable` is computed on each
+`ended` and `releasing` rows both read as `off`, except a `releasing` row whose
+release blocked a new turn-on: it carries a reason and reads as `failed`. `unavailable` is computed on each
 read (account and mapping), never stored.
 
 ### Wording
