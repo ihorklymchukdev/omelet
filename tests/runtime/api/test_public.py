@@ -13,7 +13,8 @@ from tests.runtime.api.fake_cloud import FakeCloud
 
 HOSTS = [{"service": "web", "hostname": "blog.d.io", "local_url": "http://blog.d.io:39080"}]
 ON = {"id": "u1", "project_id": "c-blog",
-      "urls": [{"hostname": "blog.d.io", "url": "https://k3x9.example.dev"}],
+      "urls": [{"service": "web", "local_hostname": "blog.d.io",
+                "url": "https://k3x9.example.dev"}],
       "expires_at": "2026-09-24T15:00:00Z",
       "credentials": {"provider": "cloudflare", "token": "tun-1"}}
 EXPIRES = 1790262000.0  # 2026-09-24T15:00:00Z
@@ -79,7 +80,8 @@ def test_turning_on_writes_a_narrow_token_starts_the_client_and_shows_the_urls(t
     assert token.read_text() == "tun-1"
     assert stat.S_IMODE(os.stat(token).st_mode) == 0o640
     assert runner.up
-    assert cloud.calls == [("create_public_url", "at", "c-blog", ["blog.d.io"],
+    assert cloud.calls == [("create_public_url", "at", "c-blog",
+                            [{"local_hostname": "blog.d.io", "service": "web"}],
                             "http://traefik:39080")]
     assert public.status("blog") == {
         "state": "on", "expires_at": EXPIRES,
@@ -156,7 +158,8 @@ def test_turning_off_while_the_service_is_down_is_off_here_and_retried(tmp_path)
 
 
 def test_turning_one_off_keeps_the_client_another_project_needs(tmp_path):
-    other = {**ON, "urls": [{"hostname": "blog.d.io", "url": "https://z.example.dev"}]}
+    other = {**ON, "urls": [{"service": "web", "local_hostname": "blog.d.io",
+                       "url": "https://z.example.dev"}]}
     cloud = FakeCloud(create_public_url=[ON, other], release_public_url=[None])
     public, _, runner, _ = make(tmp_path, cloud, projects=("blog", "shop"),
                                 mapped=("blog", "shop"))
@@ -396,7 +399,8 @@ def test_signing_out_releases_then_forgets_every_public_url(tmp_path):
 
 
 def test_turning_on_again_after_expiry_creates_a_new_url(tmp_path):
-    fresh = {**ON, "urls": [{"hostname": "blog.d.io", "url": "https://new.example.dev"}],
+    fresh = {**ON, "urls": [{"service": "web", "local_hostname": "blog.d.io",
+                             "url": "https://new.example.dev"}],
              "expires_at": "2026-09-24T17:00:00Z"}
     cloud = FakeCloud(create_public_url=[ON, fresh])
     public, _, runner, clock = make(tmp_path, cloud)
@@ -478,3 +482,80 @@ def test_turning_off_a_failed_url_clears_it(tmp_path):
 
     assert public.disable("blog") == {"state": "off", "note": None}
     assert state.get_public("blog") is None
+
+
+TWO_HOSTS = [
+    {"service": "web", "hostname": "blog.d.io", "local_url": "http://blog.d.io:39080"},
+    {"service": "api_v2", "hostname": "api.blog.d.io",
+     "local_url": "http://api.blog.d.io:39080"},
+]
+
+
+def test_each_public_url_is_matched_to_its_route_by_local_hostname(tmp_path):
+    # Reply order differs from request order on purpose: the key is the
+    # hostname, never the position or the service name.
+    reply = {**ON, "urls": [
+        {"service": "api_v2", "local_hostname": "api.blog.d.io",
+         "url": "https://api-v2--k3x9.example.dev"},
+        {"service": "web", "local_hostname": "blog.d.io",
+         "url": "https://k3x9.example.dev"}]}
+    cloud = FakeCloud(create_public_url=[reply])
+    public, _, _, _ = make(tmp_path, cloud, hosts=TWO_HOSTS)
+
+    public.enable("blog")
+
+    assert cloud.calls[0][3] == [
+        {"local_hostname": "blog.d.io", "service": "web"},
+        {"local_hostname": "api.blog.d.io", "service": "api_v2"}]
+    assert public.status("blog")["urls"] == [
+        {"url": "https://api-v2--k3x9.example.dev", "service": "api_v2",
+         "local_url": "http://api.blog.d.io:39080"},
+        {"url": "https://k3x9.example.dev", "service": "web",
+         "local_url": "http://blog.d.io:39080"}]
+
+
+def test_a_url_with_no_expiry_stays_on_through_reconcile(tmp_path):
+    cloud = FakeCloud(create_public_url=[{**ON, "expires_at": None}],
+                      get_public_url=[ON])
+    public, _, runner, clock = make(tmp_path, cloud)
+    public.enable("blog")
+    clock.now = EXPIRES + 10**6
+
+    public.reconcile()
+
+    status = public.status("blog")
+    assert (status["state"], status["expires_at"]) == ("on", None)
+    assert runner.up
+
+
+def test_the_same_token_again_leaves_the_running_client_alone(tmp_path):
+    cloud = FakeCloud(create_public_url=[ON], release_public_url=[None])
+    public, _, runner, _ = make(tmp_path, cloud)
+    write_token(tmp_path / "tunnel.token", "tun-1")
+
+    public.enable("blog")
+
+    ups = [argv for argv in runner.calls if "up" in argv]
+    assert ups and not any("--force-recreate" in argv for argv in ups)
+
+
+def test_a_new_token_recreates_the_client(tmp_path):
+    cloud = FakeCloud(create_public_url=[ON])
+    public, _, runner, _ = make(tmp_path, cloud)
+    write_token(tmp_path / "tunnel.token", "tun-old")
+    runner.up = True
+
+    public.enable("blog")
+
+    assert (tmp_path / "tunnel.token").read_text() == "tun-1"
+    assert any("--force-recreate" in argv for argv in runner.calls if "up" in argv)
+
+
+def test_a_cloudflare_failure_reads_in_plain_words(tmp_path):
+    cloud = FakeCloud(create_public_url=[CloudError("tunnel_provider_error", "x", 502)])
+    public, _, _, _ = make(tmp_path, cloud)
+
+    public.enable("blog")
+
+    assert public.status("blog")["reason"] == {
+        "code": "tunnel_provider_error", "message": MESSAGES["tunnel_provider_error"]}

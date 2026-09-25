@@ -88,7 +88,7 @@ export function ProjectRow({ project }: { project: Project }) {
         <div className={s.who}>
           <Link className={s.name} to={page}>{project.id}</Link>
           {line}
-          {pub.kind === "on" && <span className={s.quiet}>Public · {pub.left}</span>}
+          {pub.kind === "on" && <span className={s.quiet}>{pub.left ? `Public · ${pub.left}` : "Public"}</span>}
         </div>
         <StateBadge state={view.badge} />
         <div className={s.actions}>{actions}</div>

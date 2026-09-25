@@ -39,8 +39,8 @@ class FakeCloud:
     def delete_project(self, token, cloud_id):
         return self._next("delete_project", token, cloud_id)
 
-    def create_public_url(self, token, cloud_id, hostnames, origin):
-        return self._next("create_public_url", token, cloud_id, hostnames, origin)
+    def create_public_url(self, token, cloud_id, routes, origin):
+        return self._next("create_public_url", token, cloud_id, routes, origin)
 
     def get_public_url(self, token, cloud_id):
         return self._next("get_public_url", token, cloud_id)

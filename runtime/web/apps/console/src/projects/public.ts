@@ -8,7 +8,7 @@ export type PublicView =
   | { kind: "unavailable"; message: string }
   | { kind: "off"; note: string | null }
   | { kind: "enabling" }
-  | { kind: "on"; urls: PublicUrl[]; left: string }
+  | { kind: "on"; urls: PublicUrl[]; left: string | null }
   | { kind: "failed"; message: string };
 
 export function timeLeft(expiresAtSec: number, nowMs: number): string {
@@ -21,6 +21,8 @@ export function timeLeft(expiresAtSec: number, nowMs: number): string {
 export function publicView(status: PublicStatus, nowMs: number): PublicView {
   switch (status.state) {
     case "on":
+      // A null expiry means the service set no time limit.
+      if (status.expires_at === null) return { kind: "on", urls: status.urls, left: null };
       return status.expires_at * 1000 <= nowMs
         ? { kind: "off", note: EXPIRED_NOTE }
         : { kind: "on", urls: status.urls, left: timeLeft(status.expires_at, nowMs) };
@@ -38,7 +40,7 @@ export function publicView(status: PublicStatus, nowMs: number): PublicView {
 export function tileLine(view: PublicView): string {
   switch (view.kind) {
     case "on":
-      return view.left;
+      return view.left ?? "On";
     case "enabling":
       return "Turning on…";
     case "failed":

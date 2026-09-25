@@ -87,13 +87,13 @@ def test_signing_out_releases_the_public_url(env):
 def test_the_default_public_wiring_reaches_the_service_with_real_hosts_and_origin(env):
     """No `public=` override here: this exercises the production
     `public_hosts` closure inside create_app -- the real `load()`/`host_for()`
-    wiring that decides which hostnames and origin actually reach the
+    wiring that decides which routes and origin actually reach the
     service, which every other test in this file bypasses by passing its own
     `public=`."""
     # create_app builds the default Public with the real clock, not a fixed
     # one, so expires_at must be genuinely in the future rather than ON's
     # hardcoded (and by now past) timestamp.
-    reply = {**ON, "urls": [{"hostname": "blog.test.local",
+    reply = {**ON, "urls": [{"service": "web", "local_hostname": "blog.test.local",
                              "url": "https://k3x9.example.dev"}],
              "expires_at": "2099-01-01T00:00:00Z"}
     cloud = FakeCloud(create_public_url=[reply])
@@ -123,7 +123,8 @@ def test_the_default_public_wiring_reaches_the_service_with_real_hosts_and_origi
     assert status["urls"] == [{"url": "https://k3x9.example.dev", "service": "web",
                                "local_url": "http://blog.test.local:41080"}]
     assert cloud.calls[0] == ("create_public_url", "at", "c-blog",
-                              ["blog.test.local"], "http://traefik:41080")
+                              [{"local_hostname": "blog.test.local", "service": "web"}],
+                              "http://traefik:41080")
 
 
 def test_the_guest_token_cannot_turn_a_public_url_on_or_off(env):

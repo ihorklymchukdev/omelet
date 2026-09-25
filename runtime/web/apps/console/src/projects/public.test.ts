@@ -15,6 +15,13 @@ describe("publicView", () => {
     expect(publicView(on, at(10_000))).toEqual({ kind: "off", note: EXPIRED_NOTE });
   });
 
+  it("keeps a URL with no time limit on, with no countdown", () => {
+    const unlimited: PublicStatus = { ...on, expires_at: null };
+    const view = publicView(unlimited, at(10_000_000));
+    expect(view).toEqual({ kind: "on", urls: on.state === "on" ? on.urls : [], left: null });
+    expect(tileLine(view)).toBe("On");
+  });
+
   it("carries the API's own words for every other state", () => {
     const reason = { code: "no_web", message: "This project has no web page to share." };
     expect(publicView({ state: "unavailable", reason }, 0)).toEqual({ kind: "unavailable", message: reason.message });

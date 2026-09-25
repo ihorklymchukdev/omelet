@@ -30,7 +30,7 @@ export type PublicStatus =
   | { state: "unavailable"; reason: Problem }
   | { state: "off"; note: Problem | null }
   | { state: "enabling" }
-  | { state: "on"; urls: PublicUrl[]; expires_at: number }
+  | { state: "on"; urls: PublicUrl[]; expires_at: number | null }
   | { state: "failed"; reason: Problem };
 
 export interface Project {

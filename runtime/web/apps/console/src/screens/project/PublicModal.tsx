@@ -57,7 +57,7 @@ export function PublicModal({ project, open, onClose }: { project: Project; open
           {project.status !== "started_ok" && <Notice>Start the project so visitors can see it.</Notice>}
           <div className={s.modalFoot}>
             <Button variant="danger" disabled={toggle.isPending} onClick={() => toggle.mutate(false)}>Turn off</Button>
-            <span className={s.note}>{view.left}</span>
+            {view.left && <span className={s.note}>{view.left}</span>}
           </div>
         </>
       );

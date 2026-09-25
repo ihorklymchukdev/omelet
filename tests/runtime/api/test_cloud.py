@@ -114,17 +114,19 @@ def test_a_truncated_body_is_unavailable_not_a_bare_exception():
         cloud.me("t")
 
 
-def test_turning_a_public_url_on_sends_the_hostnames_and_origin():
+def test_turning_a_public_url_on_sends_the_routes_and_origin():
     opener = Opener((201, json.dumps({"urls": []}).encode()))
     cloud = Cloud("https://svc/api", opener=opener)
+    routes = [{"local_hostname": "blog.d.io", "service": "web"},
+              {"local_hostname": "api.blog.d.io", "service": "api_v2"}]
 
-    cloud.create_public_url("t", "c/1", ["blog.d.io"], "http://traefik:39080")
+    cloud.create_public_url("t", "c/1", routes, "http://traefik:39080")
 
     request = opener.requests[0]
     assert (request.get_method(), request.full_url) == (
         "POST", "https://svc/api/v1/tunnels/projects/c%2F1/url")
-    assert json.loads(request.data) == {"hostnames": ["blog.d.io"],
-                                        "origin": "http://traefik:39080"}
+    assert json.loads(request.data) == {"origin": "http://traefik:39080",
+                                        "routes": routes}
     assert request.get_header("Authorization") == "Bearer t"
 
 
@@ -132,7 +134,9 @@ def test_a_refused_public_url_keeps_the_services_code():
     cloud = Cloud("https://svc/api", opener=Opener(
         (409, _error("public_url_active", "one is on"))))
     with pytest.raises(CloudError) as raised:
-        cloud.create_public_url("t", "c1", ["blog.d.io"], "http://traefik:39080")
+        cloud.create_public_url("t", "c1", [{"local_hostname": "blog.d.io",
+                                             "service": "web"}],
+                                "http://traefik:39080")
     assert (raised.value.code, raised.value.status) == ("public_url_active", 409)
 
 

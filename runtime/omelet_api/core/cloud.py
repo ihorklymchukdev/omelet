@@ -99,10 +99,10 @@ class Cloud:
     def _public_url_path(self, cloud_id: str) -> str:
         return f"/v1/tunnels/projects/{urllib.parse.quote(cloud_id, safe='')}/url"
 
-    def create_public_url(self, token: str, cloud_id: str, hostnames: list[str],
+    def create_public_url(self, token: str, cloud_id: str, routes: list[dict],
                           origin: str):
         return self.call("POST", self._public_url_path(cloud_id), token=token,
-                         body={"hostnames": hostnames, "origin": origin})
+                         body={"origin": origin, "routes": routes})
 
     def get_public_url(self, token: str, cloud_id: str):
         return self.call("GET", self._public_url_path(cloud_id), token=token)

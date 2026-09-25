@@ -29,6 +29,14 @@ MESSAGES = {
     "expired": "The public address expired. Start a new one; it will be a "
                "different address.",
     "released_elsewhere": "The public address was turned off from the Omelet website.",
+    "project_not_found": "This project isn't linked to your account yet. Try again in a minute.",
+    "device_required": "This computer's sign-in can't make public addresses. "
+                       "Sign out and sign in again.",
+    "tunnel_provider_error": "Cloudflare couldn't set up the address. "
+                             "Try again in a few minutes.",
+    "public_urls_disabled": "Public addresses are switched off on the Omelet "
+                            "service right now.",
+    "validation_error": "The Omelet service couldn't accept this project's addresses.",
 }
 
 
@@ -47,7 +55,13 @@ def _daemon(fn) -> None:
     threading.Thread(target=fn, name="omelet-public", daemon=True).start()
 
 
-def write_token(path: Path, token: str) -> None:
+def write_token(path: Path, token: str) -> bool:
+    """False when the file already holds this token (nothing written)."""
+    try:
+        if path.read_text() == token:
+            return False
+    except OSError:
+        pass
     path.parent.mkdir(mode=0o750, parents=True, exist_ok=True)
     # fchmod sets the mode before any byte is written, independent of umask.
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".tunnel-")
@@ -59,6 +73,7 @@ def write_token(path: Path, token: str) -> None:
     except BaseException:
         Path(tmp).unlink(missing_ok=True)
         raise
+    return True
 
 
 def remove_token(path: Path) -> None:
@@ -70,8 +85,12 @@ class TunnelClient:
         self._runner = runner
         self._base = [DOCKER, "compose", "-f", str(stack_file), "--profile", "tunnel"]
 
-    def start(self):
-        return self._runner.exec([*self._base, "up", "-d", "--no-deps", "tunnel"])
+    def start(self, *, recreate: bool = False):
+        # cloudflared reads its token once; a running client needs recreating
+        # to pick up a new one.
+        extra = ["--force-recreate"] if recreate else []
+        return self._runner.exec([*self._base, "up", "-d", "--no-deps", *extra,
+                                  "tunnel"])
 
     def stop(self):
         return self._runner.exec([*self._base, "rm", "-sf", "tunnel"])
@@ -81,11 +100,18 @@ class TunnelClient:
         return out.ok and bool(out.stdout.strip())
 
 
-def _epoch(value: str) -> float:
+def _epoch(value: str | None) -> float | None:
+    if value is None:
+        return None
     dt = datetime.fromisoformat(value)
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.timestamp()
+
+
+def _expired(row: dict, now: float) -> bool:
+    # A null expiry means the service set no time limit.
+    return row["expires_at"] is not None and row["expires_at"] <= now
 
 
 def _reason(code: str, message: str | None = None) -> dict:
@@ -127,7 +153,7 @@ class Public:
         row = self._state.get_public(local_id)
         if row is not None:
             if row["state"] == "on":
-                if row["expires_at"] <= self._clock():
+                if _expired(row, self._clock()):
                     return {"state": "off", "note": _reason("expired")}
                 return {"state": "on", "urls": row["urls"],
                         "expires_at": row["expires_at"]}
@@ -148,8 +174,7 @@ class Public:
 
     def enable(self, local_id: str) -> dict:
         row = self._state.get_public(local_id)
-        if (row is not None and row["state"] == "on"
-                and row["expires_at"] <= self._clock()):
+        if row is not None and row["state"] == "on" and _expired(row, self._clock()):
             self._end(row, "expired")
         with self._lock:
             if local_id in self._enabling:
@@ -186,8 +211,10 @@ class Public:
     def _turn_on(self, local_id: str, cloud_id: str) -> None:
         hosts = self._hosts_for(local_id)
         try:
+            routes = [{"local_hostname": h["hostname"], "service": h["service"]}
+                      for h in hosts]
             out = self._account.authed(lambda token: self._cloud.create_public_url(
-                token, cloud_id, [h["hostname"] for h in hosts], self._origin))
+                token, cloud_id, routes, self._origin))
         except NotSignedIn:
             self._state.delete_public(local_id)
             return
@@ -202,14 +229,15 @@ class Public:
         # failure here -- a bad client start, a malformed reply -- must
         # release it, not just mark the row failed.
         try:
-            write_token(self._token_path, out["credentials"]["token"])
-            started = self._client.start()
+            changed = write_token(self._token_path, out["credentials"]["token"])
+            started = self._client.start(recreate=changed)
             if not started.ok:
                 raise RuntimeError("tunnel client failed to start")
             by_host = {h["hostname"]: h for h in hosts}
-            urls = [{"url": u["url"], "service": by_host[u["hostname"]]["service"],
-                     "local_url": by_host[u["hostname"]]["local_url"]}
-                    for u in out["urls"] if u["hostname"] in by_host]
+            urls = [{"url": u["url"],
+                     "service": by_host[u["local_hostname"]]["service"],
+                     "local_url": by_host[u["local_hostname"]]["local_url"]}
+                    for u in out["urls"] if u["local_hostname"] in by_host]
             expires_at = _epoch(out["expires_at"])
         except Exception:
             self._stop_unless_needed(local_id)
@@ -347,7 +375,7 @@ class Public:
             self.disable(local_id, force=True)
             return
         if state == "on":
-            if row["expires_at"] <= self._clock():
+            if _expired(row, self._clock()):
                 self._end(row, "expired")
                 return
             try:
