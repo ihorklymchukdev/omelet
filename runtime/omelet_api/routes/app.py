@@ -186,7 +186,10 @@ def create_app(*, config: ApiConfig | None = None, runner=None, state=None,
     account.on_forget = public.forget_local
 
     def sync_pass() -> None:
-        public.reconcile()
+        try:
+            public.reconcile()
+        except Exception:
+            log.exception("reconciling public URLs failed")
         run_pass(account, cloud, state)
 
     sync = SyncLoop(sync_pass)
@@ -202,6 +205,9 @@ def create_app(*, config: ApiConfig | None = None, runner=None, state=None,
     app.state.sync = sync
     app.state.public = public
     router = APIRouter()
+    # Mounted only at /api: turning a public URL on or off is the console's
+    # decision, never the guest token's (CLI, coding agents).
+    console_router = APIRouter()
 
     @app.exception_handler(ApiError)
     async def _api_error(_request, exc: ApiError):
@@ -458,7 +464,10 @@ def create_app(*, config: ApiConfig | None = None, runner=None, state=None,
 
     @router.post("/account/sign-out")
     def account_sign_out() -> dict:
-        public.release_all()
+        try:
+            public.release_all()
+        except Exception:
+            log.exception("releasing public URLs on sign-out failed")
         return account.sign_out()
 
     @router.post("/projects", status_code=201)
@@ -522,7 +531,7 @@ def create_app(*, config: ApiConfig | None = None, runner=None, state=None,
         require_row(project_id)
         return public.status(project_id)
 
-    @router.post("/projects/{project_id}/public", status_code=202)
+    @console_router.post("/projects/{project_id}/public", status_code=202)
     def public_on(project_id: str) -> dict:
         require_row(project_id)
         try:
@@ -532,7 +541,7 @@ def create_app(*, config: ApiConfig | None = None, runner=None, state=None,
         except Unavailable as e:
             raise ApiError(e.code, e.message, 409) from None
 
-    @router.delete("/projects/{project_id}/public")
+    @console_router.delete("/projects/{project_id}/public")
     def public_off(project_id: str) -> dict:
         require_row(project_id)
         try:
@@ -931,5 +940,6 @@ def create_app(*, config: ApiConfig | None = None, runner=None, state=None,
 
     app.include_router(router)
     app.include_router(router, prefix="/api")
+    app.include_router(console_router, prefix="/api")
 
     return app

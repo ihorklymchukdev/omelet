@@ -6,9 +6,18 @@ from omelet_api.core.account import Account
 from omelet_api.core.public import Public, TunnelClient
 from omelet_api.core.state import State
 from omelet_api.routes.app import create_app
-from tests.runtime.api.conftest import AUTH, COMPOSE_ONE_WEB, FakeRunner
+from tests.runtime.api.conftest import AUTH, BROWSER, COMPOSE_ONE_WEB, FakeRunner
 from tests.runtime.api.fake_cloud import FakeCloud
 from tests.runtime.api.test_public import ON, Clock, TunnelRunner
+
+ORIGIN = {"Origin": "http://localhost:41080"}
+
+
+def console(app, client) -> TestClient:
+    code = client.post("/sessions/handoff").json()["code"]
+    browser = TestClient(app, headers={**BROWSER, **ORIGIN})
+    assert browser.post("/api/session", json={"code": code}).status_code == 200
+    return browser
 
 
 def build(env, cloud, *, tunnel_runner=None):
@@ -33,21 +42,21 @@ def build(env, cloud, *, tunnel_runner=None):
     client.post("/projects", json={"id": "blog"})
     state.map_cloud_project("blog", "c-blog", "org-1")
     (env.config.projects_root / "blog" / "docker-compose.yml").write_text(COMPOSE_ONE_WEB)
-    return client, state, tunnel_runner
+    return client, console(app, client), state, tunnel_runner
 
 
 def test_turning_on_answers_202_and_the_project_shows_the_public_url(env):
-    client, _, _ = build(env, FakeCloud(create_public_url=[ON]))
+    client, browser, _, _ = build(env, FakeCloud(create_public_url=[ON]))
 
-    assert client.post("/projects/blog/public").status_code == 202
+    assert browser.post("/api/projects/blog/public").status_code == 202
     assert client.get("/projects/blog").json()["public"]["state"] == "on"
 
 
 def test_turning_on_an_unregistered_project_is_a_409_with_the_reason(env):
-    client, state, _ = build(env, FakeCloud())
+    _, browser, state, _ = build(env, FakeCloud())
     state.unmap_cloud_project("blog")
 
-    resp = client.post("/projects/blog/public")
+    resp = browser.post("/api/projects/blog/public")
 
     assert resp.status_code == 409
     assert resp.json()["error"]["code"] == "not_registered"
@@ -55,8 +64,8 @@ def test_turning_on_an_unregistered_project_is_a_409_with_the_reason(env):
 
 def test_deleting_a_project_releases_its_public_url(env):
     cloud = FakeCloud(create_public_url=[ON], release_public_url=[None])
-    client, state, tunnel = build(env, cloud)
-    client.post("/projects/blog/public")
+    client, browser, state, tunnel = build(env, cloud)
+    browser.post("/api/projects/blog/public")
 
     client.delete("/projects/blog")
 
@@ -66,8 +75,8 @@ def test_deleting_a_project_releases_its_public_url(env):
 
 def test_signing_out_releases_the_public_url(env):
     cloud = FakeCloud(create_public_url=[ON], release_public_url=[None], logout=[None])
-    client, state, tunnel = build(env, cloud)
-    client.post("/projects/blog/public")
+    client, browser, state, tunnel = build(env, cloud)
+    browser.post("/api/projects/blog/public")
 
     client.post("/account/sign-out")
 
@@ -102,7 +111,7 @@ def test_the_default_public_wiring_reaches_the_service_with_real_hosts_and_origi
     state.map_cloud_project("blog", "c-blog", "org-1")
     (env.config.projects_root / "blog" / "docker-compose.yml").write_text(COMPOSE_ONE_WEB)
 
-    assert client.post("/projects/blog/public").status_code == 202
+    assert console(app, client).post("/api/projects/blog/public").status_code == 202
 
     deadline = time.time() + 5
     status = client.get("/projects/blog/public").json()
@@ -115,3 +124,34 @@ def test_the_default_public_wiring_reaches_the_service_with_real_hosts_and_origi
                                "local_url": "http://blog.test.local:41080"}]
     assert cloud.calls[0] == ("create_public_url", "at", "c-blog",
                               ["blog.test.local"], "http://traefik:41080")
+
+
+def test_the_guest_token_cannot_turn_a_public_url_on_or_off(env):
+    cloud = FakeCloud()
+    client, _, state, tunnel = build(env, cloud)
+
+    assert client.post("/projects/blog/public").status_code in (404, 405)
+    assert client.delete("/projects/blog/public").status_code in (404, 405)
+    assert client.get("/projects/blog/public").status_code == 200
+    assert cloud.calls == [] and state.get_public("blog") is None
+
+
+def test_a_failing_public_reconcile_does_not_stop_the_account_sync(env):
+    class Broken:
+        def reconcile(self):
+            raise OSError("token path is a directory")
+
+        def forget_local(self):
+            pass
+
+    cloud = FakeCloud()
+    state = State(env.config.state_db.with_name("broken.db"))
+    state.update_account(access_token="at", refresh_token="rt",
+                         access_expires_at=10**12, org_id="org-1")
+    account = Account(state, cloud, spawn=lambda fn: None)
+    app = create_app(config=env.config, runner=FakeRunner(), state=state,
+                     account=account, cloud=cloud, public=Broken())
+
+    app.state.sync._run()
+
+    assert state.get_account()["sync_ok_at"] is not None
