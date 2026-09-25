@@ -46,7 +46,7 @@ class ApiConfig:
     max_upload_bytes: int = 512 * 1024 * 1024
     cloud_url: str = "https://omelet.bridgie.chat/api"
     stack_file: Path = Path(f"{constants.GUEST_ROOT}/stack.yml")
-    tunnel_token_path: Path = Path(f"{constants.GUEST_ROOT}/tunnel.token")
+    tunnel_token_path: Path = Path(f"{constants.GUEST_ROOT}/tunnel/token")
     version: str = __version__
 
     @classmethod
@@ -72,6 +72,6 @@ class ApiConfig:
             stack_file=Path(env.get("OMELET_STACK_FILE",
                                     f"{constants.GUEST_ROOT}/stack.yml")),
             tunnel_token_path=Path(env.get("OMELET_TUNNEL_TOKEN",
-                                           f"{constants.GUEST_ROOT}/tunnel.token")),
+                                           f"{constants.GUEST_ROOT}/tunnel/token")),
             version=env.get("OMELET_SERVICE_VERSION", __version__),
         )

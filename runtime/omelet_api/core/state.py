@@ -196,6 +196,13 @@ class State:
             self._conn.execute("DELETE FROM public_urls WHERE local_id=?", (local_id,))
             self._conn.commit()
 
+    def delete_public_if(self, local_id, state) -> bool:
+        with self._lock:
+            cur = self._conn.execute(
+                "DELETE FROM public_urls WHERE local_id=? AND state=?", (local_id, state))
+            self._conn.commit()
+            return cur.rowcount > 0
+
     def clear_public(self):
         with self._lock:
             self._conn.execute("DELETE FROM public_urls")

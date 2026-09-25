@@ -7,7 +7,7 @@ from omelet_api.core.account import Account
 from omelet_api.core.cloud import CloudError, CloudUnavailable
 from omelet_api.core.exec import Completed
 from omelet_api.core.public import (MESSAGES, Public, PublicBusy, TunnelClient,
-                                    Unavailable)
+                                    Unavailable, write_token)
 from omelet_api.core.state import State
 from tests.runtime.api.fake_cloud import FakeCloud
 
@@ -393,3 +393,88 @@ def test_signing_out_releases_then_forgets_every_public_url(tmp_path):
     assert cloud.names() == ["create_public_url", "release_public_url", "logout"]
     assert state.list_public() == []
     assert not runner.up and not (tmp_path / "tunnel.token").exists()
+
+
+def test_turning_on_again_after_expiry_creates_a_new_url(tmp_path):
+    fresh = {**ON, "urls": [{"hostname": "blog.d.io", "url": "https://new.example.dev"}],
+             "expires_at": "2026-09-24T17:00:00Z"}
+    cloud = FakeCloud(create_public_url=[ON, fresh])
+    public, _, runner, clock = make(tmp_path, cloud)
+    public.enable("blog")
+    clock.now = EXPIRES + 1  # no reconcile pass has ended the row yet
+
+    public.enable("blog")
+
+    assert cloud.names() == ["create_public_url", "create_public_url"]
+    status = public.status("blog")
+    assert status["state"] == "on"
+    assert status["urls"][0]["url"] == "https://new.example.dev"
+    assert runner.up
+
+
+def test_the_token_directory_is_created_when_missing(tmp_path):
+    token = tmp_path / "tunnel" / "token"
+    write_token(token, "tun-1")
+
+    assert token.read_text() == "tun-1"
+
+
+def test_a_naive_expiry_timestamp_is_read_as_utc(tmp_path):
+    naive = {**ON, "expires_at": "2026-09-24T15:00:00"}
+    public, _, _, _ = make(tmp_path, FakeCloud(create_public_url=[naive]))
+
+    public.enable("blog")
+
+    assert public.status("blog")["expires_at"] == EXPIRES
+
+
+@pytest.mark.parametrize("stale", ["releasing", "enabling"])
+def test_reconcile_leaves_a_row_that_changed_since_its_snapshot(tmp_path, stale):
+    """An enable that finished between reconcile's snapshot and its handling of
+    the row must not have its fresh "on" URL released or deleted."""
+    public, state, runner, _ = make(tmp_path, FakeCloud(create_public_url=[ON]))
+    public.enable("blog")
+    snapshot = {**state.get_public("blog"), "state": stale}
+
+    public._reconcile_row(snapshot, {"blog"})
+
+    assert state.get_public("blog")["state"] == "on"
+    assert runner.up
+
+
+def test_a_releasing_row_turned_back_on_during_the_release_is_kept(tmp_path):
+    public, state, _, _ = make(tmp_path, FakeCloud())
+    state.put_public("blog", cloud_id="c-blog", state="releasing")
+
+    class Racing(FakeCloud):
+        def release_public_url(self, token, cloud_id):
+            state.put_public("blog", cloud_id="c-blog", state="on", expires_at=EXPIRES)
+            return None
+
+    public._cloud = Racing()
+
+    public.reconcile()
+
+    assert state.get_public("blog")["state"] == "on"
+
+
+def test_a_url_ended_for_a_missing_token_is_released_on_the_service(tmp_path):
+    cloud = FakeCloud(create_public_url=[ON], get_public_url=[ON], release_public_url=[None])
+    public, state, runner, _ = make(tmp_path, cloud)
+    public.enable("blog")
+    runner.up = False
+    (tmp_path / "tunnel.token").unlink()
+
+    public.reconcile()
+
+    assert state.get_public("blog")["reason_code"] == "client_failed"
+    assert cloud.names()[-1] == "release_public_url"
+
+
+def test_turning_off_a_failed_url_clears_it(tmp_path):
+    cloud = FakeCloud(create_public_url=[CloudError("public_url_active", "x", 409)])
+    public, state, _, _ = make(tmp_path, cloud)
+    public.enable("blog")
+
+    assert public.disable("blog") == {"state": "off", "note": None}
+    assert state.get_public("blog") is None

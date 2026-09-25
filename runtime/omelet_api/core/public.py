@@ -5,7 +5,7 @@ import os
 import tempfile
 import threading
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
@@ -48,6 +48,7 @@ def _daemon(fn) -> None:
 
 
 def write_token(path: Path, token: str) -> None:
+    path.parent.mkdir(mode=0o750, parents=True, exist_ok=True)
     # fchmod sets the mode before any byte is written, independent of umask.
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".tunnel-")
     try:
@@ -81,7 +82,10 @@ class TunnelClient:
 
 
 def _epoch(value: str) -> float:
-    return datetime.fromisoformat(value).timestamp()
+    dt = datetime.fromisoformat(value)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.timestamp()
 
 
 def _reason(code: str, message: str | None = None) -> dict:
@@ -103,6 +107,9 @@ class Public:
         self._clock = clock
         self._spawn = spawn
         self._lock = threading.Lock()
+        # Serialises the client's stop-and-remove-token against reconcile's
+        # read-then-start. Never taken while holding _lock.
+        self._client_lock = threading.Lock()
         self._enabling: set[str] = set()
 
     # --- reading ---------------------------------------------------------
@@ -140,6 +147,10 @@ class Public:
     # --- turning on ------------------------------------------------------
 
     def enable(self, local_id: str) -> dict:
+        row = self._state.get_public(local_id)
+        if (row is not None and row["state"] == "on"
+                and row["expires_at"] <= self._clock()):
+            self._end(row, "expired")
         with self._lock:
             if local_id in self._enabling:
                 raise PublicBusy(local_id)
@@ -273,11 +284,12 @@ class Public:
         with self._lock:
             if self._enabling - {local_id}:
                 return  # another project may be about to need the client
-        if any(r["state"] == "on" and r["local_id"] != local_id
-               for r in self._state.list_public()):
-            return
-        self._client.stop()
-        remove_token(self._token_path)
+        with self._client_lock:
+            if any(r["state"] == "on" and r["local_id"] != local_id
+                   for r in self._state.list_public()):
+                return
+            self._client.stop()
+            remove_token(self._token_path)
 
     # --- keeping it true -------------------------------------------------
 
@@ -298,9 +310,14 @@ class Public:
         self._reconcile_client()
 
     def _reconcile_client(self) -> None:
-        on_rows = [r for r in self._state.list_public() if r["state"] == "on"]
-        running = self._client.running()
-        if on_rows:
+        with self._client_lock:
+            on_rows = [r for r in self._state.list_public() if r["state"] == "on"]
+            running = self._client.running()
+            if not on_rows:
+                if running or self._token_path.exists():
+                    self._client.stop()
+                    remove_token(self._token_path)
+                return
             if running:
                 return
             if self._token_path.exists():
@@ -308,21 +325,24 @@ class Public:
                 if not started.ok:
                     log.warning("restarting the tunnel client failed: %s",
                                 started.stderr)
-            else:
-                for row in on_rows:
-                    if self._end(row, "client_failed"):
-                        log.warning(
-                            "public URL of %s had no tunnel token; ended it",
+                return
+        # Outside the lock: _end stops the client through _stop_unless_needed.
+        for row in on_rows:
+            if self._end(row, "client_failed"):
+                log.warning("public URL of %s had no tunnel token; ended it",
                             row["local_id"])
-        elif running or self._token_path.exists():
-            self._client.stop()
-            remove_token(self._token_path)
+                self._release(row["cloud_id"])
 
     def _reconcile_row(self, row: dict, projects: set[str]) -> None:
         local_id, state = row["local_id"], row["state"]
         with self._lock:
             if local_id in self._enabling:
                 return
+        # An enable may have finished since the snapshot; act only on the row
+        # as it still is.
+        current = self._state.get_public(local_id)
+        if current is None or current["state"] != state:
+            return
         if local_id not in projects:
             self.disable(local_id, force=True)
             return
@@ -343,7 +363,7 @@ class Public:
                 pass
         elif state == "releasing":
             if self._release(row["cloud_id"]):
-                self._state.delete_public(local_id)
+                self._state.delete_public_if(local_id, "releasing")
         elif state == "enabling":
             if self._release(row["cloud_id"]):
                 self._fail(local_id, row["cloud_id"], "interrupted")
@@ -368,5 +388,6 @@ class Public:
 
     def forget_local(self) -> None:
         self._state.clear_public()
-        self._client.stop()
-        remove_token(self._token_path)
+        with self._client_lock:
+            self._client.stop()
+            remove_token(self._token_path)
