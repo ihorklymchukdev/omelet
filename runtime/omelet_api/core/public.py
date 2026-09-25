@@ -59,6 +59,8 @@ def write_token(path: Path, token: str) -> bool:
     """False when the file already holds this token (nothing written)."""
     try:
         if path.read_text() == token:
+            # The installer's group-write sweep may have widened it.
+            os.chmod(path, 0o640)
             return False
     except OSError:
         pass
@@ -229,7 +231,14 @@ class Public:
         # failure here -- a bad client start, a malformed reply -- must
         # release it, not just mark the row failed.
         try:
-            changed = write_token(self._token_path, out["credentials"]["token"])
+            credentials = out.get("credentials")
+            if credentials:
+                changed = write_token(self._token_path, credentials["token"])
+            elif self._token_path.exists():
+                # An active-session reply may omit the token this VM already holds.
+                changed = False
+            else:
+                raise RuntimeError("the service sent no tunnel token")
             started = self._client.start(recreate=changed)
             if not started.ok:
                 raise RuntimeError("tunnel client failed to start")

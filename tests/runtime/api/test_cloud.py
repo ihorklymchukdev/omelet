@@ -67,6 +67,16 @@ def test_a_gateway_page_instead_of_the_service_is_unavailable(status):
         cloud.me("t")
 
 
+@pytest.mark.parametrize("status,code", [(502, "tunnel_provider_error"),
+                                         (503, "public_urls_disabled")])
+def test_a_service_error_body_on_a_gateway_status_stays_the_services_error(status, code):
+    cloud = Cloud("https://svc/api", opener=Opener((status, _error(code))))
+    with pytest.raises(CloudError) as raised:
+        cloud.create_public_url("t", "c1", [{"local_hostname": "b.d.io", "service": "web"}],
+                                "http://traefik:39080")
+    assert (raised.value.code, raised.value.status) == (code, status)
+
+
 def test_a_404_without_an_error_body_keeps_its_status():
     cloud = Cloud("https://svc/api", opener=Opener((404, b"Not Found")))
     with pytest.raises(CloudError) as raised:

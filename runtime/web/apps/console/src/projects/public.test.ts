@@ -16,9 +16,9 @@ describe("publicView", () => {
   });
 
   it("keeps a URL with no time limit on, with no countdown", () => {
-    const unlimited: PublicStatus = { ...on, expires_at: null };
-    const view = publicView(unlimited, at(10_000_000));
-    expect(view).toEqual({ kind: "on", urls: on.state === "on" ? on.urls : [], left: null });
+    const urls = [{ url: "https://k3x9.example.dev", service: "web", local_url: "http://b" }];
+    const view = publicView({ state: "on", urls, expires_at: null }, at(10_000_000));
+    expect(view).toEqual({ kind: "on", urls, left: null });
     expect(tileLine(view)).toBe("On");
   });
 

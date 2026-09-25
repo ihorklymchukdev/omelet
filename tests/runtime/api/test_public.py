@@ -529,7 +529,7 @@ def test_a_url_with_no_expiry_stays_on_through_reconcile(tmp_path):
 
 
 def test_the_same_token_again_leaves_the_running_client_alone(tmp_path):
-    cloud = FakeCloud(create_public_url=[ON], release_public_url=[None])
+    cloud = FakeCloud(create_public_url=[ON])
     public, _, runner, _ = make(tmp_path, cloud)
     write_token(tmp_path / "tunnel.token", "tun-1")
 
@@ -559,3 +559,36 @@ def test_a_cloudflare_failure_reads_in_plain_words(tmp_path):
 
     assert public.status("blog")["reason"] == {
         "code": "tunnel_provider_error", "message": MESSAGES["tunnel_provider_error"]}
+
+
+def test_an_active_session_reply_without_credentials_keeps_the_token_held(tmp_path):
+    # Releasing here would end the device's live session on the service.
+    cloud = FakeCloud(create_public_url=[{**ON, "credentials": None}])
+    public, _, runner, _ = make(tmp_path, cloud)
+    write_token(tmp_path / "tunnel.token", "tun-1")
+
+    public.enable("blog")
+
+    assert public.status("blog")["state"] == "on"
+    assert cloud.names() == ["create_public_url"]
+    assert runner.up
+
+
+def test_a_reply_without_credentials_and_no_token_held_is_released(tmp_path):
+    cloud = FakeCloud(create_public_url=[{**ON, "credentials": None}],
+                      release_public_url=[None])
+    public, _, _, _ = make(tmp_path, cloud)
+
+    public.enable("blog")
+
+    assert public.status("blog")["reason"]["code"] == "client_failed"
+    assert cloud.names() == ["create_public_url", "release_public_url"]
+
+
+def test_an_unchanged_token_is_narrowed_back_to_0640(tmp_path):
+    token = tmp_path / "tunnel.token"
+    write_token(token, "tun-1")
+    os.chmod(token, 0o660)  # the installer's group-write sweep
+
+    assert write_token(token, "tun-1") is False
+    assert stat.S_IMODE(os.stat(token).st_mode) == 0o640

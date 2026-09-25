@@ -475,7 +475,7 @@ export function handlersFor(scenario: Scenario) {
         target.public =
           scenario === "public-active-elsewhere"
             ? { state: "failed", reason: { code: "public_url_active", message: "One is already on for another project or computer. Turn it off there first." } }
-            : { state: "on", urls: target.web.map((w, i) => ({ url: i === 0 ? "https://k3x9m2p7qa.omelet.app" : `https://${w.service}--k3x9m2p7qa.omelet.app`, service: w.service, local_url: w.url })), expires_at: nowSec() + 60 * 60 };
+            : { state: "on", urls: target.web.map((w, i) => ({ url: i === 0 ? "https://k3x9m2p7qa.omelet.app" : `https://${w.service.toLowerCase().replace(/[_.]/g, "-")}--k3x9m2p7qa.omelet.app`, service: w.service, local_url: w.url })), expires_at: nowSec() + 60 * 60 };
       }, 2000);
       return HttpResponse.json(target.public, { status: 202 });
     }),

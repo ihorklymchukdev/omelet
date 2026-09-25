@@ -1,7 +1,7 @@
 # Public URL for a project (VM side)
 
 Date: 2026-09-24
-Status: proposed
+Status: implemented (PR #24); service side agreed, not yet live
 Issue: #23
 
 ## 1. Problem
@@ -18,7 +18,7 @@ Everything here lives in `runtime/`. No host change and no host release.
 
 | # | Decision | Why |
 |---|----------|-----|
-| 1 | The VM is written against the service contract in section 3, agreed with the service on 2026-09-25. | The service dev is changing the contract. As with sign-in, no client-side workarounds for service gaps. |
+| 1 | The VM is written against the service contract in section 3, agreed with the service on 2026-09-25. | The live API did not match on 2026-09-24; the service dev changed it to this. As with sign-in, no client-side workarounds for service gaps. |
 | 2 | The service rewrites the Host header to the project's local hostname; project routing and overlays do not change. | Verified: project routers are `Host(<local hostname>)` with no entrypoint restriction (`core/overlay.py`), and Traefik v3's `Host()` ignores the port. |
 | 3 | Apps that build absolute URLs from the Host header send public visitors to `*.127-0-0-1.sslip.io`. Accepted as a known limit (section 10). | Most dev apps use relative links. The fix (public-host routes via a Traefik dynamic file) is a follow-up. |
 | 4 | Only the console turns a public URL on or off. The in-VM `omelet` CLI and coding agents never see public URLs. | Putting a project on the internet is a human decision. Agents only need local URLs. |
@@ -68,7 +68,8 @@ request: {"origin": "http://traefik:39080",
   only when the device is removed and paired again. The VM recreates the tunnel
   client only when the token differs from the one it holds.
 - 200 instead of 201: this device already has an active URL for the project; same
-  URLs, same token.
+  URLs, and `credentials` with the same token. Should a 200 ever omit `credentials`,
+  the VM keeps the token it holds rather than releasing a live session.
 - Errors, in the usual `{"error":{"code","message"}}` body:
   - `409 public_url_active` — the account already has an active public URL.
   - `403 public_url_unavailable` — the plan has no public URLs.
@@ -80,7 +81,8 @@ request: {"origin": "http://traefik:39080",
 
 ### `GET /v1/tunnels/projects/{id}/url`
 
-200 with the shape above, or 404 when no URL is live.
+200 with the shape above, or 404 when no URL is live. The VM only needs the status
+code here; it never reads `credentials` from a GET.
 
 ### `DELETE /v1/tunnels/projects/{id}/url`
 
@@ -369,4 +371,7 @@ Not tested: the enable thread and event wiring, the modal's rendering (glue).
   The `tunnel` network also reaches the VM through its gateway, so every port
   published on 0.0.0.0 (the api's, and any `ports:` a user project publishes) is
   reachable from the tunnel client.
+- The service accepts at most 10 routes per URL; a project with more web services
+  gets `validation_error` ("The Omelet service couldn't accept this project's
+  addresses.").
 - A CLI command for public URLs, host changes, and the service changes themselves.
