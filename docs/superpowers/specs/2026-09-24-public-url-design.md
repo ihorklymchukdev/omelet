@@ -18,7 +18,7 @@ Everything here lives in `runtime/`. No host change and no host release.
 
 | # | Decision | Why |
 |---|----------|-----|
-| 1 | The VM is written against the service contract in section 3, not the one live on 2026-09-24. | The service dev is changing the contract. As with sign-in, no client-side workarounds for service gaps. |
+| 1 | The VM is written against the service contract in section 3, agreed with the service on 2026-09-25. | The service dev is changing the contract. As with sign-in, no client-side workarounds for service gaps. |
 | 2 | The service rewrites the Host header to the project's local hostname; project routing and overlays do not change. | Verified: project routers are `Host(<local hostname>)` with no entrypoint restriction (`core/overlay.py`), and Traefik v3's `Host()` ignores the port. |
 | 3 | Apps that build absolute URLs from the Host header send public visitors to `*.127-0-0-1.sslip.io`. Accepted as a known limit (section 10). | Most dev apps use relative links. The fix (public-host routes via a Traefik dynamic file) is a follow-up. |
 | 4 | Only the console turns a public URL on or off. The in-VM `omelet` CLI and coding agents never see public URLs. | Putting a project on the internet is a human decision. Agents only need local URLs. |
@@ -28,62 +28,77 @@ Everything here lives in `runtime/`. No host change and no host release.
 | 8 | URLs are stored only while a public URL is on. | The URL changes every time; an old one is never shown or reused. |
 | 9 | Local URLs keep working unchanged while a public URL is on. | The tunnel is an extra way into the same Traefik. |
 
-## 3. Service contract (required service changes)
+## 3. Service contract (agreed with the service, 2026-09-25)
 
-All calls use the device's account token through `Account.authed()`. `{id}` is
-the service project id already stored in `cloud_projects` by sync.
+All calls use the device's account token (`Authorization: Bearer <device token>`)
+through `Account.authed()`. `{id}` is the service project id already stored in
+`cloud_projects` by sync.
 
 ### `POST /v1/tunnels/projects/{id}/url` — turn on
 
 ```json
-request: {"hostnames": ["recipe-box.127-0-0-1.sslip.io", "api.recipe-box.127-0-0-1.sslip.io"],
-          "origin": "http://traefik:39080"}
+request: {"origin": "http://traefik:39080",
+          "routes": [{"local_hostname": "recipe-box.127-0-0-1.sslip.io", "service": "web"},
+                     {"local_hostname": "api.recipe-box.127-0-0-1.sslip.io", "service": "api_v2"}]}
 
-201:     {"id": "…", "project_id": "…",
-          "urls": [{"hostname": "recipe-box.127-0-0-1.sslip.io", "url": "https://k3x9.example.dev"},
-                   {"hostname": "api.recipe-box.127-0-0-1.sslip.io", "url": "https://p2m7.example.dev"}],
+201:     {"id": "…", "project_id": "…", "slug": "k3x9m2p7qa", "created_at": "…",
           "expires_at": "2026-09-24T15:00:00Z",
+          "url": "https://k3x9m2p7qa.omelet.app",
+          "urls": [{"service": "web", "local_hostname": "recipe-box.127-0-0-1.sslip.io",
+                    "url": "https://k3x9m2p7qa.omelet.app"},
+                   {"service": "api_v2", "local_hostname": "api.recipe-box.127-0-0-1.sslip.io",
+                    "url": "https://api-v2--k3x9m2p7qa.omelet.app"}],
           "credentials": {"provider": "cloudflare", "token": "…"}}
 ```
 
 - `origin` is where the tunnel client sends traffic; only the VM knows it (the edge
-  port is configurable).
-- `urls` has exactly one entry per hostname sent.
-- `credentials` is always present on 201: the token for this VM's single tunnel,
-  tied by the service to the device behind the bearer token.
+  port is configurable). The service uses it as the ingress target for every route,
+  with `originRequest.httpHostHeader = <local_hostname>`; without it the service
+  falls back to `http://traefik:39080`.
+- `routes`: 1–10, `local_hostname` required and unique; the main web service first.
+  `service` accepts any Compose name and never fails the request.
+- The service chooses every public domain: the first route gets
+  `https://<slug>.<domain>`, the others `https://<name>--<slug>.<domain>`, where
+  `<name>` is the service lowercased with `_`/`.` turned into `-` (or the route's
+  position when missing or clashing). Every session gets a new slug; none is reused.
+- `urls[]`: one item per route, in request order. The VM keys them by
+  `local_hostname` and shows `url`.
+- `expires_at: null` means no time limit (always set on the current plan).
+- `credentials` is always present on 201. The token is stable per device; it changes
+  only when the device is removed and paired again. The VM recreates the tunnel
+  client only when the token differs from the one it holds.
+- 200 instead of 201: this device already has an active URL for the project; same
+  URLs, same token.
 - Errors, in the usual `{"error":{"code","message"}}` body:
   - `409 public_url_active` — the account already has an active public URL.
-  - `403 public_url_unavailable` — the account's plan has no public URLs.
-  - `404` — the service does not know the project.
-  - `422` — bad hostnames or origin.
+  - `403 public_url_unavailable` — the plan has no public URLs.
+  - `403 device_required` — not called with a device token.
+  - `404 project_not_found` — the service does not know the project.
+  - `422 validation_error` — the routes or origin are invalid.
+  - `502 tunnel_provider_error` — Cloudflare failed; retry later.
+  - `503 public_urls_disabled` — public URLs are switched off on the server.
 
 ### `GET /v1/tunnels/projects/{id}/url`
 
-200 with the shape above minus `credentials`, or 404 when no URL is live.
+200 with the shape above, or 404 when no URL is live.
 
 ### `DELETE /v1/tunnels/projects/{id}/url`
 
 204, or 404 when there is nothing to release. The VM treats both as released.
 
-### Required behaviour
+### Service behaviour the VM relies on
 
-- The service stops routing at `expires_at` on its own, whether or not the VM is
-  online. The VM's expiry handling is display and cleanup, never the security
-  boundary.
-- Every successful POST mints a new URL; none is reused.
-- Deleting a service project releases its public URL (the backstop if the VM's own
-  release call is lost).
+- The service removes the routes itself within about a minute of `expires_at`,
+  whether or not the VM is online. The VM's expiry handling is display and cleanup,
+  never the security boundary.
+- `DELETE /v1/projects/{id}` also releases that project's public URL (the backstop
+  if the VM's own release call is lost).
 
-### Gaps against the live service (2026-09-24)
+### Status
 
-| # | Live today | Needed |
-|---|------------|--------|
-| T1 | POST takes no body | `{hostnames, origin}` |
-| T2 | one `url` string | `urls[]`, one per hostname |
-| T3 | no expiry | `expires_at` |
-| T4 | `credentials` optional, unclear when sent | always on 201 |
-| T5 | no documented 409/403 codes | `public_url_active`, `public_url_unavailable` |
-| T6 | undocumented | release on project delete; expiry enforced by the service |
+Agreed on 2026-09-25; the service will announce when it is live. The OpenAPI
+does not yet declare `origin`, `urls[].local_hostname`, the error codes or a
+`bearerAuth` scheme — the VM is written to the agreed contract above.
 
 ## 4. Stack and installer
 
@@ -174,9 +189,10 @@ It exists only while a URL is on. Turning off, expiry, sign-out and delete remov
    A `releasing` row is released first; if that fails the row stays `releasing`
    with `cloud_unavailable` as its reason.
 2. Set the row to `enabling`, return, and do the rest on a spawned thread.
-3. `POST` with the project's local hostnames (`host_for` for each web service) and
-   `origin`.
-4. On 201: write the token, start the client, store `urls` and `expires_at`, set `on`.
+3. `POST` with one route per web service (`host_for` for its local hostname, the
+   primary first) and `origin`.
+4. On 201/200: write the token and start the client (recreated only when the token
+   changed), store `urls` and `expires_at`, set `on`.
 5. If the client does not start: stop it, delete the token, `DELETE` on the service,
    set `failed` / `client_failed`.
 6. On a service error or `CloudUnavailable`: set `failed` with the code (section 6).
@@ -193,7 +209,7 @@ reconcile retries. Locally the URL is off at once either way.
 Runs once at API startup (from `routes/__main__.py`, like `account.resume()`) and at
 the start of every sync pass:
 
-- `on` with `expires_at` passed → stop the client, delete the token, `ended` /
+- `on` with `expires_at` passed (never, when it is null) → stop the client, delete the token, `ended` /
   `expired`, clear `urls` and `expires_at`.
 - `on` and `GET` answers 404 → the same cleanup, `ended` / `released_elsewhere`.
 - `releasing` → retry `DELETE`; 204/404 deletes the row if it is still `releasing`.
@@ -244,7 +260,7 @@ Additive: `API_VERSION` does not change and the host never calls them.
 {"state": "off", "note": {"code": "expired", "message": "…"}}
 {"state": "enabling"}
 {"state": "on", "urls": [{"url": "https://…", "service": "web", "local_url": "http://…"}],
- "expires_at": 1790000000}
+ "expires_at": 1790000000}          // null: no time limit
 {"state": "failed", "reason": {"code": "…", "message": "…"}}
 ```
 
@@ -269,12 +285,18 @@ code not listed here reads "The Omelet service refused: <its message>".
 | `interrupted` | failed | Omelet restarted while turning this on. Try again. |
 | `expired` | off note | The public address expired. Start a new one; it will be a different address. |
 | `released_elsewhere` | off note | The public address was turned off from the Omelet website. |
+| `project_not_found` | failed | This project isn't linked to your account yet. Try again in a minute. |
+| `device_required` | failed | This computer's sign-in can't make public addresses. Sign out and sign in again. |
+| `tunnel_provider_error` | failed | Cloudflare couldn't set up the address. Try again in a few minutes. |
+| `public_urls_disabled` | failed | Public addresses are switched off on the Omelet service right now. |
+| `validation_error` | failed | The Omelet service couldn't accept this project's addresses. |
 
 ## 7. Console
 
 - `projects/public.ts` — `publicView(status, now)`: the API's `public` field plus the
   time to what screens show. An `on` whose `expires_at` has passed becomes `off` with
-  the `expired` note. Time left is formatted from `expires_at` only.
+  the `expired` note. Time left is formatted from `expires_at` only; a null
+  `expires_at` shows "On" with no countdown.
 - `screens/project/Tiles.tsx` — the Public address tile becomes live. Its small line:
   Off / Turning on… / 42 min left / Didn't work, or the unavailable reason with the
   tile disabled. It opens `PublicModal`.
@@ -317,7 +339,7 @@ Only where a wrong result is plausible:
   - status reports `off`/`expired` once the clock passes `expires_at`, before
     reconcile runs.
 - Routes: deleting a project and signing out both release a live URL.
-- `core/cloud.py` seam: the POST body is `{hostnames, origin}`; the real error body
+- `core/cloud.py` seam: the POST body is `{origin, routes}`; the real error body
   maps to the codes above.
 - `stack.yml` boundary guard: `tunnel` is profile-gated, reads a token file, is not
   on `edge`; `api` is not on `tunnel`.
