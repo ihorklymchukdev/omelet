@@ -94,9 +94,9 @@ request: {"hostnames": ["recipe-box.127-0-0-1.sslip.io", "api.recipe-box.127-0-0
     image: cloudflare/cloudflared:<pinned version>
     profiles: [tunnel]
     restart: unless-stopped
-    command: tunnel --no-autoupdate run --token-file /run/omelet/tunnel.token
+    command: tunnel --no-autoupdate run --token-file /run/omelet/token
     volumes:
-      - /opt/omelet/tunnel.token:/run/omelet/tunnel.token:ro
+      - /opt/omelet/tunnel:/run/omelet:ro
     group_add:
       - "${OMELET_DOCKER_GID:-999}"
     networks:
@@ -109,6 +109,9 @@ request: {"hostnames": ["recipe-box.127-0-0-1.sslip.io", "api.recipe-box.127-0-0
   is absent.
 - `--token-file` keeps the token off the command line and out of the container's
   environment.
+- The token's directory is mounted read-only, not the file: docker creates a missing
+  file mount source as a root-owned directory, which would wedge every later write
+  and removal of the token. A missing directory just mounts empty.
 - The cloudflared image runs as a non-root user; `group_add` lets it read the 0640
   docker-group token, the same way `api` reads `api.token`.
 
@@ -137,7 +140,7 @@ stack file, plus injectable `clock` and `spawn` (the `Account` pattern).
 ### Config
 
 `ApiConfig` gains `stack_file` (default `/opt/omelet/stack.yml`, env
-`OMELET_STACK_FILE`) and `tunnel_token_path` (default `/opt/omelet/tunnel.token`,
+`OMELET_STACK_FILE`) and `tunnel_token_path` (default `/opt/omelet/tunnel/token`,
 env `OMELET_TUNNEL_TOKEN`). `origin` is `http://{traefik_host}:{edge_port}`, from
 values that already exist.
 
@@ -156,8 +159,9 @@ public_urls(local_id TEXT PRIMARY KEY,
 
 ### Token file
 
-`/opt/omelet/tunnel.token`: written to a temp file created with mode 0640 in the
-same directory, then renamed over; group `docker` via the directory's setgid bit.
+`/opt/omelet/tunnel/token`, in a directory created on first write and mounted
+read-only into the client: written to a temp file created with mode 0640 in the
+same directory, then renamed over; group `docker` via `/opt/omelet`'s setgid bit.
 It exists only while a URL is on. Turning off, expiry, sign-out and delete remove it.
 
 ### Turn on
@@ -165,7 +169,8 @@ It exists only while a URL is on. Turning off, expiry, sign-out and delete remov
 1. Refuse at once, as `unavailable`, when: not signed in (`signed_out`); the project
    has no `cloud_projects` mapping yet (`not_registered`); the project has no web
    service (`no_web`). A project already `enabling` answers 409 `project_busy`, and so
-   does turning it off while it is `enabling`. A row already `on` is returned as is.
+   does turning it off while it is `enabling`. A row already `on` is returned as is,
+   unless its `expires_at` has passed: it is ended as `expired` and a new URL is made.
    A `releasing` row is released first; if that fails the row stays `releasing`
    with `cloud_unavailable` as its reason.
 2. Set the row to `enabling`, return, and do the rest on a spawned thread.
@@ -191,12 +196,16 @@ the start of every sync pass:
 - `on` with `expires_at` passed → stop the client, delete the token, `ended` /
   `expired`, clear `urls` and `expires_at`.
 - `on` and `GET` answers 404 → the same cleanup, `ended` / `released_elsewhere`.
-- `releasing` → retry `DELETE`; 204/404 deletes the row.
+- `releasing` → retry `DELETE`; 204/404 deletes the row if it is still `releasing`.
 - `enabling` with no enable thread running (the API restarted mid-call) → `DELETE`
   on the service, then `failed` / `interrupted`.
 - No row `on` but the client is running → stop it and delete the token.
-  A row `on` but the client is not running → start it.
+  A row `on` but the client is not running → start it; with no token file, end it
+  as `client_failed` and `DELETE` it on the service.
 - Rows for projects that no longer exist → treated as a delete (below).
+- Each row is re-read before it is handled; one whose state moved since the pass's
+  snapshot (an enable finished meanwhile) is left for the next pass. A failing
+  reconcile is logged and never stops the rest of the sync pass.
 
 Status reads compare `expires_at` with the clock and report `off` with the
 `expired` note the moment it passes, before reconcile has cleaned up.
@@ -216,7 +225,9 @@ expiry covers it.
 
 ## 6. API routes and states
 
-On the shared router (`/api/...` for the console, `/...` behind the bearer token).
+`GET` is on the shared router (`/api/...` for the console, `/...` behind the bearer
+token). `POST` and `DELETE` are console-only: mounted at `/api/...` alone, so the
+guest token the CLI and coding agents hold cannot turn a public URL on or off.
 Additive: `API_VERSION` does not change and the host never calls them.
 
 - `GET /projects/{id}/public` — the status.
@@ -333,4 +344,7 @@ Not tested: the enable thread and event wiring, the modal's rendering (glue).
 - Residual reach: the tunnel client can reach Traefik's edge entrypoint with any
   Host the service's config sets, including the console's. The console's API still
   needs its session cookie and Origin check, so this exposes only the static page.
+  The `tunnel` network also reaches the VM through its gateway, so every port
+  published on 0.0.0.0 (the api's, and any `ports:` a user project publishes) is
+  reachable from the tunnel client.
 - A CLI command for public URLs, host changes, and the service changes themselves.

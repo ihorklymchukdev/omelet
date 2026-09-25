@@ -85,7 +85,7 @@ The browser UI lives in `runtime/web/` (npm workspace, Node ≥ 22.22):
 
 ```bash
 cd runtime/web && npm install
-npm run dev          # Vite + an in-browser mock API; ?scenario=empty|expired|handoff-spent|old-api|down|lost-mid-use|wrong-host|uploads|full|fills-up|busy|locked
+npm run dev          # Vite + an in-browser mock API; ?scenario=empty|expired|handoff-spent|old-api|down|lost-mid-use|wrong-host|uploads|full|fills-up|busy|locked|public-on|public-expiring|public-active-elsewhere|public-unavailable
 npm test             # Vitest
 npm run typecheck
 npm run build && npm run check-offline
@@ -221,11 +221,13 @@ Do not add an `if windows` anywhere else — push the difference into a provider
   `docs/superpowers/specs/2026-09-23-account-sign-in-sync-design.md` section 7.
 - `runtime/omelet_api/core/public.py` — a project's temporary public URL. The service owns the
   Cloudflare tunnel and its routing; the VM asks for a URL, keeps the token in
-  `/opt/omelet/tunnel.token` (0640, present only while a URL is on) and starts the
-  profile-gated `tunnel` service in `stack.yml` through compose. The service rewrites Host to the
+  `/opt/omelet/tunnel/token` (0640, present only while a URL is on; the directory is
+  mounted read-only into the client) and starts the profile-gated `tunnel` service in `stack.yml` through compose. The service rewrites Host to the
   project's local hostname, so overlays are unchanged; apps that build absolute URLs from Host
-  send public visitors to `*.127-0-0-1.sslip.io`. Only the console turns it on; the CLI never
-  shows it. Reconciled on every sync pass.
+  send public visitors to `*.127-0-0-1.sslip.io`. Only the console turns it on or off (POST
+  and DELETE are mounted at `/api` alone); the CLI never shows it. Reconciled on every sync
+  pass. The `tunnel` network reaches the VM through its gateway, so every port published on
+  0.0.0.0 (the api's, a project's `ports:`) is reachable from the tunnel client.
 - `runtime/web/` — the browser UI at `localhost:<edge>`, shipped as the `omelet-web` nginx image
   and routed by Traefik below the API's `/api` router — a sibling of the API inside `runtime/`,
   never nested in the Python package. `packages/ui` is the kit (tokens, fonts,
