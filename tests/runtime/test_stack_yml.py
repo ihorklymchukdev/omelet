@@ -22,6 +22,10 @@ def _without_interpolation() -> str:
     return _INTERPOLATION.sub("", _text())
 
 
+def _services() -> dict:
+    return yaml.safe_load(_text())["services"]
+
+
 def test_stack_yml_hardcodes_no_domain_or_port_outside_a_default():
     # This is the one rule that keeps Phase 5 from becoming a rewrite: every
     # environment injects its own domain and ports through OMELET_DOMAIN /
@@ -106,3 +110,9 @@ def test_the_web_service_port_label_matches_the_port_nginx_listens_on():
     match = re.search(r"listen\s+(\d+);", NGINX_CONF.read_text())
     assert match, "web/nginx.conf must have a `listen <port>;` directive"
     assert labeled_port == match[1]
+
+
+def test_the_api_receives_the_github_client_id_with_the_same_default():
+    api = _services()["api"]
+    assert ("OMELET_GITHUB_CLIENT_ID=${OMELET_GITHUB_CLIENT_ID:-Ov23lie5k9VqSCKI52Ci}"
+            in api["environment"])

@@ -73,6 +73,13 @@ chgrp -R docker /opt/omelet
 chmod -R g+rwX /opt/omelet
 find /opt/omelet -type d -exec chmod g+s {} +
 
+# The GitHub token is the API's alone: the sweep above just widened it, so
+# its modes are put back every run.
+install -d -m 2770 -o root -g docker /opt/omelet/github
+chmod 2770 /opt/omelet/github
+[[ -e /opt/omelet/github/token ]] && chmod 600 /opt/omelet/github/token
+[[ -e /opt/omelet/github/desired.json ]] && chmod 640 /opt/omelet/github/desired.json
+
 # 5. this VM's real docker GID, for stack.yml's group_add.
 # The chgrp above used whatever GID this VM's docker group has, while the API
 # image bakes in 999 -- where those differ the API can write neither
@@ -169,6 +176,14 @@ if ! dpkg -s gh >/dev/null 2>&1; then
     exit 1
   fi
 fi
+
+# The GitHub clone runs as the API's uid; the agents' accounts differ from it
+# and are all docker-group, root-equivalent here, so the ownership check
+# guards nothing. git 2.43 has no prefix form of this setting.
+if ! git config --system --get-all safe.directory 2>/dev/null | grep -qxF '*'; then
+  git config --system --add safe.directory '*'
+fi
+
 node_ok() {
   command -v node >/dev/null 2>&1 || return 1
   local have
@@ -235,7 +250,18 @@ while IFS=: read -r name uid gid home; do
   fi
 done < <(accounts)
 
-# 12. what the console's "Connect an agent" guide needs to know.
+# 12. GitHub: apply on every change of the API's desired state, and once now
+# so a repair or a newly added account catches up.
+install -m 644 "$INSTALL_DIR/systemd/omelet-github.path" \
+  "$INSTALL_DIR/systemd/omelet-github.service" /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now omelet-github.path
+if ! systemctl start omelet-github.service; then
+  echo "could not apply the GitHub connection to this machine's accounts" >&2
+  exit 1
+fi
+
+# 13. what the console's "Connect an agent" guide needs to know.
 if grep -qi microsoft /proc/sys/kernel/osrelease; then vm=wsl
 elif [[ -d /mnt/lima-cidata ]]; then vm=lima
 else vm=other
@@ -245,6 +271,6 @@ agent_user=$(getent passwd | bash "$INSTALL_DIR/lib/login-users.sh" /etc/shells 
 printf '{"vm": "%s", "user": "%s"}\n' "$vm" "$agent_user" > /opt/omelet/connect.json
 chmod 644 /opt/omelet/connect.json
 
-# 13. marker, last: a failure above must leave no marker behind.
+# 14. marker, last: a failure above must leave no marker behind.
 echo "$REF" > /opt/omelet/runtime.version
 echo "Omelet runtime $REF installed"

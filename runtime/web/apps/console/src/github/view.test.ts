@@ -1,0 +1,65 @@
+import { describe, expect, it } from "vitest";
+import { polling, type GitHubStatus, type SetupState } from "./github";
+import { githubView } from "./view";
+
+const connected = (setup: SetupState, setup_error: string | null = null): GitHubStatus =>
+  ({ state: "connected", login: "octo", name: "Octo", email: "e", setup, setup_error }) as const;
+
+describe("githubView", () => {
+  it("offers a plain connect when nothing has happened", () => {
+    expect(githubView({ state: "disconnected", error: null })).toEqual({
+      kind: "connect", problem: null, action: "Connect GitHub",
+    });
+  });
+
+  it.each([
+    ["access_denied", "Try again"],
+    ["expired_token", "Get a new code"],
+    ["github_error", "Try again"],
+    ["something_new", "Try again"],
+  ])("explains %s and offers a way back", (error, action) => {
+    const view = githubView({ state: "disconnected", error });
+    expect(view).toMatchObject({ kind: "connect", action });
+    expect(view.kind === "connect" && view.problem).toBeTruthy();
+  });
+
+  it("shows the code while pending", () => {
+    expect(githubView({ state: "pending", user_code: "AB-CD", url: "u", expires_at: 5 })).toEqual({
+      kind: "code", code: "AB-CD", expiresAt: 5,
+    });
+  });
+
+  it("is only ready once the machine has applied it", () => {
+    expect(githubView(connected("applying")).kind).toBe("applying");
+    expect(githubView(connected("ready"))).toEqual({ kind: "ready", login: "octo" });
+  });
+
+  it("says a runtime update is needed without offering a pointless retry", () => {
+    const view = githubView(connected("runtime_outdated"));
+    expect(view).toMatchObject({ kind: "setupFailed", canRetry: false });
+    expect(view.kind === "setupFailed" && view.message).toMatch(/update/);
+  });
+
+  it("names a timeout and a script failure differently, both retryable", () => {
+    const timeout = githubView(connected("failed", "setup_timeout"));
+    const failed = githubView(connected("failed", "root: gh broke"));
+    expect(timeout).toMatchObject({ kind: "setupFailed", canRetry: true });
+    expect(failed).toMatchObject({ kind: "setupFailed", canRetry: true });
+    expect(failed.kind === "setupFailed" && failed.message).toContain("root: gh broke");
+    expect(timeout.kind === "setupFailed" && timeout.message).not.toContain("setup_timeout");
+  });
+
+  it("asks for a reconnect when the token stopped working", () => {
+    expect(githubView({ state: "needs_reconnect", login: "octo" })).toEqual({ kind: "reconnect", login: "octo" });
+  });
+});
+
+describe("polling", () => {
+  it("polls only while something is about to change", () => {
+    expect(polling({ state: "pending", user_code: "x", url: "u", expires_at: 1 })).toBe(true);
+    expect(polling(connected("applying"))).toBe(true);
+    expect(polling(connected("ready"))).toBe(false);
+    expect(polling({ state: "disconnected", error: null })).toBe(false);
+    expect(polling(undefined)).toBe(false);
+  });
+});

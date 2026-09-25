@@ -57,6 +57,7 @@ services:
       - OMELET_API_PORT=${OMELET_API_PORT:-39099}
       - OMELET_DOMAIN=${OMELET_DOMAIN:-127-0-0-1.sslip.io}
       - OMELET_EDGE_PORT=${OMELET_EDGE_PORT:-39080}
+      - OMELET_GITHUB_CLIENT_ID=${OMELET_GITHUB_CLIENT_ID:-Ov23lie5k9VqSCKI52Ci}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       # Same path on both sides, not negotiable: the api service parses
