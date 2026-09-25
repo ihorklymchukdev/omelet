@@ -235,6 +235,16 @@ while IFS=: read -r name uid gid home; do
   fi
 done < <(accounts)
 
-# 12. marker, last: a failure above must leave no marker behind.
+# 12. what the console's "Connect an agent" guide needs to know.
+if grep -qi microsoft /proc/sys/kernel/osrelease; then vm=wsl
+elif [[ -d /mnt/lima-cidata ]]; then vm=lima
+else vm=other
+fi
+# sed, not head: head exiting early would SIGPIPE the pipeline under pipefail.
+agent_user=$(getent passwd | bash "$INSTALL_DIR/lib/login-users.sh" /etc/shells | cut -d: -f1 | sed -n 1p)
+printf '{"vm": "%s", "user": "%s"}\n' "$vm" "$agent_user" > /opt/omelet/connect.json
+chmod 644 /opt/omelet/connect.json
+
+# 13. marker, last: a failure above must leave no marker behind.
 echo "$REF" > /opt/omelet/runtime.version
 echo "Omelet runtime $REF installed"

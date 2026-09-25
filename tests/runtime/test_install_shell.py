@@ -323,3 +323,10 @@ def test_install_removes_what_an_engine_v_install_left_behind():
     for stale in ("/opt/omelet/engine ", "/opt/omelet/engine.version",
                   "/opt/omelet/agent.token"):
         assert stale in cleanup, f"cleanup no longer removes {stale!r}"
+
+
+def test_install_records_how_agents_reach_the_vm_before_the_marker():
+    text = INSTALL.read_text()
+    record = text.index("/opt/omelet/connect.json")
+    assert record < text.index("> /opt/omelet/runtime.version")
+    assert "/proc/sys/kernel/osrelease" in text and "/mnt/lima-cidata" in text
