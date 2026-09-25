@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Link, Navigate, Route, Routes } from "react-router";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router";
 import { createQueryClient } from "./api/queryClient";
 import { boot, type BootResult } from "./boot/boot";
 import { AgentGuide } from "./screens/agents/AgentGuide";
 import { AgentPicker } from "./screens/agents/AgentPicker";
-import { PLUG } from "./screens/icons";
 import { Kit } from "./screens/Kit";
 import { FilesPage } from "./screens/files/FilesPage";
 import { NeedsUpdate } from "./screens/NeedsUpdate";
@@ -18,7 +17,7 @@ import { WrongHost } from "./screens/WrongHost";
 import { DesktopHome } from "./desktop/DesktopContext";
 import { AccountMenu } from "./shell/AccountMenu";
 import { Shell } from "./shell/Shell";
-import shell from "./shell/Shell.module.css";
+import { Tabs } from "./shell/Tabs";
 import { QueueProvider } from "./uploads/QueueProvider";
 
 export function App({ handoff, home = null }: { handoff: string | null; home?: string | null }) {
@@ -68,7 +67,7 @@ function Screens({ handoff }: { handoff: string | null }) {
             <BrowserRouter>
               <Shell
                 signedIn
-                leading={<Link className={shell.connect} to="/agents">{PLUG}<span className={shell.connectLabel}>Connect an agent</span></Link>}
+                nav={<Tabs />}
                 trailing={<AccountMenu onSignedOut={needAccount} />}
               >
                 <Routes>
