@@ -68,6 +68,7 @@ export function PublicModal({ project, open, onClose }: { project: Project; open
           <Notice>{view.message}</Notice>
           <div className={s.modalFoot}>
             <Button variant="primary" disabled={toggle.isPending} onClick={() => toggle.mutate(true)}>Try again</Button>
+            <Button variant="quiet" disabled={toggle.isPending} onClick={() => toggle.mutate(false)}>Dismiss</Button>
           </div>
         </>
       );
