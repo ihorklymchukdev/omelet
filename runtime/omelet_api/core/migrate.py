@@ -102,6 +102,19 @@ def _v5_github(conn: sqlite3.Connection) -> None:
     conn.execute("INSERT OR IGNORE INTO github(id) VALUES (1)")
 
 
+def _v6_public_urls(conn: sqlite3.Connection) -> None:
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS public_urls (
+            local_id TEXT PRIMARY KEY,
+            cloud_id TEXT NOT NULL,
+            state TEXT NOT NULL,
+            urls TEXT,
+            expires_at REAL,
+            reason_code TEXT,
+            reason_message TEXT
+        )""")
+
+
 # Append only. Editing an entry that has already shipped changes nothing on a
 # database that ran it -- add the next one instead.
 MIGRATIONS = [
@@ -110,6 +123,7 @@ MIGRATIONS = [
     _v3_web_ui,
     _v4_account,
     _v5_github,
+    _v6_public_urls,
 ]
 SCHEMA_VERSION = len(MIGRATIONS)
 
