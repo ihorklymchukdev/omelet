@@ -285,3 +285,31 @@ def test_every_bridge_call_in_the_ui_names_a_real_method():
     called = set(re.findall(r"api\(\)\.([a-zA-Z_]+)\(", script))
     assert "enter_console" in called
     assert called <= set(public_methods(DesktopApi)), called - set(public_methods(DesktopApi))
+
+
+def test_the_page_lets_pywebview_build_its_bridge():
+    """The CSP must allow dynamic code evaluation for scripts, or the window
+    opens empty.
+
+    pywebview builds every bridge method with `new Function(params, body)` in
+    its own api.js, which it injects into the page after load. `new Function`
+    is governed by script-src, and with only `default-src 'self'` WebKit
+    refuses it: `_createApi` throws on the first method, `window.pywebview.api`
+    stays `{}`, and the `pywebviewready` event at the end of pywebview's
+    finish.js never fires -- so app.js's listener never calls refresh() and
+    `#screen` is never filled. The window shows the background colour and
+    nothing else, with no error anywhere: the injection is fire-and-forget on
+    the Python side.
+
+    WebView2 runs host-injected script outside the page's CSP, so Windows
+    never showed this; WKWebView runs it in the page's world, so macOS did.
+    Remote script stays blocked either way -- 'self' is still the only origin.
+    """
+    head = (UI / "index.html").read_text()
+    match = re.search(r"script-src ([^;\"]*)", head)
+    assert match, "CSP names no script-src, so scripts fall back to " \
+                  "default-src and pywebview's bridge cannot be built"
+    sources = match.group(1).split()
+    assert "'unsafe-eval'" in sources, \
+        f"script-src must allow 'unsafe-eval' for pywebview's api.js: {sources}"
+    assert "'self'" in sources, f"script-src must still pin 'self': {sources}"

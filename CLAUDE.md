@@ -273,6 +273,14 @@ that document is written. Add a new entry here when you hit one.
   hands to `webbrowser.open` (`os.startfile` on Windows), so `_default_start` wraps it with
   `web_links_only` — http(s) only.
 
+- `host/desktop/ui/index.html`'s CSP must keep `script-src 'self' 'unsafe-eval'`. pywebview
+  builds every bridge method with `new Function(...)` in the api.js it injects after load, so
+  under a bare `default-src 'self'` WebKit refuses the call: `window.pywebview.api` stays `{}`,
+  `pywebviewready` never fires, `refresh()` never runs, and the window opens showing only its
+  background colour — with nothing on stderr, since the injection is fire-and-forget on the
+  Python side. WebView2 runs host-injected script outside the page's CSP, so this is invisible
+  on Windows and fatal on macOS. `tests/host/desktop/test_ui_assets.py` pins it.
+
 - `runtime/web/apps/console/agent-guides/` is outside Vite's build output (`publicDir` is dev-only):
   the Dockerfile copies it into the nginx root, so `npm run build` + `preview` shows no guides.
   nginx's `/agent-guides/` location has no SPA fallback, so its path must never be a console
