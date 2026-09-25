@@ -16,5 +16,14 @@ API_VERSION = 1
 # Generated in the guest by the runtime installer, never pushed from the host.
 GUEST_TOKEN = f"{GUEST_ROOT}/api.token"
 
+GITHUB_DIR = f"{GUEST_ROOT}/github"
+# Omelet's OAuth App. Public by design: the Device Flow needs no secret.
+GITHUB_CLIENT_ID = "Ov23lie5k9VqSCKI52Ci"
+
 # The code this service answers when it has no usable token of its own.
 API_UNCONFIGURED = "api_unconfigured"
+
+CONNECT_FILE = f"{GUEST_ROOT}/connect.json"
+# What omelet.yaml asks Lima to forward; Lima has not been seen honouring it.
+LIMA_SSH_PORT = 39022
+LIMA_KEY_FILE = "~/.lima/_config/user"

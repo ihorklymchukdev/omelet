@@ -20,3 +20,9 @@ def test_from_env_reads_the_names_the_container_will_set():
     assert config.state_db == Path("/srv/state.db")
     assert config.version == "1.2.3"
     assert (config.bind_host, config.port) == ("127.0.0.1", 9000)
+
+
+def test_github_client_id_can_be_overridden_for_a_fork():
+    config = ApiConfig.from_env({"OMELET_GITHUB_CLIENT_ID": "Iv1.fork"})
+    assert config.github_client_id == "Iv1.fork"
+    assert ApiConfig.from_env({}).github_client_id == "Ov23lie5k9VqSCKI52Ci"

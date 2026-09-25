@@ -85,7 +85,24 @@ def _v4_account(conn: sqlite3.Connection) -> None:
         )""")
 
 
-def _v5_public_urls(conn: sqlite3.Connection) -> None:
+def _v5_github(conn: sqlite3.Connection) -> None:
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS github (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            generation INTEGER NOT NULL DEFAULT 0,
+            desired_at REAL,
+            login TEXT,
+            gh_id INTEGER,
+            name TEXT,
+            email TEXT,
+            needs_reconnect INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT,
+            checked_at REAL
+        )""")
+    conn.execute("INSERT OR IGNORE INTO github(id) VALUES (1)")
+
+
+def _v6_public_urls(conn: sqlite3.Connection) -> None:
     conn.execute("""
         CREATE TABLE IF NOT EXISTS public_urls (
             local_id TEXT PRIMARY KEY,
@@ -105,7 +122,8 @@ MIGRATIONS = [
     _v2_project_problem,
     _v3_web_ui,
     _v4_account,
-    _v5_public_urls,
+    _v5_github,
+    _v6_public_urls,
 ]
 SCHEMA_VERSION = len(MIGRATIONS)
 

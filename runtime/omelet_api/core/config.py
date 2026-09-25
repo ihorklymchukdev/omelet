@@ -38,6 +38,7 @@ class ApiConfig:
     # replaces it with a service-issued device token; see
     # omelet_api/routes/app.py's auth check.
     token_path: Path = Path(constants.GUEST_TOKEN)
+    connect_path: Path = Path(constants.CONNECT_FILE)
     # Partial uploads, outside projects_root so neither a listing, the
     # reconcile scan nor the coding agent ever sees a half-written file.
     uploads_root: Path = Path(f"{constants.GUEST_ROOT}/uploads")
@@ -47,6 +48,10 @@ class ApiConfig:
     cloud_url: str = "https://omelet.bridgie.chat/api"
     stack_file: Path = Path(f"{constants.GUEST_ROOT}/stack.yml")
     tunnel_token_path: Path = Path(f"{constants.GUEST_ROOT}/tunnel/token")
+    github_client_id: str = constants.GITHUB_CLIENT_ID
+    github_url: str = "https://github.com"
+    github_api_url: str = "https://api.github.com"
+    github_dir: Path = Path(constants.GITHUB_DIR)
     version: str = __version__
 
     @classmethod
@@ -73,5 +78,11 @@ class ApiConfig:
                                     f"{constants.GUEST_ROOT}/stack.yml")),
             tunnel_token_path=Path(env.get("OMELET_TUNNEL_TOKEN",
                                            f"{constants.GUEST_ROOT}/tunnel/token")),
+            github_client_id=env.get("OMELET_GITHUB_CLIENT_ID",
+                                     constants.GITHUB_CLIENT_ID),
+            github_url=env.get("OMELET_GITHUB_URL", "https://github.com"),
+            github_api_url=env.get("OMELET_GITHUB_API_URL",
+                                   "https://api.github.com"),
+            github_dir=Path(env.get("OMELET_GITHUB_DIR", constants.GITHUB_DIR)),
             version=env.get("OMELET_SERVICE_VERSION", __version__),
         )

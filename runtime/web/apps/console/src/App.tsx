@@ -3,6 +3,8 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router";
 import { createQueryClient } from "./api/queryClient";
 import { boot, type BootResult } from "./boot/boot";
+import { AgentGuide } from "./screens/agents/AgentGuide";
+import { AgentPicker } from "./screens/agents/AgentPicker";
 import { Kit } from "./screens/Kit";
 import { FilesPage } from "./screens/files/FilesPage";
 import { NeedsUpdate } from "./screens/NeedsUpdate";
@@ -15,6 +17,7 @@ import { WrongHost } from "./screens/WrongHost";
 import { DesktopHome } from "./desktop/DesktopContext";
 import { AccountMenu } from "./shell/AccountMenu";
 import { Shell } from "./shell/Shell";
+import { Tabs } from "./shell/Tabs";
 import { QueueProvider } from "./uploads/QueueProvider";
 
 export function App({ handoff, home = null }: { handoff: string | null; home?: string | null }) {
@@ -62,11 +65,17 @@ function Screens({ handoff }: { handoff: string | null }) {
         <QueryClientProvider client={queryClient}>
           <QueueProvider onSessionLost={(reason) => setResult({ kind: "signedOut", reason })}>
             <BrowserRouter>
-              <Shell signedIn trailing={<AccountMenu onSignedOut={needAccount} />}>
+              <Shell
+                signedIn
+                nav={<Tabs />}
+                trailing={<AccountMenu onSignedOut={needAccount} />}
+              >
                 <Routes>
                   <Route path="/" element={<ProjectList />} />
                   <Route path="/p/:id" element={<ProjectPage />} />
                   <Route path="/p/:id/files/*" element={<FilesPage />} />
+                  <Route path="/agents" element={<AgentPicker />} />
+                  <Route path="/agents/:id" element={<AgentGuide />} />
                   <Route path="/kit" element={<Kit />} />
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>

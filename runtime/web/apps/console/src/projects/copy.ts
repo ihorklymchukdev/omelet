@@ -10,6 +10,8 @@ export function phaseCaption(phase: string, firstRun: boolean): string {
       return firstRun ? "Fetching the bits it needs" : "Starting it up";
     case "checking":
       return "Checking it answers";
+    case "cloning":
+      return "Downloading from GitHub";
     default:
       return "Working on it";
   }

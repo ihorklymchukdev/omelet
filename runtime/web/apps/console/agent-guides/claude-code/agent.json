@@ -1,0 +1,26 @@
+{
+  "name": "Claude Code",
+  "icon": "icon.svg",
+  "platforms": {
+    "mac": {
+      "via_ssh": true,
+      "tagline": "SSH connection",
+      "steps": [
+        {"title": "Open Claude Code", "body": "Open the Claude Code app and sign in.", "alt": "Screenshot · Claude Code start screen"},
+        {"title": "Add an SSH connection", "body": "Open the environment menu next to the prompt box and pick “Add SSH connection”.", "alt": "Screenshot · environment menu with Add SSH connection"},
+        {"title": "Enter the details", "body": "Host, port, user and key file. All four are in the card below — copy them one by one.", "alt": "Screenshot · SSH connection form, filled in"},
+        {"title": "Start prompting", "body": "Pick the projects folder and tell it what to build.", "alt": "Screenshot · Claude Code prompt, connected to the kitchen"}
+      ]
+    },
+    "windows": {
+      "via_ssh": false,
+      "tagline": "Inside WSL",
+      "steps": [
+        {"title": "Open Claude Code", "body": "Open the Claude Code app and sign in.", "alt": "Screenshot · Claude Code start screen"},
+        {"title": "Switch to WSL", "body": "Open the environment menu next to the prompt box and pick WSL.", "alt": "Screenshot · environment menu with WSL"},
+        {"title": "Pick omelet-vm", "body": "Choose the omelet-vm machine from the list.", "alt": "Screenshot · WSL machine list with omelet-vm"},
+        {"title": "Start prompting", "body": "Pick the projects folder and tell it what to build.", "alt": "Screenshot · Claude Code prompt, connected to the kitchen"}
+      ]
+    }
+  }
+}

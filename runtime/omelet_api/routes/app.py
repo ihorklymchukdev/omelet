@@ -7,8 +7,10 @@ import shutil
 import tempfile
 import threading
 import time
+import uuid
 from contextlib import contextmanager
 from dataclasses import asdict
+from datetime import datetime
 from pathlib import Path
 
 import yaml
@@ -20,12 +22,15 @@ from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from ..core import constants, disk, files, lifecycle
+from ..core import connect, constants, disk, files, lifecycle
 from ..core.account import Account
 from ..core.cloud import Cloud, CloudError, CloudUnavailable
 from ..core.config import ApiConfig
 from ..core.detect import AmbiguousError
 from ..core.exec import LocalRunner
+from ..core.github import (GitHub, GitHubError, GitHubUnavailable, auth_failed,
+                           clone_argv, redact, valid_repo)
+from ..core.github_link import GitHubLink, NotConnected
 # Imported by name: the /health route below shadows a module named `health`.
 from ..core.health import answers, default_probe, diagnose
 from ..core.overlay import host_for
@@ -116,6 +121,27 @@ class Handoff(BaseModel):
     code: str
 
 
+class CloneRepo(BaseModel):
+    repo: str
+    id: str | None = None
+
+
+def _epoch(iso: str | None) -> float | None:
+    if not iso:
+        return None
+    return datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp()
+
+
+def _github_down() -> "ApiError":
+    return ApiError("github_unavailable", "GitHub can't be reached. Check the "
+                    "internet connection and try again.", 503)
+
+
+def _reconnect() -> "ApiError":
+    return ApiError("github_reconnect", "GitHub stopped accepting Omelet's "
+                    "access. Reconnect GitHub and try again.", 409)
+
+
 def _body(code: str, message: str, status: int) -> JSONResponse:
     return JSONResponse({"error": {"code": code, "message": message}},
                         status_code=status)
@@ -149,7 +175,8 @@ def create_app(*, config: ApiConfig | None = None, runner=None, state=None,
                jobs: JobRegistry | None = None, http_probe=None,
                sessions: Sessions | None = None, cloud=None,
                account: Account | None = None,
-               public: Public | None = None) -> FastAPI:
+               public: Public | None = None, github=None,
+               github_link: GitHubLink | None = None) -> FastAPI:
     config = config or ApiConfig.from_env()
     runner = runner or LocalRunner()
     http_probe = http_probe or default_probe
@@ -194,6 +221,10 @@ def create_app(*, config: ApiConfig | None = None, runner=None, state=None,
 
     sync = SyncLoop(sync_pass)
     account.on_signed_in = sync.wake
+    github = github or GitHub(config.github_url, config.github_api_url)
+    github_link = github_link or GitHubLink(
+        state, github, client_id=config.github_client_id,
+        directory=config.github_dir)
 
     app = FastAPI(title="omelet-api", version=config.version)
     app.state.config = config
@@ -202,6 +233,7 @@ def create_app(*, config: ApiConfig | None = None, runner=None, state=None,
     app.state.jobs = jobs
     app.state.sessions = sessions
     app.state.account = account
+    app.state.github = github_link
     app.state.sync = sync
     app.state.public = public
     router = APIRouter()
@@ -446,6 +478,10 @@ def create_app(*, config: ApiConfig | None = None, runner=None, state=None,
     def disk_usage() -> dict:
         return disk.usage(Path(config.projects_root))
 
+    @router.get("/connect")
+    def connect_facts() -> dict:
+        return connect.facts(Path(config.connect_path))
+
     @router.get("/account")
     def account_status() -> dict:
         return account.status()
@@ -469,6 +505,132 @@ def create_app(*, config: ApiConfig | None = None, runner=None, state=None,
         except Exception:
             log.exception("releasing public URLs on sign-out failed")
         return account.sign_out()
+
+    def require_github_token() -> str:
+        try:
+            return github_link.token()
+        except NotConnected:
+            if github_link.status()["state"] == "needs_reconnect":
+                raise _reconnect() from None
+            raise ApiError("github_not_connected",
+                           "Connect GitHub first.", 409) from None
+
+    @router.get("/github")
+    def github_status() -> dict:
+        github_link.check_token()
+        return github_link.status()
+
+    @router.post("/github/connect")
+    def github_connect() -> dict:
+        try:
+            return github_link.connect()
+        except GitHubUnavailable:
+            raise _github_down() from None
+        except GitHubError as e:
+            raise ApiError("github_error", "GitHub would not start a sign-in: "
+                           f"{e.message or e.code}", 502) from None
+
+    @router.post("/github/disconnect")
+    def github_disconnect() -> dict:
+        return github_link.disconnect()
+
+    @router.post("/github/reapply")
+    def github_reapply() -> dict:
+        try:
+            return github_link.reapply()
+        except NotConnected:
+            raise ApiError("github_not_connected", "Connect GitHub first.", 409) from None
+        except GitHubUnavailable:
+            raise _github_down() from None
+        except GitHubError as e:
+            raise ApiError("github_error", "GitHub would not confirm the "
+                           f"connection: {e.message or e.code}", 502) from None
+
+    @router.get("/github/repos")
+    def github_repos(page: int = 1) -> dict:
+        token = require_github_token()
+        try:
+            repos, more = github.repos(token, max(page, 1))
+        except GitHubUnavailable:
+            raise _github_down() from None
+        except GitHubError as e:
+            if e.code == "bad_credentials":
+                github_link.mark_bad_if_current(token)
+                raise _reconnect() from None
+            raise ApiError("github_error", f"GitHub refused the repository list: "
+                           f"{e.message or e.code}", 502) from None
+        return {"has_more": more, "repos": [
+            {"full_name": r["full_name"], "private": bool(r.get("private")),
+             "description": r.get("description"),
+             "updated_at": _epoch(r.get("updated_at"))} for r in repos]}
+
+    @router.post("/github/clone", status_code=202)
+    def github_clone(body: CloneRepo) -> dict:
+        if not valid_repo(body.repo):
+            raise ApiError("invalid_repo",
+                           f"'{body.repo}' is not an owner/name repository", 422)
+        project_id = _slug(body.id or body.repo.split("/")[1])
+        if not project_id:
+            raise ApiError("invalid_project",
+                           f"'{body.repo}' has no usable project name", 422)
+        directory = project_dir(project_id)
+        if state.get_project(project_id) is not None or directory.exists():
+            raise ApiError("project_exists",
+                           f"project '{project_id}' already exists", 409)
+        token = require_github_token()
+        if not locks.acquire(project_id):
+            raise _busy(project_id)
+
+        def work(write):
+            handed_over = False
+            # Cloned next to the real folder, not into it: nothing here holds
+            # `directory`'s name reserved while git runs, so another request
+            # (POST /projects, an adopt, a coding agent's own mkdir) can claim
+            # it first. Cloning into a dot-prefixed staging dir -- which
+            # `reconcile.discover` already skips -- and renaming in only once
+            # the name is still free means a failure can never touch a folder
+            # this job did not create.
+            staging = Path(config.projects_root) / f".clone-{uuid.uuid4().hex[:12]}"
+            try:
+                write.phase("cloning")
+                write(f"git clone https://github.com/{body.repo}.git\n")
+                result = runner.exec(clone_argv(body.repo, staging),
+                                     env={"OMELET_GH_TOKEN": token,
+                                          "GIT_TERMINAL_PROMPT": "0"})
+                if not result.ok:
+                    output = redact((result.stderr or result.stdout).strip(), token)
+                    shutil.rmtree(staging, ignore_errors=True)
+                    if auth_failed(output):
+                        github_link.confirm_bad(token)
+                    raise JobFailed(output or "git clone failed")
+                if directory.exists() or state.get_project(project_id) is not None:
+                    shutil.rmtree(staging, ignore_errors=True)
+                    raise JobFailed(f"a project called '{project_id}' appeared "
+                                    "while downloading; nothing was changed")
+                os.rename(staging, directory)
+                state.add_project(project_id, str(directory), config.domain)
+                sync.wake()
+                if not (directory / constants.COMPOSE_FILE).exists():
+                    write(f"no {constants.COMPOSE_FILE} yet; left stopped\n")
+                    return {"id": project_id, "status": "stopped"}
+                try:
+                    up = start_work(project_id, stop_first=False)
+                except ApiError as e:
+                    write(f"{e.message}\n")
+                    return {"id": project_id, "status": "stopped"}
+                # start_work's job releases the lock in its own finally.
+                handed_over = True
+                return {"id": project_id, **up(write)}
+            finally:
+                if not handed_over:
+                    locks.release(project_id)
+
+        try:
+            job_id = jobs.submit(work, kind="clone", project_id=project_id)
+        except BaseException:
+            locks.release(project_id)
+            raise
+        return {"job_id": job_id, "id": project_id}
 
     @router.post("/projects", status_code=201)
     def create_project(body: CreateProject) -> dict:

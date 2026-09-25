@@ -25,6 +25,14 @@ export const SCENARIOS = [
   "public-expiring",
   "public-active-elsewhere",
   "public-unavailable",
+  "github-pending",
+  "github-denied",
+  "github-expired",
+  "github-applying",
+  "github-outdated",
+  "github-reconnect",
+  "github-clone-fails",
+  "windows",
 ] as const;
 export type Scenario = (typeof SCENARIOS)[number];
 
@@ -89,13 +97,27 @@ export function handlersFor(scenario: Scenario) {
       : { state: "signed_out", error: null }
     : { state: "signed_in", email: "ada@example.com", sync: { last_ok_at: nowSec(), last_error: null } };
   let approveAt = 0;
+  const GH_CODE = "C0DE-F00D";
+  const ghConnected = (setup: string, setup_error: string | null = null) =>
+    ({ state: "connected", login: "ada", name: "Ada", email: "1+ada@users.noreply.github.com", setup, setup_error });
+  const ghPending = () => ({ state: "pending", user_code: GH_CODE, url: "https://github.com/login/device", expires_at: nowSec() + 900 });
+  let github: Record<string, unknown> =
+    scenario === "github-pending" ? ghPending()
+    : scenario === "github-applying" ? ghConnected("applying")
+    : scenario === "github-outdated" ? ghConnected("runtime_outdated")
+    : scenario === "github-reconnect" ? { state: "needs_reconnect", login: "ada" }
+    : { state: "disconnected", error: null };
+  let ghSettleAt = 0;
   const projects = new Map<string, Project>();
   const discovered: Discovered[] = [];
   const jobs = new Map<string, Job>();
 
   function startJob(target: Project, kind: JobKind): Job {
     const id = Math.random().toString(16).slice(2, 14);
-    const steps = kind === "down" ? ["preparing", "stopping"] : ["preparing", "starting", "checking"];
+    const steps =
+      kind === "down" ? ["preparing", "stopping"]
+      : kind === "clone" ? ["cloning", "starting", "checking"]
+      : ["preparing", "starting", "checking"];
     const stepMs = target.first_run && kind !== "down" ? 6000 : 2000;
     const job: Job = {
       job_id: id,
@@ -111,6 +133,15 @@ export function handlersFor(scenario: Scenario) {
     target.job = { id, kind, phase: steps[0], started_at: job.started_at };
     let step = 0;
     const tick = () => {
+      // github-clone-fails exercises the failure path while still on the
+      // "cloning" phase, before any other step runs.
+      if (kind === "clone" && scenario === "github-clone-fails" && step === 0) {
+        target.job = null;
+        job.state = "failed";
+        job.detail = "fatal: repository not found";
+        job.finished_at = nowSec();
+        return;
+      }
       step += 1;
       if (step < steps.length) {
         job.phase = steps[step];
@@ -138,6 +169,17 @@ export function handlersFor(scenario: Scenario) {
     };
     window.setTimeout(tick, stepMs);
     return job;
+  }
+
+  // Shared by POST /api/projects and the GitHub clone mock, so a bad name or
+  // a clash with an existing project is refused the same way from both.
+  function makeProject(rawId: string): Project | Response {
+    const id = slugify(rawId);
+    if (!id) return refuse("invalid_project", "a project needs a name made of letters, numbers or dashes", 422);
+    if (projects.has(id)) return refuse("project_exists", `a project called ${id} already exists`, 409);
+    const created = emptyProject(id);
+    projects.set(id, created);
+    return created;
   }
 
   if (scenario !== "empty") {
@@ -300,6 +342,48 @@ export function handlersFor(scenario: Scenario) {
     }),
     http.post("/api/sessions/handoff", () => HttpResponse.json({ code: "mock-code", expires_in: 60 })),
 
+    http.get("/api/github", () => {
+      if ((github.state === "pending" || github.setup === "applying") && ghSettleAt === 0) ghSettleAt = Date.now() + 5000;
+      if (ghSettleAt && Date.now() >= ghSettleAt) {
+        ghSettleAt = 0;
+        github =
+          github.state === "connected" ? ghConnected("ready")
+          : scenario === "github-denied" ? { state: "disconnected", error: "access_denied" }
+          : scenario === "github-expired" ? { state: "disconnected", error: "expired_token" }
+          : ghConnected("applying");
+      }
+      return HttpResponse.json(github);
+    }),
+    http.post("/api/github/connect", () => {
+      github = ghPending();
+      return HttpResponse.json(github);
+    }),
+    http.post("/api/github/disconnect", () => {
+      github = { state: "disconnected", error: null };
+      return HttpResponse.json(github);
+    }),
+    http.post("/api/github/reapply", () => {
+      github = ghConnected("applying");
+      return HttpResponse.json(github);
+    }),
+    http.get("/api/github/repos", ({ request }) => {
+      const page = Number(new URL(request.url).searchParams.get("page") ?? "1");
+      const names = page === 1 ? ["ada/recipe-site", "ada/garden-log", "kitchen-co/menu"] : ["ada/old-notes"];
+      return HttpResponse.json({
+        has_more: page === 1,
+        repos: names.map((full_name, i) => ({ full_name, private: i % 2 === 0, description: null, updated_at: nowSec() - (i + page) * 86400 })),
+      });
+    }),
+    http.post("/api/github/clone", async ({ request }) => {
+      const denied = guard();
+      if (denied) return denied;
+      const { repo } = (await request.json()) as { repo: string };
+      const created = makeProject(repo.split("/")[1] ?? repo);
+      if (created instanceof Response) return created;
+      const job = startJob(created, "clone");
+      return HttpResponse.json({ job_id: job.job_id, id: created.id }, { status: 202 });
+    }),
+
     http.get("/api/projects", async () => {
       if (scenario === "lost-mid-use") return expired();
       const denied = guard();
@@ -311,12 +395,8 @@ export function handlersFor(scenario: Scenario) {
       const denied = guard();
       if (denied) return denied;
       const { id: raw } = (await request.json()) as { id: string };
-      const id = slugify(raw);
-      if (!id) return refuse("invalid_project", "a project needs a name made of letters, numbers or dashes", 422);
-      if (projects.has(id)) return refuse("project_exists", `a project called ${id} already exists`, 409);
-      const created = emptyProject(id);
-      projects.set(id, created);
-      return HttpResponse.json(created, { status: 201 });
+      const created = makeProject(raw);
+      return created instanceof Response ? created : HttpResponse.json(created, { status: 201 });
     }),
     http.get("/api/projects/:id", ({ params }) => {
       const denied = guard();
@@ -406,6 +486,12 @@ export function handlersFor(scenario: Scenario) {
       if (!target) return notFound(String(params.id));
       target.public = { state: "off", note: null };
       return HttpResponse.json(target.public);
+    }),
+    http.get("/api/connect", () => {
+      const denied = guard();
+      if (denied) return denied;
+      if (scenario === "windows") return HttpResponse.json({ vm: "wsl", ssh: null });
+      return HttpResponse.json({ vm: "lima", ssh: { host: "127.0.0.1", port: 39022, user: "ada", key_file: "~/.lima/_config/user" } });
     }),
     http.get("/api/disk", () => {
       const denied = guard();

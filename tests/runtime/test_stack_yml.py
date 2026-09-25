@@ -22,6 +22,10 @@ def _without_interpolation() -> str:
     return _INTERPOLATION.sub("", _text())
 
 
+def _services() -> dict:
+    return yaml.safe_load(_text())["services"]
+
+
 def test_stack_yml_hardcodes_no_domain_or_port_outside_a_default():
     # This is the one rule that keeps Phase 5 from becoming a rewrite: every
     # environment injects its own domain and ports through OMELET_DOMAIN /
@@ -123,3 +127,9 @@ def test_the_tunnel_client_shares_a_network_only_with_traefik():
     assert "tunnel" in services["traefik"]["networks"]
     for name in ("api", "web"):
         assert "tunnel" not in services[name]["networks"]
+
+
+def test_the_api_receives_the_github_client_id_with_the_same_default():
+    api = _services()["api"]
+    assert ("OMELET_GITHUB_CLIENT_ID=${OMELET_GITHUB_CLIENT_ID:-Ov23lie5k9VqSCKI52Ci}"
+            in api["environment"])

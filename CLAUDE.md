@@ -85,7 +85,7 @@ The browser UI lives in `runtime/web/` (npm workspace, Node ≥ 22.22):
 
 ```bash
 cd runtime/web && npm install
-npm run dev          # Vite + an in-browser mock API; ?scenario=empty|expired|handoff-spent|old-api|down|lost-mid-use|wrong-host|uploads|full|fills-up|busy|locked|public-on|public-expiring|public-active-elsewhere|public-unavailable
+npm run dev          # Vite + an in-browser mock API; ?scenario=empty|expired|handoff-spent|old-api|down|lost-mid-use|wrong-host|uploads|full|fills-up|busy|locked|public-on|public-expiring|public-active-elsewhere|public-unavailable|github-pending|github-denied|github-expired|github-applying|github-outdated|github-reconnect|github-clone-fails|windows
 npm test             # Vitest
 npm run typecheck
 npm run build && npm run check-offline
@@ -175,7 +175,8 @@ Do not add an `if windows` anywhere else — push the difference into a provider
   `~/projects` link (`lib/install-agents.sh`) and
   `npx -y skills@1.5.26 add $SKILLS_SOURCE -s '*' -g -a claude-code codex -y </dev/null`, where
   `SKILLS_SOURCE` defaults to `ihorklymchukdev/omelet-skills`, unpinned on purpose (`OMELET_SKILLS_SOURCE`
-  overrides it). Writes `runtime.version` last.
+  overrides it). Records the VM kind (`wsl`/`lima`/`other`) and first login user in
+  `/opt/omelet/connect.json` for `GET /connect`. Writes `runtime.version` last.
 - `runtime/cli/omelet.py` — the `omelet` command **inside** the VM, used by coding agents:
   `up`/`new`/`clone`/`status`/`logs`/`down` over the API with the guest token. One
   stdlib-only file, loaded by tests by path (`tests/runtime/cli/loader.py`); it shares constants
@@ -197,6 +198,8 @@ Do not add an `if windows` anywhere else — push the difference into a provider
   signed-in page gets the system browser one through `POST /api/sessions/handoff`;
   see `docs/superpowers/specs/2026-09-21-web-ui-agent-prerequisites-design.md`.
   `DELETE /projects/{id}?purge=true` removes volumes and the folder; plain DELETE keeps them.
+  `GET /connect` turns `connect.json` into `{vm, ssh}` for the console's agent guide; the SSH port
+  is `omelet.yaml`'s declared `ssh.localPort`, held equal by `tests/test_constants_agree.py`.
 - `runtime/omelet_api/core/exec.py` — `LocalRunner`, the in-VM twin of `VmProvider.exec`: same
   `Completed` contract, never raises. `runtime/omelet_api/core/config.py` — `ApiConfig`, the only
   place the domain and edge port may come from.
@@ -219,6 +222,14 @@ Do not add an `if windows` anywhere else — push the difference into a provider
   locked until sign-in (`GET /api/account`); the CLI and coding agents never wait on it.
   Service gaps are not worked around in our code; see
   `docs/superpowers/specs/2026-09-23-account-sign-in-sync-design.md` section 7.
+- `runtime/omelet_api/core/github.py` / `github_link.py` — Connect GitHub. The API runs GitHub's
+  Device Flow (`OMELET_GITHUB_CLIENT_ID`, no secret) and keeps the token in
+  `/opt/omelet/github/token` (0600). It never reaches a user home itself: it writes a token-free
+  `desired.json` with a rising `generation`, `omelet-github.path` runs
+  `runtime/install/lib/github-apply.sh` as root, and that echoes the generation into
+  `applied.json`. The UI says "ready" only when the two match; `applied.json` missing after 30 s
+  means the runtime predates the feature. `POST /github/clone` passes the token to git only
+  through the child's environment.
 - `runtime/omelet_api/core/public.py` — a project's temporary public URL. The service owns the
   Cloudflare tunnel and its routing; the VM asks for a URL, keeps the token in
   `/opt/omelet/tunnel/token` (0640, present only while a URL is on; the directory is
@@ -248,12 +259,21 @@ Do not add an `if windows` anywhere else — push the difference into a provider
   (only `http://127.0.0.1:<port>`), which switches on the shell's Home button and "open in
   browser"; open external addresses with its `openExternal` (an anchor click), never
   `window.open` — WKWebView hands only link activations to the system browser.
+  `/agents` and `/agents/:id` are the "Connect an agent" guide, all content in
+  `apps/console/agent-guides/` (served at `/agent-guides/`) (`index.json` for order, `<id>/agent.json` with a `windows` and a `mac`
+  block, `via_ssh`, steps and optional screenshots); `src/agents/catalog.ts` validates it and
+  `content.test.ts` fails on a shipped file that doesn't parse or names a missing image.
 
 ### Things that will bite you
 
 No `docs/architecture.md` exists to hold this list yet — gotchas live directly in this file until
 that document is written. Add a new entry here when you hit one.
 
+- `install.sh` step 4 runs `chmod -R g+rwX /opt/omelet` on every install, which widens
+  `/opt/omelet/github/token`. The modes are reasserted right after the sweep; keep that order.
+- Login accounts are never the API's uid 1000: WSL2 has only root, and Lima's user carries the
+  macOS uid. The API writes into projects through the docker group, so anything it creates there
+  needs `umask 002` (see `clone_argv`), and `/etc/gitconfig` trusts `safe.directory '*'`.
 - `runtime/web/apps/console/src/projects/slugify.test.ts` reaches
   `tests/fixtures/slugify-cases.json` by counting `../` segments from its own location, and that
   count must agree with `runtime/web/Dockerfile`'s `WORKDIR` (and the `COPY --from=fixtures`
@@ -277,6 +297,19 @@ that document is written. Add a new entry here when you hit one.
 - The `tunnel` service is behind a compose profile. A plain `docker compose -f stack.yml up -d`
   or `pull` never touches it; the API's own compose calls pass `--profile tunnel`, and so must
   anything else that means to include it.
+
+- `host/desktop/ui/index.html`'s CSP must keep `script-src 'self' 'unsafe-eval'`. pywebview
+  builds every bridge method with `new Function(...)` in the api.js it injects after load, so
+  under a bare `default-src 'self'` WebKit refuses the call: `window.pywebview.api` stays `{}`,
+  `pywebviewready` never fires, `refresh()` never runs, and the window opens showing only its
+  background colour — with nothing on stderr, since the injection is fire-and-forget on the
+  Python side. WebView2 runs host-injected script outside the page's CSP, so this is invisible
+  on Windows and fatal on macOS. `tests/host/desktop/test_ui_assets.py` pins it.
+
+- `runtime/web/apps/console/agent-guides/` is outside Vite's build output (`publicDir` is dev-only):
+  the Dockerfile copies it into the nginx root, so `npm run build` + `preview` shows no guides.
+  nginx's `/agent-guides/` location has no SPA fallback, so its path must never be a console
+  route prefix: `/agents/` once turned every guide reload into a bare 404. `content.test.ts` checks.
 
 ## Testing conventions
 

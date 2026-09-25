@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 from dataclasses import dataclass
 from typing import Iterator
@@ -24,13 +25,15 @@ class LocalRunner:
     duck-typed callers in `core/lifecycle.py` work unchanged on either side.
     """
 
-    def exec(self, argv: list[str], *, root: bool = False) -> Completed:
+    def exec(self, argv: list[str], *, root: bool = False,
+             env: dict | None = None) -> Completed:
         # `root` is accepted and ignored: it exists only for signature
         # compatibility with the host's `VmProvider.exec`. The API runs as
         # a non-root user (Task 5) -- its ability to reach the daemon comes
         # from the mounted socket and docker-group membership, not from uid 0.
         try:
-            proc = subprocess.run(argv, capture_output=True, text=True)
+            proc = subprocess.run(argv, capture_output=True, text=True,
+                                  env=None if env is None else {**os.environ, **env})
         except OSError as e:
             # A missing binary must read like a failed command, not a 500.
             return Completed(127, "", str(e))

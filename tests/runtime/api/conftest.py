@@ -53,9 +53,19 @@ class FakeRunner:
         # before this lookup existed, unless a test scripts a real answer.
         self.compose_name_lookup = Completed(0, "", "")
         self.up_gate = None
+        self.envs = []
+        self.clone = Completed(0, "", "")
+        # Called with the destination path before `clone` is returned, so a
+        # test can put files where a real clone would.
+        self.on_clone = None
 
-    def exec(self, argv, *, root=False):
+    def exec(self, argv, *, root=False, env=None):
         self.calls.append(argv)
+        self.envs.append(env)
+        if argv[0] == "sh" and "clone" in argv:
+            if self.on_clone is not None:
+                self.on_clone(argv[-1])
+            return self._reply(self.clone)
         if argv[1] == "version":
             return self._reply(self.docker_version)
         if argv[1] == "exec":
@@ -119,6 +129,7 @@ def env(tmp_path):
         state_db=tmp_path / "state.db",
         version="9.9.9",
         token_path=token_path,
+        connect_path=tmp_path / "connect.json",
         uploads_root=tmp_path / "uploads",
         # No retry window: these tests assert on the verdict, and the window
         # itself is covered against a fake clock in test_health.py.

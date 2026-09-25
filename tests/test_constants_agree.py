@@ -141,3 +141,11 @@ def test_the_web_image_ships_with_the_api_service_it_was_built_against():
     web = re.search(r"\$\{OMELET_WEB_IMAGE:-[^}]+:([^}:]+)\}", stack)
     assert web, "stack.yml must default OMELET_WEB_IMAGE with a tag"
     assert web[1] == package_version
+
+
+def test_the_ssh_port_the_console_shows_is_the_one_lima_is_asked_for():
+    import yaml
+    from pathlib import Path
+    declared = yaml.safe_load(
+        (Path(__file__).resolve().parents[1] / "host" / "providers" / "omelet.yaml").read_text())
+    assert api_constants.LIMA_SSH_PORT == declared["ssh"]["localPort"]

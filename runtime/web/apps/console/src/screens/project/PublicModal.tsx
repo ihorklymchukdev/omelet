@@ -8,7 +8,7 @@ import type { Project } from "../../projects/types";
 import { useNow } from "../../projects/useNow";
 import { openExternal } from "../../desktop/desktop";
 import { ARROW } from "../icons";
-import { CopyButton } from "./AddressRows";
+import { CopyButton } from "../../components/CopyButton";
 import s from "./ProjectPage.module.css";
 
 export function PublicModal({ project, open, onClose }: { project: Project; open: boolean; onClose: () => void }) {
