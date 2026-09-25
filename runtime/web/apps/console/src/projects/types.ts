@@ -11,7 +11,7 @@ export interface WebEntry {
   primary: boolean;
 }
 
-export type JobKind = "up" | "restart" | "down";
+export type JobKind = "up" | "restart" | "down" | "clone";
 
 export interface ActiveJob {
   id: string;

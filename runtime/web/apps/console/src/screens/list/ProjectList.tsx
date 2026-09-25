@@ -6,6 +6,7 @@ import { subtitle } from "../../projects/format";
 import { ONE, useProjects } from "../../projects/queries";
 import type { DeleteResult } from "../../projects/types";
 import { projectView } from "../../projects/view";
+import { GitHubModal } from "../github/GitHubModal";
 import { PLUS } from "../icons";
 import { DiscoveredBand } from "./DiscoveredBand";
 import { EmptyCounter } from "./EmptyCounter";
@@ -28,6 +29,7 @@ export function ProjectList() {
   const query = useProjects();
   const client = useQueryClient();
   const [creating, setCreating] = useState(false);
+  const [github, setGitHub] = useState(false);
   const deleted = (useLocation().state as { deleted?: DeleteResult } | null)?.deleted;
   const modal = <NewProjectModal open={creating} onClose={() => setCreating(false)} />;
 
@@ -47,7 +49,7 @@ export function ProjectList() {
       body = (
         <>
           {deleted && <DeletedNotice result={deleted} />}
-          <EmptyCounter onNew={() => setCreating(true)} />
+          <EmptyCounter onNew={() => setCreating(true)} onGitHub={() => setGitHub(true)} />
         </>
       );
     } else {
@@ -61,7 +63,10 @@ export function ProjectList() {
               <h1 className={s.title}>Your projects</h1>
               <p className={s.sub}>{subtitle(projects.length, cooking)}</p>
             </div>
-            <Button variant="primary" onClick={() => setCreating(true)}>{PLUS}New project</Button>
+            <div className={s.actions}>
+              <Button onClick={() => setGitHub(true)}>From GitHub</Button>
+              <Button variant="primary" onClick={() => setCreating(true)}>{PLUS}New project</Button>
+            </div>
           </header>
           {discovered.length > 0 && <DiscoveredBand folders={discovered} />}
           {projects.length > 0 && (
@@ -81,6 +86,7 @@ export function ProjectList() {
     <>
       {body}
       {modal}
+      <GitHubModal open={github} onClose={() => setGitHub(false)} />
     </>
   );
 }

@@ -31,7 +31,6 @@
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; width: min(620px, 100%); text-align: left; }
 .card { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .cardTitle { margin: 0; display: flex; align-items: center; gap: 8px; font: 700 17px var(--font-body); }
-.soon { padding: 2px 8px; border-radius: 99px; background: var(--cold-soft); font: 700 11px var(--font-body); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); }
 .cardBody { margin: 0; font-size: 14.5px; line-height: 1.45; color: var(--ink-2); flex: 1; }
 
 .form { display: flex; flex-direction: column; gap: 18px; }

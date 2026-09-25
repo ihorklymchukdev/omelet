@@ -1,0 +1,11 @@
+.body { display: grid; gap: 12px; }
+.muted { color: var(--ink-3); }
+.error { color: var(--paprika); }
+.code { font-family: var(--font-mono); font-size: 28px; letter-spacing: 0.12em; text-align: center; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.repos { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; max-height: 50vh; overflow-y: auto; }
+.repo { width: 100%; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; text-align: left;
+  padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: none; cursor: pointer; font: inherit; }
+.repo:disabled { cursor: progress; opacity: 0.6; }
+.repoName { font-weight: 600; overflow-wrap: anywhere; }
+.badge { font-size: 12px; padding: 0 6px; border-radius: 999px; border: 1px solid var(--line); }
