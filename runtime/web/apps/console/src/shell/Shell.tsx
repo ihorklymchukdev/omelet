@@ -9,11 +9,13 @@ import s from "./Shell.module.css";
 export function Shell({
   tone = "yolk",
   signedIn = false,
+  leading,
   trailing,
   children,
 }: {
   tone?: "yolk" | "cold";
   signedIn?: boolean;
+  leading?: ReactNode;
   trailing?: ReactNode;
   children?: ReactNode;
 }) {
@@ -29,8 +31,9 @@ export function Shell({
         )}
         <Egg tone={tone} size={22} />
         <span className={s.brand}>{home ? "Projects" : "Omelet"}</span>
-        {(signedIn || trailing) && (
+        {(signedIn || leading || trailing) && (
           <div className={s.end}>
+            {leading}
             {signedIn && <span className={s.open}><span className={s.dot} aria-hidden="true" />Kitchen open</span>}
             {signedIn && home && <OpenInBrowser />}
             {trailing && <div className={s.trailing}>{trailing}</div>}

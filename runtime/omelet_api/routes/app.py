@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from ..core import constants, disk, files, lifecycle
+from ..core import connect, constants, disk, files, lifecycle
 from ..core.account import Account
 from ..core.cloud import Cloud, CloudError, CloudUnavailable
 from ..core.config import ApiConfig
@@ -434,6 +434,10 @@ def create_app(*, config: ApiConfig | None = None, runner=None, state=None,
     @router.get("/disk")
     def disk_usage() -> dict:
         return disk.usage(Path(config.projects_root))
+
+    @router.get("/connect")
+    def connect_facts() -> dict:
+        return connect.facts(Path(config.connect_path))
 
     @router.get("/account")
     def account_status() -> dict:

@@ -351,3 +351,10 @@ def test_the_agent_instructions_never_ask_for_a_github_login():
     assert "Connect GitHub" in text
     assert "do not run `gh auth login`" in text_joined
     assert "read the user the code it prints" not in text_joined
+
+
+def test_install_records_how_agents_reach_the_vm_before_the_marker():
+    text = INSTALL.read_text()
+    record = text.index("/opt/omelet/connect.json")
+    assert record < text.index("> /opt/omelet/runtime.version")
+    assert "/proc/sys/kernel/osrelease" in text and "/mnt/lima-cidata" in text

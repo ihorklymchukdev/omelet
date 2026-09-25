@@ -85,7 +85,7 @@ The browser UI lives in `runtime/web/` (npm workspace, Node ≥ 22.22):
 
 ```bash
 cd runtime/web && npm install
-npm run dev          # Vite + an in-browser mock API; ?scenario=empty|expired|handoff-spent|old-api|down|lost-mid-use|wrong-host|uploads|full|fills-up|busy|locked
+npm run dev          # Vite + an in-browser mock API; ?scenario=empty|expired|handoff-spent|old-api|down|lost-mid-use|wrong-host|uploads|full|fills-up|busy|locked|windows
 npm test             # Vitest
 npm run typecheck
 npm run build && npm run check-offline
@@ -175,7 +175,8 @@ Do not add an `if windows` anywhere else — push the difference into a provider
   `~/projects` link (`lib/install-agents.sh`) and
   `npx -y skills@1.5.26 add $SKILLS_SOURCE -s '*' -g -a claude-code codex -y </dev/null`, where
   `SKILLS_SOURCE` defaults to `ihorklymchukdev/omelet-skills`, unpinned on purpose (`OMELET_SKILLS_SOURCE`
-  overrides it). Writes `runtime.version` last.
+  overrides it). Records the VM kind (`wsl`/`lima`/`other`) and first login user in
+  `/opt/omelet/connect.json` for `GET /connect`. Writes `runtime.version` last.
 - `runtime/cli/omelet.py` — the `omelet` command **inside** the VM, used by coding agents:
   `up`/`new`/`clone`/`status`/`logs`/`down` over the API with the guest token. One
   stdlib-only file, loaded by tests by path (`tests/runtime/cli/loader.py`); it shares constants
@@ -197,6 +198,8 @@ Do not add an `if windows` anywhere else — push the difference into a provider
   signed-in page gets the system browser one through `POST /api/sessions/handoff`;
   see `docs/superpowers/specs/2026-09-21-web-ui-agent-prerequisites-design.md`.
   `DELETE /projects/{id}?purge=true` removes volumes and the folder; plain DELETE keeps them.
+  `GET /connect` turns `connect.json` into `{vm, ssh}` for the console's agent guide; the SSH port
+  is `omelet.yaml`'s declared `ssh.localPort`, held equal by `tests/test_constants_agree.py`.
 - `runtime/omelet_api/core/exec.py` — `LocalRunner`, the in-VM twin of `VmProvider.exec`: same
   `Completed` contract, never raises. `runtime/omelet_api/core/config.py` — `ApiConfig`, the only
   place the domain and edge port may come from.
@@ -247,6 +250,10 @@ Do not add an `if windows` anywhere else — push the difference into a provider
   (only `http://127.0.0.1:<port>`), which switches on the shell's Home button and "open in
   browser"; open external addresses with its `openExternal` (an anchor click), never
   `window.open` — WKWebView hands only link activations to the system browser.
+  `/agents` and `/agents/:id` are the "Connect an agent" guide, all content in
+  `apps/console/agent-guides/` (served at `/agent-guides/`) (`index.json` for order, `<id>/agent.json` with a `windows` and a `mac`
+  block, `via_ssh`, steps and optional screenshots); `src/agents/catalog.ts` validates it and
+  `content.test.ts` fails on a shipped file that doesn't parse or names a missing image.
 
 ### Things that will bite you
 
@@ -278,6 +285,11 @@ that document is written. Add a new entry here when you hit one.
   does not cover" names the residual race. Any page can also open a new window, which pywebview
   hands to `webbrowser.open` (`os.startfile` on Windows), so `_default_start` wraps it with
   `web_links_only` — http(s) only.
+
+- `runtime/web/apps/console/agent-guides/` is outside Vite's build output (`publicDir` is dev-only):
+  the Dockerfile copies it into the nginx root, so `npm run build` + `preview` shows no guides.
+  nginx's `/agent-guides/` location has no SPA fallback, so its path must never be a console
+  route prefix: `/agents/` once turned every guide reload into a bare 404. `content.test.ts` checks.
 
 ## Testing conventions
 

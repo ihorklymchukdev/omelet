@@ -22,3 +22,8 @@ GITHUB_CLIENT_ID = "Ov23lie5k9VqSCKI52Ci"
 
 # The code this service answers when it has no usable token of its own.
 API_UNCONFIGURED = "api_unconfigured"
+
+CONNECT_FILE = f"{GUEST_ROOT}/connect.json"
+# What omelet.yaml asks Lima to forward; Lima has not been seen honouring it.
+LIMA_SSH_PORT = 39022
+LIMA_KEY_FILE = "~/.lima/_config/user"

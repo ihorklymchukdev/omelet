@@ -38,6 +38,7 @@ class ApiConfig:
     # replaces it with a service-issued device token; see
     # omelet_api/routes/app.py's auth check.
     token_path: Path = Path(constants.GUEST_TOKEN)
+    connect_path: Path = Path(constants.CONNECT_FILE)
     # Partial uploads, outside projects_root so neither a listing, the
     # reconcile scan nor the coding agent ever sees a half-written file.
     uploads_root: Path = Path(f"{constants.GUEST_ROOT}/uploads")

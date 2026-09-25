@@ -15,3 +15,9 @@ export const BACK = <svg {...svg}><path d="M11 4 6 9l5 5" {...line} /></svg>;
 export const EXTERNAL = (
   <svg {...svg}><path d="M10.5 3.5h4v4M14.5 3.5 8.5 9.5M13 10.5v3A1.5 1.5 0 0 1 11.5 15h-7A1.5 1.5 0 0 1 3 13.5v-7A1.5 1.5 0 0 1 4.5 5h3" {...line} /></svg>
 );
+export const PLUG = (
+  <svg {...svg}><path d="M7 2.5v3.5M11 2.5v3.5M5 6h8v2.5a4 4 0 0 1-8 0V6ZM9 12.5V16" {...line} /></svg>
+);
+export const CHEVRON_RIGHT = <svg {...svg}><path d="M7 4l5 5-5 5" {...line} /></svg>;
+export const CHEVRON_DOWN = <svg {...svg}><path d="M5 7l4 4 4-4" {...line} /></svg>;
+export const CHECK = <svg {...svg}><path d="M4 9.4 7.2 12.6 14 5.4" {...line} /></svg>;
